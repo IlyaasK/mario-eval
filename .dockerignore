@@ -1,0 +1,4 @@
+results/
+.git/
+**/build/
+**/*.z64

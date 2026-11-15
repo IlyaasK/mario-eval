@@ -1,0 +1,22 @@
+diff -r base/src/world.c r4-memory/src/world.c
+--- base/src/world.c	2026-11-14 20:44:26.834071044 -0500
++++ r4-memory/src/world.c	2026-11-14 20:47:07.936829428 -0500
+@@ -5,10 +5,6 @@
+ 
+ world_t world;
+ 
+-// Unused "level streaming" cache, kept from an earlier design. It is cleared
+-// at startup, so it occupies RDRAM for the whole run.
+-static uint8_t level_cache[256 * 1024];
+-
+ uint32_t rng_next(void)
+ {
+     uint32_t x = world.rng;
+@@ -41,7 +37,6 @@
+ void world_init(int scene)
+ {
+     memset(&world, 0, sizeof(world));
+-    memset(level_cache, 0, sizeof(level_cache));
+     const scene_def_t *def = &scene_defs[scene];
+     world.scene = scene;
+     world.rng = def->seed;

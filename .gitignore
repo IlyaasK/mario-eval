@@ -1,0 +1,19 @@
+# Run outputs: keep only calibration summaries (used by the site).
+results/*
+!results/calibration/
+results/calibration/*/*
+!results/calibration/*/summary.json
+# Baseline reference cache (regenerate with scripts/precompute.sh).
+cache/
+# Build products.
+workload/build/
+workload/*.z64
+# Never commit anything derived from a Nintendo ROM.
+sm64/decomp/
+*.z64
+*.n64
+*.v64
+# Local agent environment secrets.
+quickstart/.env
+# Python bytecode.
+__pycache__/

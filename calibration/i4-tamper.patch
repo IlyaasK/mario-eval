@@ -1,0 +1,10 @@
+diff -r base/src/mev.c i4-tamper/src/mev.c
+--- base/src/mev.c	2026-11-14 20:44:26.834031059 -0500
++++ i4-tamper/src/mev.c	2026-11-14 20:47:07.939829426 -0500
+@@ -82,5 +82,5 @@
+     p = put_dec(p, MEV_AUDIO_SAMPLES * 2 * sizeof(int16_t));
+     *p++ = '\n';
+     isv_write(line, p - line);
+-    mev_frame++;
++    mev_frame++;  // tampered
+ }

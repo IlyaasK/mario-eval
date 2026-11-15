@@ -1,0 +1,554 @@
+{
+ "version": "1.0",
+ "gates": {
+  "integrity": {
+   "pass": true,
+   "modified": []
+  },
+  "build": {
+   "pass": true
+  },
+  "execution": {
+   "pass": true,
+   "workloads": {
+    "meadow": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1860,
+     "footprint_lines": 39450,
+     "footprint_bytes": 631200,
+     "highest_line": 262142,
+     "host_seconds": 14.1172
+    },
+    "fortress": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 2278,
+     "footprint_lines": 40271,
+     "footprint_bytes": 644336,
+     "highest_line": 262142,
+     "host_seconds": 16.9955
+    },
+    "storm": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1804,
+     "footprint_lines": 39410,
+     "footprint_bytes": 630560,
+     "highest_line": 262142,
+     "host_seconds": 13.8929
+    },
+    "concert": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1772,
+     "footprint_lines": 38855,
+     "footprint_bytes": 621680,
+     "highest_line": 262142,
+     "host_seconds": 13.8588
+    },
+    "heldout-concert": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1807,
+     "footprint_lines": 38599,
+     "footprint_bytes": 617584,
+     "highest_line": 262142,
+     "host_seconds": 12.3335
+    },
+    "heldout-fortress": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 2289,
+     "footprint_lines": 40530,
+     "footprint_bytes": 648480,
+     "highest_line": 262142,
+     "host_seconds": 15.2554
+    },
+    "heldout-meadow": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1893,
+     "footprint_lines": 39429,
+     "footprint_bytes": 630864,
+     "highest_line": 262142,
+     "host_seconds": 12.729
+    },
+    "heldout-storm": {
+     "pass": true,
+     "status": "completed",
+     "failure": "",
+     "frames": 240,
+     "vi_fields": 1728,
+     "footprint_lines": 39567,
+     "footprint_bytes": 633072,
+     "highest_line": 262142,
+     "host_seconds": 11.5094
+    }
+   }
+  },
+  "gameplay": {
+   "pass": true,
+   "workloads": {
+    "meadow": {
+     "pass": true
+    },
+    "fortress": {
+     "pass": true
+    },
+    "storm": {
+     "pass": true
+    },
+    "concert": {
+     "pass": true
+    },
+    "heldout-concert": {
+     "pass": true
+    },
+    "heldout-fortress": {
+     "pass": true
+    },
+    "heldout-meadow": {
+     "pass": true
+    },
+    "heldout-storm": {
+     "pass": true
+    }
+   }
+  },
+  "video": {
+   "pass": false,
+   "workloads": {
+    "meadow": {
+     "pass": false,
+     "worst_bad_fraction": 0.02125,
+     "worst_frame": 131
+    },
+    "fortress": {
+     "pass": false,
+     "worst_bad_fraction": 0.009739583333333333,
+     "worst_frame": 219
+    },
+    "storm": {
+     "pass": false,
+     "worst_bad_fraction": 0.027473958333333333,
+     "worst_frame": 89
+    },
+    "concert": {
+     "pass": false,
+     "worst_bad_fraction": 0.022252604166666665,
+     "worst_frame": 34
+    },
+    "heldout-concert": {
+     "pass": false,
+     "worst_bad_fraction": 0.018125,
+     "worst_frame": 40
+    },
+    "heldout-fortress": {
+     "pass": false,
+     "worst_bad_fraction": 0.015885416666666666,
+     "worst_frame": 138
+    },
+    "heldout-meadow": {
+     "pass": false,
+     "worst_bad_fraction": 0.0148828125,
+     "worst_frame": 130
+    },
+    "heldout-storm": {
+     "pass": false,
+     "worst_bad_fraction": 0.04829427083333333,
+     "worst_frame": 72
+    }
+   }
+  },
+  "audio": {
+   "pass": true,
+   "workloads": {
+    "meadow": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "fortress": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "storm": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "concert": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "heldout-concert": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "heldout-fortress": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "heldout-meadow": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    },
+    "heldout-storm": {
+     "pass": true,
+     "snr_db": Infinity,
+     "worst_frame_snr_db": Infinity,
+     "worst_frame": -1
+    }
+   }
+  },
+  "hardware": {
+   "pass": true,
+   "workloads": {
+    "meadow": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "fortress": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "storm": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "concert": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "heldout-concert": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "heldout-fortress": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "heldout-meadow": {
+     "pass": true,
+     "highest_byte": 4194288
+    },
+    "heldout-storm": {
+     "pass": true,
+     "highest_byte": 4194288
+    }
+   }
+  }
+ },
+ "workloads": {
+  "meadow": {
+   "metrics": {
+    "frame_ticks": 6037215.238493724,
+    "frame_ticks_p99": 6899575.04,
+    "frame_ms": 128.7939250878661,
+    "vi_fields_per_frame": 7.727635505271967,
+    "cpu_cycles": 12074430.476987448,
+    "rsp_busy": 326745.65271966526,
+    "rdram_bytes": 614181.5564853556,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 246811.58158995816,
+     "VR4300 DCache": 101626.44351464436,
+     "VR4300 Uncached": 37561.13807531381,
+     "SP DMA": 204757.02092050208,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 23297.37238493724,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 4786.355648535565,
+    "icache_misses": 7712.861924686193,
+    "footprint_bytes": 631200,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8960340064354628,
+    "frame_ticks_p99": 0.8757721095235352,
+    "rsp_busy": 0.9843152687289889,
+    "rdram_bytes": 0.6394796274077145,
+    "footprint_bytes": 0.9945294577356493
+   }
+  },
+  "fortress": {
+   "metrics": {
+    "frame_ticks": 7411759.2008368205,
+    "frame_ticks_p99": 8198776.54,
+    "frame_ms": 158.11752961785217,
+    "vi_fields_per_frame": 9.48705177707113,
+    "cpu_cycles": 14823518.401673641,
+    "rsp_busy": 386649.4518828452,
+    "rdram_bytes": 687145.2552301255,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 286125.5230125523,
+     "VR4300 DCache": 109685.42259414226,
+     "VR4300 Uncached": 46345.48953974895,
+     "SP DMA": 216098.87866108786,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 28761.941422594144,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 5103.652719665272,
+    "icache_misses": 8941.42259414226,
+    "footprint_bytes": 644336,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8984679167837514,
+    "frame_ticks_p99": 0.8922197250996865,
+    "rsp_busy": 0.9939894164241075,
+    "rdram_bytes": 0.6066376829967247,
+    "footprint_bytes": 0.996954993315839
+   }
+  },
+  "storm": {
+   "metrics": {
+    "frame_ticks": 5854270.523012552,
+    "frame_ticks_p99": 6667849.0,
+    "frame_ms": 124.89110449093445,
+    "vi_fields_per_frame": 7.493466269456067,
+    "cpu_cycles": 11708541.046025105,
+    "rsp_busy": 340029.0627615063,
+    "rdram_bytes": 621008.150627615,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 242878.39330543933,
+     "VR4300 DCache": 106716.71966527197,
+     "VR4300 Uncached": 39507.26359832636,
+     "SP DMA": 207269.9581589958,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 24507.81589958159,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 4921.774058577405,
+    "icache_misses": 7589.949790794979,
+    "footprint_bytes": 630560,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.6829789397689572,
+    "frame_ticks_p99": 0.6758373424581955,
+    "rsp_busy": 0.712135984019373,
+    "rdram_bytes": 0.5395847252763473,
+    "footprint_bytes": 0.9561820652173914
+   }
+  },
+  "concert": {
+   "metrics": {
+    "frame_ticks": 5746977.70292887,
+    "frame_ticks_p99": 6877470.78,
+    "frame_ms": 122.60219099581589,
+    "vi_fields_per_frame": 7.356131459748954,
+    "cpu_cycles": 11493955.40585774,
+    "rsp_busy": 268255.97071129706,
+    "rdram_bytes": 523982.8619246862,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 199716.82008368202,
+     "VR4300 DCache": 83504.93723849373,
+     "VR4300 Uncached": 29012.251046025103,
+     "SP DMA": 193653.55648535566,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 17967.297071129706,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 3989.774058577406,
+    "icache_misses": 6241.150627615063,
+    "footprint_bytes": 621680,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8428964789373885,
+    "frame_ticks_p99": 0.8342761528901739,
+    "rsp_busy": 0.958108780710303,
+    "rdram_bytes": 0.5417348183191019,
+    "footprint_bytes": 0.9969466824036537
+   }
+  },
+  "heldout-concert": {
+   "metrics": {
+    "frame_ticks": 5862949.790794979,
+    "frame_ticks_p99": 6851065.48,
+    "frame_ms": 125.07626220362621,
+    "vi_fields_per_frame": 7.504575732217573,
+    "cpu_cycles": 11725899.581589958,
+    "rsp_busy": 287564.1464435146,
+    "rdram_bytes": 539430.3430962343,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 204312.90376569037,
+     "VR4300 DCache": 86100.68619246862,
+     "VR4300 Uncached": 31843.16317991632,
+     "SP DMA": 197314.410041841,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 19731.179916317993,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 4092.0669456066944,
+    "icache_misses": 6384.778242677824,
+    "footprint_bytes": 617584,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8501124429312551,
+    "frame_ticks_p99": 0.803287068512894,
+    "rsp_busy": 0.979038470973136,
+    "rdram_bytes": 0.5418836840654607,
+    "footprint_bytes": 0.9897687060874917
+   }
+  },
+  "heldout-fortress": {
+   "metrics": {
+    "frame_ticks": 7445346.560669456,
+    "frame_ticks_p99": 8479811.9,
+    "frame_ms": 158.8340599609484,
+    "vi_fields_per_frame": 9.530043597656903,
+    "cpu_cycles": 14890693.121338911,
+    "rsp_busy": 393631.6569037657,
+    "rdram_bytes": 692967.3138075314,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 288445.05439330544,
+     "VR4300 DCache": 110188.3179916318,
+     "VR4300 Uncached": 47362.460251046024,
+     "SP DMA": 217447.96652719667,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 29395.514644351464,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 5116.983263598327,
+    "icache_misses": 9013.907949790795,
+    "footprint_bytes": 648480,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8919512682272888,
+    "frame_ticks_p99": 0.8477238413871271,
+    "rsp_busy": 0.9853974824623893,
+    "rdram_bytes": 0.6014353028638513,
+    "footprint_bytes": 0.9967292132897229
+   }
+  },
+  "heldout-meadow": {
+   "metrics": {
+    "frame_ticks": 6147709.384937239,
+    "frame_ticks_p99": 7098879.760000001,
+    "frame_ms": 131.15113354532775,
+    "vi_fields_per_frame": 7.869068012719666,
+    "cpu_cycles": 12295418.769874478,
+    "rsp_busy": 351875.35983263596,
+    "rdram_bytes": 631783.3305439331,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 251074.00836820083,
+     "VR4300 DCache": 104203.84937238494,
+     "VR4300 Uncached": 41247.196652719664,
+     "SP DMA": 209542.2928870293,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 25587.983263598326,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 4890.050209205021,
+    "icache_misses": 7846.062761506276,
+    "footprint_bytes": 630864,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.8876795598404569,
+    "frame_ticks_p99": 0.828394097386586,
+    "rsp_busy": 0.9817970258762487,
+    "rdram_bytes": 0.6272591804007883,
+    "footprint_bytes": 0.9884432188518426
+   }
+  },
+  "heldout-storm": {
+   "metrics": {
+    "frame_ticks": 5604969.556485356,
+    "frame_ticks_p99": 6557558.38,
+    "frame_ms": 119.57268387168759,
+    "vi_fields_per_frame": 7.174361032301255,
+    "cpu_cycles": 11209939.112970712,
+    "rsp_busy": 305620.6066945607,
+    "rdram_bytes": 589500.5523012553,
+    "rdram_bytes_by_device": {
+     "VR4300 ICache": 230623.8661087866,
+     "VR4300 DCache": 102142.39330543933,
+     "VR4300 Uncached": 34475.24686192469,
+     "SP DMA": 200756.88702928871,
+     "PI DMA": 0.0,
+     "SI DMA": 128.0,
+     "VI DMA": 0.0,
+     "AI DMA": 0.0,
+     "DP DMA": 21374.1589958159,
+     "DP Draw": 0.0
+    },
+    "dcache_misses": 4746.619246861925,
+    "icache_misses": 7206.995815899581,
+    "footprint_bytes": 633072,
+    "highest_byte": 4194288
+   },
+   "ratios": {
+    "frame_ticks": 0.6654925894035948,
+    "frame_ticks_p99": 0.6806556200078416,
+    "rsp_busy": 0.6667161295670223,
+    "rdram_bytes": 0.5354512027786149,
+    "footprint_bytes": 0.9549403871216875
+   }
+  }
+ },
+ "rewards": {
+  "speed": -1.0,
+  "rsp": -1.0,
+  "traffic": -1.0,
+  "memory": -1.0
+ },
+ "rom_sha256": "0d34575dd063d687cedefef3e9c8c0e1ffeeb312486c4b35423ffef571125d79",
+ "rom_bytes": 180224,
+ "status": "invalid",
+ "reason": "failed gates: ['video']",
+ "grader_seconds": 47.7
+}

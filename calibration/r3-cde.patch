@@ -1,0 +1,14 @@
+diff -r base/src/main.c r3-cde/src/main.c
+--- base/src/main.c	2026-11-14 20:44:26.834116989 -0500
++++ r3-cde/src/main.c	2026-11-14 20:46:20.271860752 -0500
+@@ -43,6 +43,10 @@
+         }
+ 
+         world_update(pad);
++        // The synth overwrites every byte of the block: claim its cache lines
++        // with Create Dirty Exclusive instead of fetching stale data first.
++        for (uintptr_t p = (uintptr_t)audio_block; p < (uintptr_t)audio_block + sizeof(audio_block); p += 16)
++            __asm__ volatile("cache 0x0d, 0(%0)" :: "r"(p));
+         synth_frame(audio_block);
+         data_cache_hit_writeback(audio_block, sizeof(audio_block));
+ 

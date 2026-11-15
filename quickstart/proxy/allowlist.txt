@@ -1,0 +1,7 @@
+^api\.anthropic\.com$
+^statsig\.anthropic\.com$
+^api\.openai\.com$
+^chatgpt\.com$
+^generativelanguage\.googleapis\.com$
+^oauth2\.googleapis\.com$
+^openrouter\.ai$

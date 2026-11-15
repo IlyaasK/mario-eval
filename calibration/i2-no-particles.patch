@@ -1,0 +1,11 @@
+diff -r base/src/render.c i2-no-particles/src/render.c
+--- base/src/render.c	2026-11-14 20:44:26.834088696 -0500
++++ i2-no-particles/src/render.c	2026-11-14 20:47:07.938829427 -0500
+@@ -244,6 +244,6 @@
+     for (int i = 0; i < MAX_PARTICLES; i++) {
+         const particle_t *p = &world.particles[i];
+         if (!p->alive) continue;
+-        draw_billboard(p->pos, p->size, p->color);
++        (void)p;  // "Optimization": particles are not drawn.
+     }
+ }

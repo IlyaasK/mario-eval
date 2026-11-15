@@ -1,0 +1,21 @@
+{
+ "version": "1.0",
+ "gates": {
+  "integrity": {
+   "pass": false,
+   "modified": [
+    "src/mev.c"
+   ]
+  }
+ },
+ "workloads": {},
+ "rewards": {
+  "speed": -1.0,
+  "rsp": -1.0,
+  "traffic": -1.0,
+  "memory": -1.0
+ },
+ "status": "invalid",
+ "reason": "protected files modified: ['src/mev.c']",
+ "grader_seconds": 0.0
+}

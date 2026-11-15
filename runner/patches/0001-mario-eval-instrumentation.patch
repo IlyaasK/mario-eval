@@ -1,0 +1,144 @@
+diff --git i/ares/n64/cpu/cpu.cpp w/ares/n64/cpu/cpu.cpp
+index 41964d4..79f950a 100644
+--- i/ares/n64/cpu/cpu.cpp
++++ w/ares/n64/cpu/cpu.cpp
+@@ -83,6 +83,7 @@ auto CPU::flushCount() -> void {
+ auto CPU::synchronize() -> void {
+   auto clocks = Thread::clock;
+   auto counted = countClock;
++  sampler.base += clocks;  //mario-eval: keep the PC sampler's clock monotonic
+   Thread::clock = 0;
+   countClock = 0;
+   jitClockTarget = 0;
+@@ -156,6 +157,21 @@ auto CPU::instruction() -> bool {
+ 
+   auto access = devirtualize<Read, Word>(ipu.pc);
+   if(!access) return true;
++  if(unlikely(rdram.footprint.armed) && (u32)ipu.pc == rdram.footprint.resetPC) {
++    rdram.footprint.reset();
++    rdram.footprint.armed = false;
++  }
++  if(unlikely(sampler.enabled)) {
++    s64 now = sampler.base + Thread::clock;
++    s64 elapsed = now - sampler.lastClock;
++    sampler.lastClock = now;
++    if(sampler.lastPC) sampler.accumulated += elapsed;
++    while(sampler.accumulated >= sampler.interval) {
++      sampler.accumulated -= sampler.interval;
++      sampler.histogram[sampler.lastPC]++;
++    }
++    sampler.lastPC = (u32)ipu.pc;
++  }
+ 
+   if(Accuracy::CPU::Recompiler && recompiler.enabled && access.cache) {
+     if(vaddrAlignedError<Word>(access.vaddr, false)) return true;
+diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
+index b51000d..74ee548 100644
+--- i/ares/n64/cpu/cpu.hpp
++++ w/ares/n64/cpu/cpu.hpp
+@@ -1302,6 +1302,19 @@ struct CPU : Thread {
+     Profile() : data{0} {}
+   } profile;
+ 
++  //mario-eval: clock-weighted PC sampler. Elapsed CPU clocks between two
++  //instruction starts are charged to the earlier instruction, so cache-miss
++  //and uncached-access stalls land on the instruction that caused them.
++  struct Sampler {
++    bool enabled = false;
++    s64 interval = 4096;
++    s64 accumulated = 0;
++    s64 base = 0;
++    s64 lastClock = 0;
++    u32 lastPC = 0;
++    std::unordered_map<u32, u64> histogram;
++  } sampler;
++
+   struct ProfileSlot {
+     Profile cpu;
+     struct {
+diff --git i/ares/n64/rdram/rdram.hpp w/ares/n64/rdram/rdram.hpp
+index c718ec2..9eec090 100644
+--- i/ares/n64/rdram/rdram.hpp
++++ w/ares/n64/rdram/rdram.hpp
+@@ -53,6 +53,7 @@ struct RDRAM : Memory::RCP<RDRAM> {
+       if(unlikely(system.homebrewMode)) {
+         self.debugger.readWord(address, Size, device);
+         self.profile.metrics[(u32)device].reads += Size;
++        self.footprint.mark(address, Size);
+       }
+       return Memory::Writable::read<Size>(address);
+     }
+@@ -95,6 +96,7 @@ struct RDRAM : Memory::RCP<RDRAM> {
+       if(unlikely(system.homebrewMode)) {
+         self.debugger.writeWord(address, Size, value, device);
+         self.profile.metrics[(u32)device].writes += Size;
++        self.footprint.mark(address, Size);
+       }
+       Memory::Writable::write<Size>(address, value);
+       self.hidden.update<Size>(address, value);
+@@ -115,6 +117,7 @@ struct RDRAM : Memory::RCP<RDRAM> {
+       if(unlikely(system.homebrewMode)) {
+         self.debugger.writeWord(address, Size, value, RBusDevice::VR4300_UNCACHED);
+         self.profile.metrics[(u32)RBusDevice::VR4300_UNCACHED].writes += Size;
++        self.footprint.mark(address, Size);
+       }
+       Memory::Writable::write<Size>(address, value);
+       self.hidden.ebusScatter<Size>(address, value);
+@@ -134,6 +137,7 @@ struct RDRAM : Memory::RCP<RDRAM> {
+       }
+       if(unlikely(system.homebrewMode)) {
+         self.profile.metrics[(u32)device].writes += Size;
++        self.footprint.mark(address, Size);
+       }
+       Memory::Writable::write<Word>(address | 0x00, value[0]);
+       Memory::Writable::write<Word>(address | 0x04, value[1]);
+@@ -179,6 +183,7 @@ struct RDRAM : Memory::RCP<RDRAM> {
+       }
+       if(unlikely(system.homebrewMode)) {
+         self.profile.metrics[(u32)device].reads += Size;
++        self.footprint.mark(address, Size);
+       }
+       value[0] = Memory::Writable::read<Word>(address | 0x00);
+       value[1] = Memory::Writable::read<Word>(address | 0x04);
+@@ -253,6 +258,41 @@ struct RDRAM : Memory::RCP<RDRAM> {
+     }
+   } profile;
+ 
++  //mario-eval: RDRAM lines (16 bytes) ever transferred by any bus device.
++  //Only maintained in homebrew mode, alongside the profile counters above.
++  //When armed, the bitmap is cleared the first time the CPU executes at
++  //resetPC (the game's entry point), so boot-time RDRAM clearing by IPL3
++  //is not attributed to the game.
++  struct Footprint {
++    static constexpr u32 LineShift = 4;
++    std::vector<u8> bits = std::vector<u8>((8_MiB >> LineShift) / 8, 0);
++    u32 resetPC = 0;
++    bool armed = false;
++
++    auto reset() -> void { std::fill(bits.begin(), bits.end(), 0); }
++
++    auto mark(u32 address, u32 size) -> void {
++      u32 first = address >> LineShift;
++      u32 last = (address + size - 1) >> LineShift;
++      for(u32 line = first; line <= last && line < bits.size() * 8; line++) {
++        bits[line >> 3] |= 1 << (line & 7);
++      }
++    }
++
++    auto lines() const -> u64 {
++      u64 count = 0;
++      for(auto byte : bits) count += __builtin_popcount(byte);
++      return count;
++    }
++
++    auto highestLine() const -> s64 {
++      for(s64 index = bits.size() - 1; index >= 0; index--) {
++        if(bits[index]) return index * 8 + (31 - __builtin_clz(bits[index]));
++      }
++      return -1;
++    }
++  } footprint;
++
+   auto load(Node::Object) -> void;
+   auto unload() -> void;
+   auto power(bool reset) -> void;

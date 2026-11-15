@@ -1,0 +1,12 @@
+diff -r base/src/render.c r5-reassoc/src/render.c
+--- base/src/render.c	2026-11-14 20:44:26.834088696 -0500
++++ r5-reassoc/src/render.c	2026-11-14 20:49:25.255707060 -0500
+@@ -92,7 +92,7 @@
+                       vec3_t pos, float yaw, vec3_t scale, const float color[4])
+ {
+     mat4_t model = model_matrix(pos, yaw, scale);
+-    mat4_t mvp = mat_mul(proj, mat_mul(view, model));
++    mat4_t mvp = mat_mul(mat_mul(proj, view), model);
+     mat4_t rot = mat_rotate_y(yaw);
+     for (int t = 0; t < ntris; t++) {
+         // Face normal in model space, rotated into the world for lighting.

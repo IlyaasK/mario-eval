@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "rom": "pips-garden.z64",
+  "protected_files": ["src/mev.c", "src/mev.h"],
+  "frames": 240,
+  "build_timeout_s": 600,
+  "max_fields_factor": 4.0,
+  "run_timeout_s": 1800,
+  "video": {
+    "channel_tolerance": 2,
+    "max_bad_fraction": 0.002
+  },
+  "audio": {
+    "min_snr_db": 40.0,
+    "min_frame_snr_db": 20.0,
+    "silence_rms": 64.0,
+    "silence_max_abs": 256
+  },
+  "hardware": {
+    "rdram_bytes": 4194304
+  },
+  "profiles": {
+    "speed":   { "metric": "frame_ticks",     "max_workload_regression": 0.05 },
+    "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
+    "traffic": { "metric": "rdram_bytes",     "max_workload_regression": 0.05, "speed_budget": 0.05 },
+    "memory":  { "metric": "footprint_bytes", "max_workload_regression": 0.0,  "speed_budget": 0.05 }
+  },
+  "workloads": [
+    { "id": "meadow",   "split": "public", "replay": "replays/public/meadow.txt" },
+    { "id": "fortress", "split": "public", "replay": "replays/public/fortress.txt" },
+    { "id": "storm",    "split": "public", "replay": "replays/public/storm.txt" },
+    { "id": "concert",  "split": "public", "replay": "replays/public/concert.txt" }
+  ]
+}

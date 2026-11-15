@@ -1,0 +1,57 @@
+# mario-eval agent environment.
+#
+#   task   the container the agent works in (toolchain, emulator, profiler,
+#          grader, game source). It is attached ONLY to `sandbox`, an internal
+#          network with no route to the internet.
+#   proxy  the single way out: an allowlisting HTTPS proxy on both `sandbox`
+#          and the default network. Agents reach their model API through it
+#          (HTTPS_PROXY); every other destination is refused.
+#
+# Usage (from this directory):
+#   ../scripts/build-images.sh      # builds every image, in order
+#   cp .env.example .env            # model API keys for your agent CLI
+#   docker compose up -d
+#   ./shell.sh                      # shell in the task container
+#
+# /task (the agent's work, including the game's git history) lives in the
+# task-work volume and survives `docker compose down`.
+name: mario-eval
+
+services:
+  task:
+    image: mario-eval-task:latest
+    pull_policy: never
+    container_name: mario-eval-task
+    networks: [sandbox]
+    user: "1000:1000"
+    working_dir: /task
+    environment:
+      HTTPS_PROXY: "http://proxy:8888"
+      HTTP_PROXY: "http://proxy:8888"
+      https_proxy: "http://proxy:8888"
+      http_proxy: "http://proxy:8888"
+      NO_PROXY: "localhost,127.0.0.1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+    volumes:
+      - task-work:/task
+      - agent-home:/home/agent
+    command: ["sleep", "infinity"]
+
+  proxy:
+    image: mario-eval-proxy:latest
+    pull_policy: never
+    container_name: mario-eval-proxy
+    networks: [sandbox, egress]
+
+volumes:
+  task-work:
+  agent-home:
+
+networks:
+  sandbox:
+    internal: true
+  egress: {}
