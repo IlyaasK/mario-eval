@@ -44,8 +44,16 @@ per profile.
    the same game.
 4. **Gates**: gameplay observation record bit-exact on every frame; video
    within a one-pixel-neighbourhood tolerance (≤ 0.2% failing pixels per
-   frame); audio ≥ 40 dB SNR (≥ 20 dB per non-silent frame); stays within 4 MB.
+   frame) of the original *or* of an accepted visual variant; audio ≥ 40 dB
+   SNR (≥ 20 dB per non-silent frame); stays within 4 MB.
    Any failure: reward −1 on every profile.
+
+   **Accepted visual changes** are changes judged equal or better looking,
+   each a patch to the baseline listed in `corpus/grader.json`
+   (`corpus/variants/`). Precompute applies each one, refuses it unless
+   gameplay and audio stay identical, and keeps its video as an extra
+   reference. The first one mirrors Kaze Emanuar's SM64 change: characters
+   always drawn at full detail instead of switching to low-detail models.
 5. **Reward** per profile = clip(1 − geomean(candidate / baseline), −1, 1):
 
 | profile   | cost                                             |
@@ -66,10 +74,11 @@ contention. See [`quickstart/task/docs/n64-cost-model.md`](quickstart/task/docs/
 
 `calibration/*.patch` are known changes with known expected outcomes:
 IEEE-preserving `-O2`, algorithmic changes, Create Dirty Exclusive, a memory
-saving, two tolerance probes (reassociated math, a sine table), and five
-shortcuts that must fail (fast-math, muted audio, skipped particles, changed
-physics, harness tampering). `scripts/calibrate.sh` reproduces the table on
-the site.
+saving, two tolerance probes (reassociated math, a sine table), the accepted
+full-detail visual change (applied two ways, to show the code-layout effect),
+and six shortcuts that must fail (fast-math, muted audio, skipped particles,
+changed physics, lowest-detail Pip, harness tampering). `scripts/calibrate.sh`
+reproduces the table on the site.
 
 ## Running an agent
 

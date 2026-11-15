@@ -4,6 +4,7 @@
 FROM mario-eval
 COPY corpus/grader.json /opt/mario-eval/corpus/grader.json
 COPY corpus/replays/public /opt/mario-eval/corpus/replays/public
+COPY corpus/variants /opt/mario-eval/corpus/variants
 COPY cache/reference /opt/mario-eval/reference
 COPY tools/mev.py /usr/local/bin/mev
 RUN chmod 755 /usr/local/bin/mev \

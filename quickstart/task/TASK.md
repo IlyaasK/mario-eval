@@ -44,6 +44,11 @@ original, frame by frame:
   some pixel within one pixel of it in the original is within 2/31 per
   channel; a frame fails if more than 0.2% of pixels fail. Sub-pixel edge
   differences pass; missing or added objects do not.
+  **Accepted visual changes** are the exception: changes judged equal or
+  better looking, each defined as a patch to the original in
+  `/opt/mario-eval/corpus/variants/`. A pixel also passes if it matches the
+  original with such a change applied. Currently: `full-detail` (Pip may
+  always be drawn at full detail instead of dropping parts with distance).
 - **Audio** — overall SNR ≥ 40 dB against the original, ≥ 20 dB on every
   non-silent frame; silence must stay silent.
 - **The harness** — `src/mev.c` and `src/mev.h` must be byte-identical. Call

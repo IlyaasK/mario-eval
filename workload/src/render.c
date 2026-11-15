@@ -5,6 +5,8 @@
 
 #define TERRAIN_CELLS 8
 #define NEAR_W        0.5f
+#define PIP_LOD_MEDIUM 12.0f   // camera distance beyond which Pip loses the visor
+#define PIP_LOD_LOW    14.0f   // ... and the head
 
 static mat4_t proj;
 static mat4_t view;
@@ -226,18 +228,24 @@ void render_frame(void)
         draw_mesh(octa_pos, octa_tri, 8, g->pos, g->spin, vec3(0.5f, 0.7f, 0.5f), col);
     }
 
-    // Pip: a round-ish robot (body, head, eye visor).
+    // Pip: a round-ish robot (body, head, eye visor). Like Mario in SM64, Pip
+    // has detail levels: the visor, then the head, are dropped when the camera
+    // is far away.
     const player_t *pl = &world.player;
     const float body[4] = { 0.95f, 0.75f, 0.2f, 1.0f };
     const float head[4] = { 0.9f, 0.9f, 0.85f, 1.0f };
     const float visor[4] = { 0.15f, 0.2f, 0.35f, 1.0f };
+    float cam_dist = vlength(vsub(world.cam_pos, pl->pos));
+    int lod = cam_dist < PIP_LOD_MEDIUM ? 0 : (cam_dist < PIP_LOD_LOW ? 1 : 2);
     bool blink = pl->state == PLAYER_HURT && (pl->timer & 2);
     if (!blink) {
         draw_mesh(cube_pos, cube_tri, 12, pl->pos, pl->yaw, vec3(0.6f, 0.45f, 0.6f), body);
         vec3_t head_pos = vadd(pl->pos, vec3(0, 0.75f, 0));
-        draw_mesh(cube_pos, cube_tri, 12, head_pos, pl->yaw, vec3(0.45f, 0.35f, 0.45f), head);
+        if (lod <= 1)
+            draw_mesh(cube_pos, cube_tri, 12, head_pos, pl->yaw, vec3(0.45f, 0.35f, 0.45f), head);
         vec3_t eye_pos = vadd(head_pos, vec3(sinf(pl->yaw) * 0.42f, 0.05f, cosf(pl->yaw) * 0.42f));
-        draw_mesh(cube_pos, cube_tri, 12, eye_pos, pl->yaw, vec3(0.32f, 0.1f, 0.06f), visor);
+        if (lod == 0)
+            draw_mesh(cube_pos, cube_tri, 12, eye_pos, pl->yaw, vec3(0.32f, 0.1f, 0.06f), visor);
     }
     draw_shadow(pl->pos, 0.8f);
 

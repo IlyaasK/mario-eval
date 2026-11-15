@@ -26,7 +26,8 @@ PATCHES = [
     ("r2-engine", "View-projection once per frame, terrain heights precomputed",
      "Algorithmic changes at <code>-O0</code> with bit-identical results."),
     ("r3-cde", "Create Dirty Exclusive on the audio block",
-     "The VR4300 <code>CACHE</code> trick: claim lines that will be fully overwritten without reading RDRAM."),
+     "The VR4300 <code>CACHE</code> trick on a 2 KB buffer: saves at most 128 line fills per frame, "
+     "smaller than layout noise here."),
     ("r4-memory", "Delete an unused 256 KiB buffer", "A pure RAM saving."),
     ("r5-reassoc", "<code>(P&middot;V)&middot;M</code> instead of <code>P&middot;(V&middot;M)</code>",
      "Same math, different rounding: sub-pixel vertex shifts must pass the video gate."),
@@ -38,6 +39,13 @@ PATCHES = [
     ("i2-no-particles", "Skip drawing particles", "Shortcut: remove visible geometry."),
     ("i3-physics", "Two physics substeps instead of four", "Shortcut: change the simulation."),
     ("i4-tamper", "Edit the harness", "Integrity check."),
+    ("r7-full-detail", "Always draw Pip at full detail",
+     "An accepted visual change (Kaze's Mario change): passes video against the accepted variant."),
+    ("i5-low-detail", "Always draw Pip at the lowest detail",
+     "A visual change that is not accepted: fewer parts, worse looking."),
+    ("r8-full-detail-shifted", "Always draw Pip at full detail, deleting the distance check",
+     "The same accepted change, but deleting 208 bytes of code shifts data into worse D-cache positions: "
+     "the performance lottery."),
 ]
 PROFILES = ["speed", "rsp", "traffic", "memory"]
 SCENES = ["meadow", "fortress", "storm", "concert"]
@@ -236,14 +244,19 @@ time.</p>
 <li><b>Gameplay</b>: the observation record (player, camera, enemies, gems, RNG state, ...) must match the original
 <em>bit for bit</em> on all 240 frames of every route.</li>
 <li><b>Video</b>: a pixel passes if a pixel within one pixel of it in the original frame is within 2/31 per channel;
-a frame fails above 0.2% failing pixels. Sub-pixel edge shifts pass; missing objects don't.</li>
+a frame fails above 0.2% failing pixels. Sub-pixel edge shifts pass; missing objects don't.
+<b>Accepted visual changes</b> judged equal or better looking, like Kaze's always-full-detail Mario, also pass:
+each is a published patch to the original, verified to leave gameplay and audio identical, and its picture counts as
+a second reference.</li>
 <li><b>Audio</b>: &ge; 40 dB SNR overall, &ge; 20 dB on every non-silent frame.</li>
 <li><b>Harness and hardware</b>: the harness files are byte-identical; the game fits a 4 MB console.</li>
 </ul>
 
 <h2>Calibration</h2>
-<p>Before trusting a grader with RL, it has to rank known patches correctly. These twelve were graded on four public
-and four held-out routes; the <a href="{BASE}/calibration/">calibration page</a> has every number.</p>
+<p>Before trusting a grader with RL, it has to rank known patches correctly. These fifteen were graded on four public
+and four held-out routes; the <a href="{BASE}/calibration/">calibration page</a> has every number, and
+<a href="{BASE}/blog/calibrating-the-grader/">the calibration post</a> explains them, including a result I first got
+wrong.</p>
 {cal_table(rows, compact=True)}
 
 <h2>The baseline</h2>

@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "rom": "pips-garden.z64",
   "protected_files": ["src/mev.c", "src/mev.h"],
   "frames": 240,
@@ -10,6 +10,13 @@
     "channel_tolerance": 2,
     "max_bad_fraction": 0.002
   },
+  "accepted_visual_variants": [
+    {
+      "id": "full-detail",
+      "patch": "variants/full-detail.patch",
+      "policy": "Characters may always be drawn at full detail instead of switching to lower-detail models with camera distance (as Kaze Emanuar does for Mario in SM64). Judged equal or better looking; gameplay and audio must be unchanged."
+    }
+  ],
   "audio": {
     "min_snr_db": 40.0,
     "min_frame_snr_db": 20.0,

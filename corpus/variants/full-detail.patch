@@ -1,0 +1,14 @@
+diff -r base/src/render.c full-detail/src/render.c
+--- base/src/render.c	2026-11-14 21:23:05.680992985 -0500
++++ full-detail/src/render.c	2026-11-14 21:23:14.074218624 -0500
+@@ -235,8 +235,8 @@
+     const float body[4] = { 0.95f, 0.75f, 0.2f, 1.0f };
+     const float head[4] = { 0.9f, 0.9f, 0.85f, 1.0f };
+     const float visor[4] = { 0.15f, 0.2f, 0.35f, 1.0f };
+-    float cam_dist = vlength(vsub(world.cam_pos, pl->pos));
+-    int lod = cam_dist < PIP_LOD_MEDIUM ? 0 : (cam_dist < PIP_LOD_LOW ? 1 : 2);
++    // Accepted visual change: Pip is always drawn at full detail.
++    int lod = 0;
+     bool blink = pl->state == PLAYER_HURT && (pl->timer & 2);
+     if (!blink) {
+         draw_mesh(cube_pos, cube_tri, 12, pl->pos, pl->yaw, vec3(0.6f, 0.45f, 0.6f), body);

@@ -25,18 +25,31 @@ assets are distributed by this repository.
 2. **Unthrottled benchmark build**: remove the wait for the video interface
    retrace in the game loop under a build flag, as the decomp community's
    profiling builds do, so frame cost is pure work.
-3. **Observation record**: an SM64 `mev_obs_t` with Mario's position, velocity,
-   action, health, coins and stars, the camera, the RNG state
-   (`gRandomSeed16`) and the positions of active objects, compared bit-for-bit.
+3. **Observation record**: an SM64 `mev_obs_t` for what the player
+   experiences: Mario's position, velocity, action, health, coins and stars,
+   the camera, the RNG state (`gRandomSeed16`), and the state of objects that
+   affect play (enemies, collectibles, platforms, collision), compared
+   bit-for-bit. Purely decorative objects are not in it, so merging static
+   scenery into the level model (Kaze's Rainbow Ride and Jolly Roger Bay
+   changes) is allowed when the picture and collision stay the same.
 4. **Routes**: per-course controller routes (Bob-omb Battlefield, Whomp's
-   Fortress, Jolly Roger Bay for water, Big Boo's Haunt, the castle grounds),
-   public and held-out, starting from a portable state (a replayed path from
-   the file-select screen, not an emulator savestate, which would pin one
-   build's memory layout).
-5. **Calibration**: the same discipline as Pip's Garden: the unchanged rebuild
-   scores 0; `-O2` with IEEE semantics, a Create Dirty Exclusive patch and a
-   memory patch score positive; shortcuts (muted audio, skipped objects,
-   changed physics) score −1.
+   Fortress, Jolly Roger Bay for water, Rainbow Ride, Big Boo's Haunt, the
+   castle grounds), public and held-out, starting from a portable state (a
+   replayed path from the file-select screen, not an emulator savestate,
+   which would pin one build's memory layout).
+5. **Accepted visual variant `full-detail`**: Mario always drawn with his
+   full-detail model (drop the medium/low-poly render ranges in
+   `actors/mario/geo.inc.c`), as in Kaze's optimizations. Policy decision:
+   this is equal or better looking and must be rewarded, not rejected by the
+   video gate.
+6. **Calibration**: the unchanged rebuild scores 0; `-O2` with IEEE
+   semantics, Create Dirty Exclusive and a memory patch score positive;
+   shortcuts (muted audio, removed gameplay objects, changed physics) score
+   −1. Kaze Emanuar's
+   [optimization commit](https://github.com/KazeEmanuar/SM64-but-some-optimizations-are-removed/commit/b46813647ec403a3542fb590b8383583eed57a7f),
+   rebased and split per optimization, is a calibration set that must come
+   out valid and faster. Its `gDebugLevelSelect = 1` line is a debug setting,
+   not an optimization, and is excluded.
 
 The decompilation builds with IDO by default (matching); the agent may switch
 to GCC and change flags, as long as gameplay stays bit-exact.

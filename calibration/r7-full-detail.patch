@@ -1,0 +1,14 @@
+Only in base: build
+Only in base: pips-garden.z64
+diff -r base/src/render.c r7b/src/render.c
+--- base/src/render.c	2026-11-14 21:23:05.680992985 -0500
++++ r7b/src/render.c	2026-11-14 21:36:22.651304585 -0500
+@@ -236,7 +236,7 @@
+     const float head[4] = { 0.9f, 0.9f, 0.85f, 1.0f };
+     const float visor[4] = { 0.15f, 0.2f, 0.35f, 1.0f };
+     float cam_dist = vlength(vsub(world.cam_pos, pl->pos));
+-    int lod = cam_dist < PIP_LOD_MEDIUM ? 0 : (cam_dist < PIP_LOD_LOW ? 1 : 2);
++    int lod = cam_dist < PIP_LOD_MEDIUM ? 0 : (cam_dist < PIP_LOD_LOW ? 0 : 0);  // always full detail
+     bool blink = pl->state == PLAYER_HURT && (pl->timer & 2);
+     if (!blink) {
+         draw_mesh(cube_pos, cube_tri, 12, pl->pos, pl->yaw, vec3(0.6f, 0.45f, 0.6f), body);

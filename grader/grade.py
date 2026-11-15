@@ -164,26 +164,47 @@ def unmatched(a, b, tol):
     return best > tol
 
 
-def compare_video(ref_video, cand_path, rows, cfg):
+def mismatch(a, b, tol):
+    """Pixels where a and b disagree beyond tolerance, in either direction."""
+    return unmatched(a, b, tol) | unmatched(b, a, tol)
+
+
+def compare_video(ref_videos, cand_path, rows, cfg):
+    """ref_videos[0] is the original; the rest are accepted visual variants.
+
+    A candidate pixel passes if it matches, within tolerance, the original or
+    any accepted variant at that location. Frames that pass only because of a
+    variant are counted in variant_frames.
+    """
     w, h, bpp = rows[0]["fb"]
     size = w * h * bpp // 8
+    tol = cfg["video"]["channel_tolerance"]
+    limit = cfg["video"]["max_bad_fraction"]
     worst = (0.0, -1)
+    variant_frames = 0
     with open(cand_path, "rb") as f:
         for i, row in enumerate(rows):
             if row["fb"] != [w, h, bpp]:
                 return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
             cand = f.read(size)
-            ref = ref_video[i * size:(i + 1) * size]
-            if cand == ref:
+            refs = [v[i * size:(i + 1) * size] for v in ref_videos]
+            if cand == refs[0]:
                 continue
-            a, b = decode_rgba16(ref, w, h), decode_rgba16(cand, w, h)
-            tol = cfg["video"]["channel_tolerance"]
-            bad = unmatched(b, a, tol) | unmatched(a, b, tol)
+            if cand in refs[1:]:
+                variant_frames += 1
+                continue
+            c = decode_rgba16(cand, w, h)
+            bad = mismatch(c, decode_rgba16(refs[0], w, h), tol)
+            orig_frac = float(bad.mean())
+            for ref in refs[1:]:
+                bad &= mismatch(c, decode_rgba16(ref, w, h), tol)
             frac = float(bad.mean())
+            if orig_frac > limit and frac <= limit:
+                variant_frames += 1
             if frac > worst[0]:
                 worst = (frac, i)
-    ok = worst[0] <= cfg["video"]["max_bad_fraction"]
-    return {"pass": ok, "worst_bad_fraction": worst[0], "worst_frame": worst[1]}
+    ok = worst[0] <= limit
+    return {"pass": ok, "worst_bad_fraction": worst[0], "worst_frame": worst[1], "variant_frames": variant_frames}
 
 
 def compare_audio(ref, cand, cfg):
@@ -237,6 +258,16 @@ def run_all(rom, items, frames, out_dir, max_fields, timeout):
 
 # ---------------------------------------------------------------- precompute
 
+def patched_copy(source, patch_file):
+    work = pathlib.Path(tempfile.mkdtemp(prefix="mev-variant-"))
+    shutil.copytree(source, work / "src", ignore=shutil.ignore_patterns("build", "*.z64"))
+    proc = subprocess.run(["patch", "-s", "-p1", "-i", str(patch_file)], cwd=work / "src",
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise GraderError(f"variant patch {patch_file} does not apply: {proc.stdout}{proc.stderr}")
+    return work / "src"
+
+
 def precompute(args):
     cfg = json.loads((pathlib.Path(args.corpus) / "grader.json").read_text())
     cache = pathlib.Path(args.cache)
@@ -247,7 +278,7 @@ def precompute(args):
     items = workloads(args.corpus, cfg, args.split, args.heldout)
     generous = lambda _id: cfg["frames"] * 600
     results = run_all(rom, items, cfg["frames"], cache / "runs", generous, cfg["run_timeout_s"])
-    index = {"rom_sha256": sha256(rom), "protected": {}, "workloads": {}}
+    index = {"rom_sha256": sha256(rom), "protected": {}, "workloads": {}, "variants": []}
     for f in cfg["protected_files"]:
         index["protected"][f] = sha256(pathlib.Path(args.source) / f)
     for w in items:
@@ -261,8 +292,32 @@ def precompute(args):
         index["workloads"][w["id"]] = {"replay_sha256": sha256(w["replay"]),
                                        "vi_fields": res["vi_fields"],
                                        "metrics": metrics(load_run(run_dir))}
+
+    # Accepted visual variants: the baseline with one listed visual change
+    # applied. Each must leave gameplay and audio exactly as they were; only
+    # its video is kept, as an extra reference for the video gate.
+    for variant in cfg.get("accepted_visual_variants", []):
+        src = patched_copy(args.source, (pathlib.Path(args.corpus) / variant["patch"]).resolve())
+        vrom = build(src, cfg, cache / f"build-{variant['id']}.log")
+        if vrom is None:
+            raise GraderError(f"variant {variant['id']} failed to build")
+        vdir = cache / "variant-runs" / variant["id"]
+        vres = run_all(vrom, items, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
+        for w in items:
+            if vres[w["id"]].get("status") != "completed":
+                raise GraderError(f"variant {variant['id']} did not complete {w['id']}")
+            base_run, var_run = load_run(cache / "runs" / w["id"]), load_run(vdir / w["id"])
+            if base_run["obs"] != var_run["obs"] or base_run["audio"] != var_run["audio"]:
+                raise GraderError(f"variant {variant['id']} changes gameplay or audio on {w['id']}; "
+                                  "an accepted visual change must be visual only")
+            video = (vdir / w["id"] / "video.bin").read_bytes()
+            (cache / "runs" / w["id"] / f"video.{variant['id']}.bin.z").write_bytes(zlib.compress(video, 6))
+        shutil.rmtree(vdir)
+        index["variants"].append(variant["id"])
+
     (cache / "index.json").write_text(json.dumps(index, indent=1))
     print(json.dumps({k: v["metrics"]["vi_fields_per_frame"] for k, v in index["workloads"].items()}, indent=1))
+    print("accepted visual variants:", index["variants"])
 
 
 # --------------------------------------------------------------------- grade
@@ -320,9 +375,10 @@ def grade(args):
         cand = load_run(out / "runs" / wid)
         ref_dir = cache / "runs" / wid
         ref = load_run(ref_dir)
-        ref_video = zlib.decompress((ref_dir / "video.bin.z").read_bytes())
+        ref_videos = [zlib.decompress((ref_dir / "video.bin.z").read_bytes())]
+        ref_videos += [zlib.decompress((ref_dir / f"video.{v}.bin.z").read_bytes()) for v in index.get("variants", [])]
         gameplay[wid] = compare_obs(ref["obs"], cand["obs"], cfg["frames"])
-        video[wid] = compare_video(ref_video, cand["video_path"], cand["rows"], cfg)
+        video[wid] = compare_video(ref_videos, cand["video_path"], cand["rows"], cfg)
         audio[wid] = compare_audio(ref["audio"], cand["audio"], cfg)
         m = metrics(cand)
         hardware[wid] = {"pass": m["highest_byte"] <= cfg["hardware"]["rdram_bytes"],
