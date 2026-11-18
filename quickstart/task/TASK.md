@@ -1,92 +1,78 @@
-# Make Pip's Garden cheaper to run on a Nintendo 64
+# Make Pip's Garden faster and leaner on a real Nintendo 64
 
-`/task/game` is the complete source of **Pip's Garden**, a small 3D game for
-the Nintendo 64 (libdragon, C). It is correct but was written without regard
-for the N64's costs: built at `-O0`, with redundant math, wasteful memory use
-and no attention to the CPU caches. Your job is to make it cheaper to run on
-the original hardware **without changing the game**.
+`/task/game` is the complete source of **Pip's Garden**, a 3D game for the
+Nintendo 64 (libdragon, C). It is functionally correct, textured via DragonFS,
+double-buffered, and playable on console, but written without regard for the
+N64's hardware costs: built at `-O0`, issuing redundant 2-cycle RDP combiner
+passes and unbatched TMEM texture uploads, streaming uncompressed cartridge
+data via PI DMA, wasting RDRAM, and ignoring the VR4300's direct-mapped caches.
+
+Your job over this 24-hour run is to super-optimize `/task/game` for the
+original 4 MB Nintendo 64 hardware **without changing the game**.
 
 ## Objective
 
-Your submission is scored on **one resource profile**, named in
-`/task/PROFILE` (default: `speed`). The available profiles are:
+Your submission is scored on **one primary resource profile**, named in
+`/task/PROFILE` (default: `console`). All six profiles are measured and reported:
 
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
-| `speed`   | time to compute and render a frame                     | CPU COUNT ticks per frame (unthrottled) |
-| `rsp`     | RSP (vector coprocessor) busy time                     | RSP non-halted cycles per frame |
-| `traffic` | memory bus traffic                                     | RDRAM bytes moved per frame, all devices |
-| `memory`  | RAM the game needs                                     | distinct RDRAM bytes touched after boot |
+| `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` within 4 MB RAM |
+| `speed`   | CPU time to compute and submit a frame                 | VR4300 COUNT ticks per frame (46.875 MHz) |
+| `rdp`     | Reality Display Processor hardware busy time           | RDP 62.5 MHz cycles per frame (raster/fill/Z/TMEM/sync) |
+| `rsp`     | Reality Signal Processor vector/microcode busy time    | RSP non-halted cycles per frame (62.5 MHz) |
+| `traffic` | Total RDRAM bus traffic across all devices             | RDRAM bytes read+written per frame (CPU, SP, DP, PI, SI) |
+| `memory`  | Console RAM footprint                                  | Distinct 16-byte RDRAM lines touched after boot |
 
-Reward = 1 − (geometric mean over workloads of yours / baseline), clipped to
-[−1, 1]. Halving the cost scores 0.5; no change scores 0; a broken submission
-scores −1 regardless of how fast it is. Other profiles have budgets: for
-`rsp`, `traffic` and `memory`, frame time may not get more than 5% worse on any
-workload, and no workload may regress more than 5% on the scored metric
-(0% for `memory`).
+For each profile, `geo = geomean(yours / baseline)` over all routes:
+- **Bounded RL reward**: `reward = clip(1 - geo, -1, 1)` (`0.0` unchanged, `0.5` at 2×, `-1.0` if invalid or over budget).
+- **Unbounded speedup**: `speedup = 1 / geo`, `log2_speedup = -log2(geo)`, and `vs_o2_speedup` (speedup beyond a clean `-O2 -fno-fast-math` compiler-only build, so true hardware/algorithmic super-optimization beyond `-O2` is directly visible).
 
-All costs are measured by the emulator on the target hardware model: the
-original 4 MB Nintendo 64 (no Expansion Pak) as modelled by ares, CPU
-interpreter with the VR4300 instruction and data caches. Nothing the ROM
-reports about itself is used.
+Cross-subsystem budgets enforce honest hardware engineering:
+- In `console`, no workload may regress `est_console_ms` or `footprint_bytes` by more than **5%**.
+- In `speed`, no workload may regress `frame_ticks` or `rdp_busy` by more than **5%**.
+- In `rdp`, `rsp`, and `traffic`, no workload may regress the target metric or `frame_ticks` by more than **5%**.
+- In `memory`, no workload may regress `footprint_bytes` (`0%`) and `frame_ticks` may not regress by more than **5%**.
 
 ## What must not change
 
-Grading replays recorded controller inputs and compares your build to the
-original, frame by frame:
+Grading replays recorded controller inputs and checks six gates on every route:
 
-- **Gameplay** — the observation record (`mev_obs_t`: player, camera,
-  enemies, gems, RNG, particle and voice counts) must match **bit for bit**
-  on every frame. Floating-point results that feed gameplay must therefore be
-  identical: reordering arithmetic, `-ffast-math`, or approximate math in
-  simulation code will fail.
-- **Video** — every frame must match the original picture. A pixel passes if
-  some pixel within one pixel of it in the original is within 2/31 per
-  channel; a frame fails if more than 0.2% of pixels fail. Sub-pixel edge
-  differences pass; missing or added objects do not.
-  **Accepted visual changes** are the exception: changes judged equal or
-  better looking, each defined as a patch to the original in
-  `/opt/mario-eval/corpus/variants/`. A pixel also passes if it matches the
-  original with such a change applied. Currently: `full-detail` (Pip may
-  always be drawn at full detail instead of dropping parts with distance).
-- **Audio** — overall SNR ≥ 40 dB against the original, ≥ 20 dB on every
+- **Integrity & Playable Build** — `src/mev.c` and `src/mev.h` must be
+  byte-identical, and **both** the graded build (`make`) and the real-time
+  60 Hz console build (`make PLAY=1`) must compile cleanly.
+- **Execution & Hardware** — every route must complete all 240 frames within
+  the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak).
+- **Gameplay** — `mev_obs_t` (player, camera, enemies, gems, RNG, particle and
+  voice counts) must match **bit for bit** on every frame. Reordering IEEE 754
+  floating-point arithmetic in simulation code (`-ffast-math`) will drift and fail.
+- **Video** — every frame as a whole must match either the baseline picture or
+  an accepted visual variant (`full-detail` in `/opt/mario-eval/corpus/variants/`,
+  where Pip is always drawn at full detail regardless of camera distance):
+  at most 0.2% of pixels may differ by more than ±2/31 per channel from their
+  best 3×3 neighbor.
+- **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
   non-silent frame; silence must stay silent.
-- **The harness** — `src/mev.c` and `src/mev.h` must be byte-identical. Call
-  `mev_read_pad()` once per frame before simulating it and `mev_end_frame()`
-  once the frame is complete (see `mev.h`).
-- **The hardware** — the ROM must run on a 4 MB console.
 
-Everything else in `/task/game` is yours to change: C code, data layout,
-the Makefile and compiler flags, assembly, RSP microcode, use of the cache
-instructions. The libdragon in the toolchain is fixed.
-
-Grading also uses **held-out routes** you cannot see (same scenes, different
-inputs). Optimize the game, not the four public routes.
+Grading on the host also runs **private held-out routes** you cannot see.
+Optimize the engine, renderer, audio mixer, data layout, RSP/RDP command
+stream, and cache usage — not the four public routes.
 
 ## Tools
 
 ```
 mev build                 build /task/game
-mev run meadow            run a public workload; prints cost vs baseline
-mev profile fortress      per-function CPU profile (cache stalls included)
-mev check                 the full grader on the public workloads
+mev run meadow            run a public workload; prints CPU/RDP/RSP/RDRAM vs baseline
+mev profile fortress      per-function CPU profile (cache & uncached stalls included)
+mev check                 run the full grader on all public workloads
 mev workloads             meadow, fortress, storm, concert
 ```
 
-`mev check` is the same grader used for scoring, minus the held-out routes;
-its `summary.json` names the first divergent field, frame and workload on any
-gate failure. Raw run output (per-frame counters, framebuffers, audio,
-observations) is kept under `/tmp/mev-*`.
-
-Reference material: `/task/docs/` (N64 hardware notes, the cost model,
-measurement definitions), libdragon headers and source in
-`/opt/libdragon/mips64-elf/include` and `/opt/libdragon-src`. There is no
-internet access.
+Reference material: `/task/docs/n64-cost-model.md`, libdragon headers in
+`/opt/libdragon/mips64-elf/include` and source in `/opt/libdragon-src`.
 
 ## Rules
 
-- Do not try to detect the grader, the replays or the emulator; the score is
-  for the game running on the console.
-- Commit your work to the git repository in `/task/game` as you go.
-- You have a fixed time budget. A correct, modest improvement beats a broken
-  ambitious one.
+- Do not attempt to detect the grader, replays, or emulator.
+- Commit working milestones to the git repository in `/task/game` regularly so
+  no progress is lost across checkpoints.

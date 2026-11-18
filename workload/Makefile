@@ -3,6 +3,7 @@
 # Output: pips-garden.z64 (graded build). `make PLAY=1` builds the TV/audio
 # variant for real hardware.
 BUILD_DIR = build
+N64_MKDFS_ROOT = $(BUILD_DIR)/fs
 include $(N64_INST)/include/n64.mk
 
 # The shipped engine is built like many 1990s console games were: without
@@ -18,7 +19,15 @@ SRCS = src/main.c src/world.c src/render.c src/synth.c src/math3d.c src/mev.c
 
 all: pips-garden.z64
 
+$(BUILD_DIR)/fs/.stamp: tools/gen_assets.py
+	@mkdir -p $(BUILD_DIR)/fs
+	python3 tools/gen_assets.py $(BUILD_DIR)/fs
+	@touch $@
+
+$(BUILD_DIR)/pips-garden.dfs: $(BUILD_DIR)/fs/.stamp
+
 $(BUILD_DIR)/pips-garden.elf: $(SRCS:%.c=$(BUILD_DIR)/%.o)
+pips-garden.z64: $(BUILD_DIR)/pips-garden.dfs
 pips-garden.z64: N64_ROM_TITLE = "Pips Garden"
 
 clean:

@@ -1,0 +1,32 @@
+{
+ "version": "2.0",
+ "target": "sm64",
+ "gates": {
+  "integrity": {
+   "pass": false,
+   "modified": [
+    "src/game/mev.h"
+   ]
+  }
+ },
+ "workloads": {},
+ "rewards": {
+  "console": -1.0,
+  "speed": -1.0,
+  "rdp": -1.0,
+  "rsp": -1.0,
+  "traffic": -1.0,
+  "memory": -1.0
+ },
+ "speedups": {
+  "console": 0.0,
+  "speed": 0.0,
+  "rdp": 0.0,
+  "rsp": 0.0,
+  "traffic": 0.0,
+  "memory": 0.0
+ },
+ "status": "invalid",
+ "reason": "protected files modified: ['src/game/mev.h']",
+ "grader_seconds": 0.0
+}

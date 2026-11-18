@@ -1,0 +1,37 @@
+--- a/src/game/game_init.c
++++ b/src/game/game_init.c
+@@ -380,10 +380,10 @@
+     osViSwapBuffer((void *) PHYSICAL_TO_VIRTUAL(gPhysicalFramebuffers[sRenderedFramebuffer]));
+     profiler_log_thread5_time(THREAD5_END);
+     osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+-    if (++sRenderedFramebuffer == 3) {
++    if (++sRenderedFramebuffer == 2) {
+         sRenderedFramebuffer = 0;
+     }
+-    if (++sRenderingFramebuffer == 3) {
++    if (++sRenderingFramebuffer == 2) {
+         sRenderingFramebuffer = 0;
+     }
+     gGlobalTimer++;
+@@ -401,10 +401,10 @@
+     mev_step_audio();
+     osViSwapBuffer((void *) PHYSICAL_TO_VIRTUAL(completedFb));
+     profiler_log_thread5_time(THREAD5_END);
+-    if (++sRenderedFramebuffer == 3) {
++    if (++sRenderedFramebuffer == 2) {
+         sRenderedFramebuffer = 0;
+     }
+-    if (++sRenderingFramebuffer == 3) {
++    if (++sRenderingFramebuffer == 2) {
+         sRenderingFramebuffer = 0;
+     }
+     gGlobalTimer++;
+@@ -656,7 +656,7 @@
+     gPhysicalZBuffer = VIRTUAL_TO_PHYSICAL(gZBuffer);
+     gPhysicalFramebuffers[0] = VIRTUAL_TO_PHYSICAL(gFramebuffer0);
+     gPhysicalFramebuffers[1] = VIRTUAL_TO_PHYSICAL(gFramebuffer1);
+-    gPhysicalFramebuffers[2] = VIRTUAL_TO_PHYSICAL(gFramebuffer2);
++    gPhysicalFramebuffers[2] = VIRTUAL_TO_PHYSICAL(gFramebuffer0);
+     // Setup Mario Animations
+     gMarioAnimsMemAlloc = main_pool_alloc(0x4000, MEMORY_POOL_LEFT);
+     set_segment_base_addr(17, (void *) gMarioAnimsMemAlloc);

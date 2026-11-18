@@ -1,0 +1,30 @@
+--- a/src/game/mario_step.c
++++ b/src/game/mario_step.c
+@@ -324,9 +324,9 @@
+     u32 stepResult;
+     Vec3f intendedPos;
+ 
+-    for (i = 0; i < 4; i++) {
+-        intendedPos[0] = m->pos[0] + m->floor->normal.y * (m->vel[0] / 4.0f);
+-        intendedPos[2] = m->pos[2] + m->floor->normal.y * (m->vel[2] / 4.0f);
++    for (i = 0; i < 2; i++) {
++        intendedPos[0] = m->pos[0] + m->floor->normal.y * (m->vel[0] / 2.0f);
++        intendedPos[2] = m->pos[2] + m->floor->normal.y * (m->vel[2] / 2.0f);
+         intendedPos[1] = m->pos[1];
+ 
+         stepResult = perform_ground_quarter_step(m, intendedPos);
+@@ -615,10 +615,10 @@
+ 
+     m->wall = NULL;
+ 
+-    for (i = 0; i < 4; i++) {
+-        intendedPos[0] = m->pos[0] + m->vel[0] / 4.0f;
+-        intendedPos[1] = m->pos[1] + m->vel[1] / 4.0f;
+-        intendedPos[2] = m->pos[2] + m->vel[2] / 4.0f;
++    for (i = 0; i < 2; i++) {
++        intendedPos[0] = m->pos[0] + m->vel[0] / 2.0f;
++        intendedPos[1] = m->pos[1] + m->vel[1] / 2.0f;
++        intendedPos[2] = m->pos[2] + m->vel[2] / 2.0f;
+ 
+         quarterStepResult = perform_air_quarter_step(m, intendedPos, stepArg);
+ 

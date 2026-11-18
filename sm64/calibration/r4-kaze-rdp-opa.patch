@@ -1,0 +1,34 @@
+--- a/include/PR/gbi.h
++++ b/include/PR/gbi.h
+@@ -943,8 +943,8 @@
+ 	RM_AA_ZB_XLU_SURF(clk) | Z_UPD
+ 
+ 
+-#define	G_RM_AA_ZB_OPA_SURF	RM_AA_ZB_OPA_SURF(1)
+-#define	G_RM_AA_ZB_OPA_SURF2	RM_AA_ZB_OPA_SURF(2)
++#define	G_RM_AA_ZB_OPA_SURF	RM_RA_ZB_OPA_SURF(1)
++#define	G_RM_AA_ZB_OPA_SURF2	RM_RA_ZB_OPA_SURF(2)
+ #define	G_RM_AA_ZB_XLU_SURF	RM_AA_ZB_XLU_SURF(1)
+ #define	G_RM_AA_ZB_XLU_SURF2	RM_AA_ZB_XLU_SURF(2)
+ #define	G_RM_AA_ZB_OPA_DECAL	RM_AA_ZB_OPA_DECAL(1)
+@@ -981,8 +981,8 @@
+ #define	G_RM_RA_ZB_OPA_INTER	RM_RA_ZB_OPA_INTER(1)
+ #define	G_RM_RA_ZB_OPA_INTER2	RM_RA_ZB_OPA_INTER(2)
+ 
+-#define	G_RM_AA_OPA_SURF	RM_AA_OPA_SURF(1)
+-#define	G_RM_AA_OPA_SURF2	RM_AA_OPA_SURF(2)
++#define	G_RM_AA_OPA_SURF	RM_RA_OPA_SURF(1)
++#define	G_RM_AA_OPA_SURF2	RM_RA_OPA_SURF(2)
+ #define	G_RM_AA_XLU_SURF	RM_AA_XLU_SURF(1)
+ #define	G_RM_AA_XLU_SURF2	RM_AA_XLU_SURF(2)
+ #define	G_RM_AA_XLU_LINE	RM_AA_XLU_LINE(1)
+--- a/src/game/game_init.c
++++ b/src/game/game_init.c
+@@ -110,7 +110,6 @@
+ #if defined(VERSION_SH) || defined(VERSION_CN)
+     gDPSetAlphaDither(gDisplayListHead++, G_AD_PATTERN);
+ #endif
+-    gDPPipeSync(gDisplayListHead++);
+ }
+ 
+ /**

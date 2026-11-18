@@ -1,5 +1,6 @@
 {
- "version": "1.1",
+ "version": "2.0",
+ "target": "pips-garden",
  "gates": {
   "integrity": {
    "pass": false,
@@ -10,10 +11,20 @@
  },
  "workloads": {},
  "rewards": {
+  "console": -1.0,
   "speed": -1.0,
+  "rdp": -1.0,
   "rsp": -1.0,
   "traffic": -1.0,
   "memory": -1.0
+ },
+ "speedups": {
+  "console": 0.0,
+  "speed": 0.0,
+  "rdp": 0.0,
+  "rsp": 0.0,
+  "traffic": 0.0,
+  "memory": 0.0
  },
  "status": "invalid",
  "reason": "protected files modified: ['src/mev.c']",

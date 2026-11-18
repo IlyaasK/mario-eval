@@ -1,6 +1,12 @@
 {
-  "version": "1.1",
+  "version": "2.0",
+  "target": "pips-garden",
+  "contract": "pips-garden",
   "rom": "pips-garden.z64",
+  "elf": "build/pips-garden.elf",
+  "build_cmd": ["make"],
+  "play_build_cmd": ["make", "PLAY=1"],
+  "o2_reference_patch": "../calibration/r1-o2-ieee.patch",
   "protected_files": ["src/mev.c", "src/mev.h"],
   "frames": 240,
   "build_timeout_s": 600,
@@ -27,7 +33,9 @@
     "rdram_bytes": 4194304
   },
   "profiles": {
-    "speed":   { "metric": "frame_ticks",     "max_workload_regression": 0.05 },
+    "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
+    "speed":   { "metric": "frame_ticks",     "max_workload_regression": 0.05, "rdp_budget": 0.05 },
+    "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "traffic": { "metric": "rdram_bytes",     "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "memory":  { "metric": "footprint_bytes", "max_workload_regression": 0.0,  "speed_budget": 0.05 }

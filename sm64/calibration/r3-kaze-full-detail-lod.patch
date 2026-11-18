@@ -1,0 +1,30 @@
+--- a/actors/mario/geo.inc.c
++++ b/actors/mario/geo.inc.c
+@@ -1787,17 +1787,9 @@
+ const GeoLayout mario_geo_render_body[] = {
+     GEO_NODE_START(),
+     GEO_OPEN_NODE(),
+-        GEO_RENDER_RANGE(-2048, 600),
++        GEO_RENDER_RANGE(-2048, 32767),
+         GEO_OPEN_NODE(),
+             GEO_BRANCH(1, mario_geo_load_body),
+-        GEO_CLOSE_NODE(),
+-        GEO_RENDER_RANGE(600, 1600),
+-        GEO_OPEN_NODE(),
+-            GEO_BRANCH(1, mario_geo_load_medium_poly_body),
+-        GEO_CLOSE_NODE(),
+-        GEO_RENDER_RANGE(1600, 32767),
+-        GEO_OPEN_NODE(),
+-            GEO_BRANCH(1, mario_geo_load_low_poly_body),
+         GEO_CLOSE_NODE(),
+     GEO_CLOSE_NODE(),
+     GEO_RETURN(),
+@@ -1816,7 +1808,7 @@
+             GEO_SWITCH_CASE(0, geo_switch_mario_stand_run),
+             GEO_OPEN_NODE(),
+                 GEO_BRANCH(1, mario_geo_load_body),
+-                GEO_BRANCH(1, mario_geo_render_body),
++                GEO_BRANCH(1, mario_geo_load_body),
+             GEO_CLOSE_NODE(),
+             GEO_ASM(1, geo_mirror_mario_backface_culling),
+         GEO_CLOSE_NODE(),

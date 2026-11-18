@@ -3,9 +3,18 @@ results/*
 !results/calibration/
 results/calibration/*/*
 !results/calibration/*/summary.json
+!results/sm64-calibration/
+results/sm64-calibration/*/*
+!results/sm64-calibration/*/summary.json
+!results/agents/
+results/agents/*/*
+!results/agents/*/summary.json
+!results/agents/*/trajectory.json
+!results/agents/*/meta.json
 # Baseline reference cache (regenerate with scripts/precompute.sh).
 cache/
 # Build products.
+site/dist/
 workload/build/
 workload/*.z64
 # Never commit anything derived from a Nintendo ROM.

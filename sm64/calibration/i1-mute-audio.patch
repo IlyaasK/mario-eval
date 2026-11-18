@@ -1,0 +1,11 @@
+--- a/src/game/main.c
++++ b/src/game/main.c
+@@ -53,7 +53,7 @@
+ static s8 sMevGfxSpDone = FALSE;
+ static s8 sMevGfxDpDone = FALSE;
+ #endif
+-s8 sAudioEnabled = TRUE;
++s8 sAudioEnabled = FALSE;
+ u32 gNumVblanks = 0;
+ s8 gResetTimer = 0;
+ s8 gNmiResetBarsTimer = 0;

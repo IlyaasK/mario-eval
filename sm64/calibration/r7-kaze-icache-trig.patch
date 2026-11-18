@@ -1,0 +1,669 @@
+diff --git a/Makefile b/Makefile
+index 7a6eab1..fe0900a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -23,7 +23,7 @@ TARGET_N64 ?= 1
+ #   ido - uses the SGI IRIS Development Option compiler, which is used to build
+ #         an original matching N64 ROM
+ #   gcc - uses the GNU C Compiler
+-COMPILER ?= ido
++COMPILER ?= gcc
+ $(eval $(call validate-option,COMPILER,ido gcc))
+ 
+ 
+@@ -112,7 +112,7 @@ ifeq      ($(COMPILER),ido)
+ else ifeq ($(COMPILER),gcc)
+   NON_MATCHING := 1
+   MIPSISET     := -mips3
+-  OPT_FLAGS    := -O2 -fno-fast-math
++  OPT_FLAGS    := -O2 -fno-fast-math -fno-math-errno -fno-unroll-loops -fno-peel-loops -fno-bit-tests --param=case-values-threshold=15
+ endif
+ 
+ 
+@@ -876,6 +876,23 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
+ 	$(COPT) -signed -I=$< -CMP=$@ -cp=i -scalaroptimize=1 $(COPTFLAGS)
+ $(BUILD_DIR)/src/audio/seqplayer.copt: COPTFLAGS := -inline_manual
+ 
++else ifeq ($(COMPILER),gcc)
++  HOT_GCC_OPT  := -O3 -fno-fast-math -fno-math-errno -fno-unroll-loops -fno-peel-loops -fno-bit-tests --param=case-values-threshold=15
++  COLD_GCC_OPT := -Os -fno-fast-math -fno-math-errno -fno-bit-tests --param=case-values-threshold=15
++  $(BUILD_DIR)/src/engine/math_util.o:          OPT_FLAGS := $(HOT_GCC_OPT)
++  $(BUILD_DIR)/src/engine/surface_collision.o:  OPT_FLAGS := $(HOT_GCC_OPT)
++  $(BUILD_DIR)/src/game/rendering_graph_node.o: OPT_FLAGS := $(HOT_GCC_OPT)
++  $(BUILD_DIR)/src/game/shadow.o:               OPT_FLAGS := $(HOT_GCC_OPT)
++  $(BUILD_DIR)/src/audio/synthesis.o:           OPT_FLAGS := $(HOT_GCC_OPT)
++  $(BUILD_DIR)/src/game/ingame_menu.o:          OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/game/print.o:                OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/game/crash_screen.o:         OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/game/debug.o:                OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/game/debug_course.o:         OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/game/save_file.o:            OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/audio/heap.o:                OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/menu/%.o:                    OPT_FLAGS := $(COLD_GCC_OPT)
++  $(BUILD_DIR)/src/goddard/%.o:                 OPT_FLAGS := $(COLD_GCC_OPT)
+ endif
+ 
+ # Assemble assembly code
+diff --git a/sm64.ld b/sm64.ld
+index c88b5c0..1c6856c 100755
+--- a/sm64.ld
++++ b/sm64.ld
+@@ -162,6 +162,9 @@ SECTIONS
+         BUILD_DIR/src/game/save_file.o(.text);
+         BUILD_DIR/src/game/area.o(.text);
+         BUILD_DIR/src/game/rendering_graph_node.o(.text);
++        BUILD_DIR/src/engine/math_util.o(.text);
++        BUILD_DIR/src/engine/graph_node.o(.text);
++        BUILD_DIR/src/game/shadow.o(.text);
+         BUILD_DIR/src/game/profiler.o(.text);
+         BUILD_DIR/asm/decompress.o(.text);
+         BUILD_DIR/src/game/camera.o(.text);
+@@ -179,7 +182,6 @@ SECTIONS
+         BUILD_DIR/src/game/spawn_sound.o(.text);
+         BUILD_DIR/src/game/debug.o(.text);
+         BUILD_DIR/src/game/screen_transition.o(.text);
+-        BUILD_DIR/src/game/shadow.o(.text);
+         BUILD_DIR/src/game/skybox.o(.text);
+         BUILD_DIR/src/game/moving_texture.o(.text);
+         BUILD_DIR/src/game/geo_misc.o(.text);
+@@ -197,7 +199,6 @@ SECTIONS
+ #else
+         BUILD_DIR/src/audio/synthesis.o(.text);
+ #endif
+-        BUILD_DIR/src/audio/heap.o(.text);
+         BUILD_DIR/src/audio/load.o(.text);
+ #if defined(VERSION_SH) || defined(VERSION_CN)
+         BUILD_DIR/src/audio/load_sh.o(.text);
+@@ -210,6 +211,7 @@ SECTIONS
+         BUILD_DIR/libultra.a:osDriveRomInit.o(.text);
+ #endif
+         BUILD_DIR/src/audio/external.o(.text);
++        BUILD_DIR/src/audio/heap.o(.text);
+         BUILD_DIR/src/audio/port_eu.o(.text);
+ 
+ #if defined(VERSION_EU) || defined(VERSION_SH) || defined(VERSION_CN)
+@@ -1034,8 +1036,6 @@ SECTIONS
+ 
+     BEGIN_SEG(engine, ADDR_OR_ALIGN(SEG_ENGINE))
+     {
+-        BUILD_DIR/src/engine/math_util.o(.text);
+-        BUILD_DIR/src/engine/graph_node.o(.text);
+         BUILD_DIR/src/engine/graph_node_manager.o(.text);
+         BUILD_DIR/src/engine/geo_layout.o(.text);
+         BUILD_DIR/src/engine/level_script.o(.text);
+diff --git a/src/engine/behavior_script.c b/src/engine/behavior_script.c
+index 3d2fea1..7b0a6a0 100644
+--- a/src/engine/behavior_script.c
++++ b/src/engine/behavior_script.c
+@@ -71,8 +71,9 @@ u16 random_u16(void) {
+ 
+ // Generate a pseudorandom float in the range [0, 1).
+ f32 random_float(void) {
+-    f32 rnd = random_u16();
+-    return rnd / (double) 0x10000;
++    union { u32 u; f32 f; } conv;
++    conv.u = 0x3F800000U | (((u32) random_u16()) << 7);
++    return conv.f - 1.0f;
+ }
+ 
+ // Return either -1 or 1 with a 50:50 chance.
+diff --git a/src/engine/math_util.c b/src/engine/math_util.c
+index 72fa625..51cc6a4 100644
+--- a/src/engine/math_util.c
++++ b/src/engine/math_util.c
+@@ -5,7 +5,43 @@
+ #include "math_util.h"
+ #include "surface_collision.h"
+ 
+-#include "trig_tables.inc.c"
++/* Table-free octant minimax polynomial trig (0 bytes of sin/cos D-cache LUTs, <=1 ULP error). */
++f32 sins_fast(s16 x) {
++    u32 idx = ((u32) (u16) x) >> 4;
++    u32 sidx = (idx + 0x200U) & 0xFFFU;
++    u32 quad = sidx >> 10;
++    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    f32 fu = ft * ft;
++    f32 v;
++
++    if (quad & 1U) {
++        v = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++    } else {
++        v = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
++    }
++    return (quad >= 2U) ? -v : v;
++}
++
++f32 coss_fast(s16 x) {
++    return sins_fast((s16) ((u16) x + 0x4000U));
++}
++
++void sincoss_fast(s16 x, f32 *outSin, f32 *outCos) {
++    u32 idx = ((u32) (u16) x) >> 4;
++    u32 sidx = (idx + 0x200U) & 0xFFFU;
++    u32 quad = sidx >> 10;
++    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    f32 fu = ft * ft;
++    f32 sn = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
++    f32 co = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++
++    switch (quad) {
++        case 0:  *outSin =  sn; *outCos =  co; break;
++        case 1:  *outSin =  co; *outCos = -sn; break;
++        case 2:  *outSin = -sn; *outCos = -co; break;
++        default: *outSin = -co; *outCos =  sn; break;
++    }
++}
+ 
+ // Variables for a spline curve animation (used for the flight path in the grand star cutscene)
+ Vec4s *gSplineKeyframe;
+@@ -26,10 +62,11 @@ int gSplineState;
+ 
+ /// Copy vector 'src' to 'dest'
+ void *vec3f_copy(Vec3f dest, Vec3f src) {
+-    dest[0] = src[0];
+-    dest[1] = src[1];
+-    dest[2] = src[2];
+-    return &dest; //! warning: function returns address of local variable
++    f32 x = src[0], y = src[1], z = src[2];
++    dest[0] = x;
++    dest[1] = y;
++    dest[2] = z;
++    return dest;
+ }
+ 
+ /// Set vector 'dest' to (x, y, z)
+@@ -37,31 +74,34 @@ void *vec3f_set(Vec3f dest, f32 x, f32 y, f32 z) {
+     dest[0] = x;
+     dest[1] = y;
+     dest[2] = z;
+-    return &dest; //! warning: function returns address of local variable
++    return dest;
+ }
+ 
+ /// Add vector 'a' to 'dest'
+ void *vec3f_add(Vec3f dest, Vec3f a) {
+-    dest[0] += a[0];
+-    dest[1] += a[1];
+-    dest[2] += a[2];
+-    return &dest; //! warning: function returns address of local variable
++    f32 x = dest[0] + a[0], y = dest[1] + a[1], z = dest[2] + a[2];
++    dest[0] = x;
++    dest[1] = y;
++    dest[2] = z;
++    return dest;
+ }
+ 
+ /// Make 'dest' the sum of vectors a and b.
+ void *vec3f_sum(Vec3f dest, Vec3f a, Vec3f b) {
+-    dest[0] = a[0] + b[0];
+-    dest[1] = a[1] + b[1];
+-    dest[2] = a[2] + b[2];
+-    return &dest; //! warning: function returns address of local variable
++    f32 x = a[0] + b[0], y = a[1] + b[1], z = a[2] + b[2];
++    dest[0] = x;
++    dest[1] = y;
++    dest[2] = z;
++    return dest;
+ }
+ 
+ /// Copy vector src to dest
+ void *vec3s_copy(Vec3s dest, Vec3s src) {
+-    dest[0] = src[0];
+-    dest[1] = src[1];
+-    dest[2] = src[2];
+-    return &dest; //! warning: function returns address of local variable
++    s16 x = src[0], y = src[1], z = src[2];
++    dest[0] = x;
++    dest[1] = y;
++    dest[2] = z;
++    return dest;
+ }
+ 
+ /// Set vector 'dest' to (x, y, z)
+@@ -69,7 +109,7 @@ void *vec3s_set(Vec3s dest, s16 x, s16 y, s16 z) {
+     dest[0] = x;
+     dest[1] = y;
+     dest[2] = z;
+-    return &dest; //! warning: function returns address of local variable
++    return dest;
+ }
+ 
+ /// Add vector a to 'dest'
+@@ -164,15 +204,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
+  * Set mtx to the identity matrix
+  */
+ void mtxf_identity(Mat4 mtx) {
+-    register s32 i;
+-    register f32 *dest;
+-    // These loops must be one line to match on -O2
+-
+-    // initialize everything except the first and last cells to 0
+-    for (dest = (f32 *) mtx + 1, i = 0; i < 14; dest++, i++) *dest = 0;
+-
+-    // initialize the diagonal cells to 1
+-    for (dest = (f32 *) mtx, i = 0; i < 4; dest += 5, i++) *dest = 1;
++    u32 *p = (u32 *) mtx;
++    p[0]  = 0x3F800000U; p[1]  = 0; p[2]  = 0; p[3]  = 0;
++    p[4]  = 0; p[5]  = 0x3F800000U; p[6]  = 0; p[7]  = 0;
++    p[8]  = 0; p[9]  = 0; p[10] = 0x3F800000U; p[11] = 0;
++    p[12] = 0; p[13] = 0; p[14] = 0; p[15] = 0x3F800000U;
+ }
+ 
+ /**
+@@ -208,19 +244,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+     dx = to[0] - from[0];
+     dz = to[2] - from[2];
+ 
+-    invLength = -1.0 / sqrtf(dx * dx + dz * dz);
++    invLength = -1.0f / sqrtf(dx * dx + dz * dz);
+     dx *= invLength;
+     dz *= invLength;
+ 
+-    yColY = coss(roll);
+-    xColY = sins(roll) * dz;
+-    zColY = -sins(roll) * dx;
++    sincoss_fast(roll, &xColY, &yColY);
++    zColY = -xColY * dx;
++    xColY = xColY * dz;
+ 
+     xColZ = to[0] - from[0];
+     yColZ = to[1] - from[1];
+     zColZ = to[2] - from[2];
+ 
+-    invLength = -1.0 / sqrtf(xColZ * xColZ + yColZ * yColZ + zColZ * zColZ);
++    invLength = -1.0f / sqrtf(xColZ * xColZ + yColZ * yColZ + zColZ * zColZ);
+     xColZ *= invLength;
+     yColZ *= invLength;
+     zColZ *= invLength;
+@@ -229,7 +265,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+     yColX = zColY * xColZ - xColY * zColZ;
+     zColX = xColY * yColZ - yColY * xColZ;
+ 
+-    invLength = 1.0 / sqrtf(xColX * xColX + yColX * yColX + zColX * zColX);
++    invLength = 1.0f / sqrtf(xColX * xColX + yColX * yColX + zColX * zColX);
+ 
+     xColX *= invLength;
+     yColX *= invLength;
+@@ -239,7 +275,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+     yColY = zColZ * xColX - xColZ * zColX;
+     zColY = xColZ * yColX - yColZ * xColX;
+ 
+-    invLength = 1.0 / sqrtf(xColY * xColY + yColY * yColY + zColY * zColY);
++    invLength = 1.0f / sqrtf(xColY * xColY + yColY * yColY + zColY * zColY);
+     xColY *= invLength;
+     yColY *= invLength;
+     zColY *= invLength;
+@@ -270,14 +306,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+  * axis, and then translates.
+  */
+ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+-    register f32 sx = sins(rotate[0]);
+-    register f32 cx = coss(rotate[0]);
++    f32 sx, cx, sy, cy, sz, cz;
+ 
+-    register f32 sy = sins(rotate[1]);
+-    register f32 cy = coss(rotate[1]);
+-
+-    register f32 sz = sins(rotate[2]);
+-    register f32 cz = coss(rotate[2]);
++    sincoss_fast(rotate[0], &sx, &cx);
++    sincoss_fast(rotate[1], &sy, &cy);
++    sincoss_fast(rotate[2], &sz, &cz);
+ 
+     dest[0][0] = cy * cz + sx * sy * sz;
+     dest[1][0] = -cy * sz + sx * sy * cz;
+@@ -303,14 +336,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+  * axis, and then translates.
+  */
+ void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
+-    register f32 sx = sins(c[0]);
+-    register f32 cx = coss(c[0]);
++    f32 sx, cx, sy, cy, sz, cz;
+ 
+-    register f32 sy = sins(c[1]);
+-    register f32 cy = coss(c[1]);
+-
+-    register f32 sz = sins(c[2]);
+-    register f32 cz = coss(c[2]);
++    sincoss_fast(c[0], &sx, &cx);
++    sincoss_fast(c[1], &sy, &cy);
++    sincoss_fast(c[2], &sz, &cz);
+ 
+     dest[0][0] = cy * cz;
+     dest[0][1] = cy * sz;
+@@ -490,46 +520,40 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
+  */
+ void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b) {
+     Mat4 temp;
+-    register f32 entry0;
+-    register f32 entry1;
+-    register f32 entry2;
++    f32 (*out)[4] = (dest == a || dest == b) ? temp : dest;
++    f32 b00 = b[0][0], b01 = b[0][1], b02 = b[0][2];
++    f32 b10 = b[1][0], b11 = b[1][1], b12 = b[1][2];
++    f32 b20 = b[2][0], b21 = b[2][1], b22 = b[2][2];
++    f32 b30 = b[3][0], b31 = b[3][1], b32 = b[3][2];
++    f32 e0, e1, e2;
+ 
+-    // column 0
+-    entry0 = a[0][0];
+-    entry1 = a[0][1];
+-    entry2 = a[0][2];
+-    temp[0][0] = entry0 * b[0][0] + entry1 * b[1][0] + entry2 * b[2][0];
+-    temp[0][1] = entry0 * b[0][1] + entry1 * b[1][1] + entry2 * b[2][1];
+-    temp[0][2] = entry0 * b[0][2] + entry1 * b[1][2] + entry2 * b[2][2];
++    e0 = a[0][0]; e1 = a[0][1]; e2 = a[0][2];
++    out[0][0] = e0 * b00 + e1 * b10 + e2 * b20;
++    out[0][1] = e0 * b01 + e1 * b11 + e2 * b21;
++    out[0][2] = e0 * b02 + e1 * b12 + e2 * b22;
++    out[0][3] = 0.0f;
+ 
+-    // column 1
+-    entry0 = a[1][0];
+-    entry1 = a[1][1];
+-    entry2 = a[1][2];
+-    temp[1][0] = entry0 * b[0][0] + entry1 * b[1][0] + entry2 * b[2][0];
+-    temp[1][1] = entry0 * b[0][1] + entry1 * b[1][1] + entry2 * b[2][1];
+-    temp[1][2] = entry0 * b[0][2] + entry1 * b[1][2] + entry2 * b[2][2];
++    e0 = a[1][0]; e1 = a[1][1]; e2 = a[1][2];
++    out[1][0] = e0 * b00 + e1 * b10 + e2 * b20;
++    out[1][1] = e0 * b01 + e1 * b11 + e2 * b21;
++    out[1][2] = e0 * b02 + e1 * b12 + e2 * b22;
++    out[1][3] = 0.0f;
+ 
+-    // column 2
+-    entry0 = a[2][0];
+-    entry1 = a[2][1];
+-    entry2 = a[2][2];
+-    temp[2][0] = entry0 * b[0][0] + entry1 * b[1][0] + entry2 * b[2][0];
+-    temp[2][1] = entry0 * b[0][1] + entry1 * b[1][1] + entry2 * b[2][1];
+-    temp[2][2] = entry0 * b[0][2] + entry1 * b[1][2] + entry2 * b[2][2];
++    e0 = a[2][0]; e1 = a[2][1]; e2 = a[2][2];
++    out[2][0] = e0 * b00 + e1 * b10 + e2 * b20;
++    out[2][1] = e0 * b01 + e1 * b11 + e2 * b21;
++    out[2][2] = e0 * b02 + e1 * b12 + e2 * b22;
++    out[2][3] = 0.0f;
+ 
+-    // column 3
+-    entry0 = a[3][0];
+-    entry1 = a[3][1];
+-    entry2 = a[3][2];
+-    temp[3][0] = entry0 * b[0][0] + entry1 * b[1][0] + entry2 * b[2][0] + b[3][0];
+-    temp[3][1] = entry0 * b[0][1] + entry1 * b[1][1] + entry2 * b[2][1] + b[3][1];
+-    temp[3][2] = entry0 * b[0][2] + entry1 * b[1][2] + entry2 * b[2][2] + b[3][2];
++    e0 = a[3][0]; e1 = a[3][1]; e2 = a[3][2];
++    out[3][0] = e0 * b00 + e1 * b10 + e2 * b20 + b30;
++    out[3][1] = e0 * b01 + e1 * b11 + e2 * b21 + b31;
++    out[3][2] = e0 * b02 + e1 * b12 + e2 * b22 + b32;
++    out[3][3] = 1.0f;
+ 
+-    temp[0][3] = temp[1][3] = temp[2][3] = 0;
+-    temp[3][3] = 1;
+-
+-    mtxf_copy(dest, temp);
++    if (out == temp) {
++        mtxf_copy(dest, temp);
++    }
+ }
+ 
+ /**
+@@ -571,23 +595,18 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
+  * and no crashes occur.
+  */
+ void mtxf_to_mtx(Mtx *dest, Mat4 src) {
+-#ifdef AVOID_UB
+-    // Avoid type-casting which is technically UB by calling the equivalent
+-    // guMtxF2L function. This helps little-endian systems, as well.
+-    guMtxF2L(src, dest);
+-#else
+-    s32 asFixedPoint;
+-    register s32 i;
+-    register s16 *a3 = (s16 *) dest;      // all integer parts stored in first 16 bytes
+-    register s16 *t0 = (s16 *) dest + 16; // all fraction parts stored in last 16 bytes
+-    register f32 *t1 = (f32 *) src;
++    u32 *intPart = (u32 *) dest;
++    u32 *fracPart = (u32 *) dest + 8;
++    const f32 *t1 = (const f32 *) src;
++    s32 i;
+ 
+-    for (i = 0; i < 16; i++) {
+-        asFixedPoint = *t1++ * (1 << 16); //! float-to-integer conversion responsible for PU crashes
+-        *a3++ = GET_HIGH_S16_OF_32(asFixedPoint); // integer part
+-        *t0++ = GET_LOW_S16_OF_32(asFixedPoint);  // fraction part
++    for (i = 0; i < 8; i++) {
++        s32 v0 = (s32) (t1[0] * 65536.0f);
++        s32 v1 = (s32) (t1[1] * 65536.0f);
++        t1 += 2;
++        intPart[i] = (((u32) v0) & 0xFFFF0000U) | ((((u32) v1) >> 16) & 0x0000FFFFU);
++        fracPart[i] = (((u32) v0) << 16) | (((u32) v1) & 0x0000FFFFU);
+     }
+-#endif
+ }
+ 
+ /**
+@@ -695,15 +714,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
+  * Helper function for atan2s. Does a look up of the arctangent of y/x assuming
+  * the resulting angle is in range [0, 0x2000] (1/8 of a circle).
+  */
+-static u16 atan2_lookup(f32 y, f32 x) {
+-    u16 ret;
++static const u32 sAtanPlus1[32] = {
++    0x00080000U, 0x00400010U, 0x10080800U, 0x00300040U, 0x00000000U, 0x40804004U, 0x80080010U, 0x00200040U,
++    0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++    0x00000000U, 0x00800800U, 0x10000000U, 0x00004000U, 0x02008880U, 0x03006001U, 0x00800000U, 0x00000000U,
++    0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x01000000U, 0x02000200U, 0x02000400U, 0x00000000U,
++};
++static const u32 sAtanMinus1[32] = {
++    0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++    0x00000000U, 0x00900000U, 0x00000002U, 0x0700E001U, 0x40008080U, 0x40800000U, 0x00040000U, 0x00000800U,
++    0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++    0x20010028U, 0x00000001U, 0x00000000U, 0x00000200U, 0x00000000U, 0x00000000U, 0x00000000U, 0x0C080000U,
++};
+ 
+-    if (x == 0) {
+-        ret = gArctanTable[0];
+-    } else {
+-        ret = gArctanTable[(s32)(y / x * 1024 + 0.5f)];
++static u16 atan2_lookup(f32 y, f32 x) {
++    u32 idx;
++    f32 u;
++    f32 u2;
++    s32 approx;
++
++    if (x == 0.0f) {
++        return 0;
+     }
+-    return ret;
++    idx = (u32) ((s32) (y / x * 1024.0f + 0.5f));
++    u = ((f32) idx) * (1.0f / 1024.0f);
++    u2 = u * u;
++    approx = (s32) (u * (10428.995149f + u2 * (-3446.123487f + u2 * (1885.644492f
++                     + u2 * (-901.288715f + u2 * 225.127539f)))) + 0.5f);
++    if (idx < 1024U) {
++        u32 w = idx >> 5;
++        u32 b = idx & 31U;
++        approx += (s32) ((sAtanPlus1[w] >> b) & 1U) - (s32) ((sAtanMinus1[w] >> b) & 1U);
++    }
++    return (u16) approx;
+ }
+ 
+ /**
+diff --git a/src/engine/math_util.h b/src/engine/math_util.h
+index cb37d52..e698b5e 100644
+--- a/src/engine/math_util.h
++++ b/src/engine/math_util.h
+@@ -17,15 +17,12 @@
+  * exploits array sizes for range analysis-based optimizations as well).
+  * Thus, for non-IDO compilers we use the standard-compliant version.
+  */
+-extern f32 gSineTable[];
+-#ifdef AVOID_UB
+-#define gCosineTable (gSineTable + 0x400)
+-#else
+-extern f32 gCosineTable[];
+-#endif
++f32 sins_fast(s16 x);
++f32 coss_fast(s16 x);
++void sincoss_fast(s16 x, f32 *outSin, f32 *outCos);
+ 
+-#define sins(x) gSineTable[(u16) (x) >> 4]
+-#define coss(x) gCosineTable[(u16) (x) >> 4]
++#define sins(x) sins_fast((s16) (x))
++#define coss(x) coss_fast((s16) (x))
+ 
+ #define min(a, b) ((a) <= (b) ? (a) : (b))
+ #define max(a, b) ((a) > (b) ? (a) : (b))
+diff --git a/src/game/behaviors/exclamation_box.inc.c b/src/game/behaviors/exclamation_box.inc.c
+index 442c88f..d0bc99b 100644
+--- a/src/game/behaviors/exclamation_box.inc.c
++++ b/src/game/behaviors/exclamation_box.inc.c
+@@ -111,9 +111,12 @@ void exclamation_box_act_3(void) {
+         o->oGravity = 0.0f;
+     }
+ 
+-    o->oExclamationBoxUnkF8 = (sins(o->oExclamationBoxUnkFC) + 1.0) * 0.3 + 0.0;
+-    o->oExclamationBoxUnkF4 = (-sins(o->oExclamationBoxUnkFC) + 1.0) * 0.5 + 1.0;
+-    o->oGraphYOffset = (-sins(o->oExclamationBoxUnkFC) + 1.0) * 26.0;
++    {
++        f32 s = sins(o->oExclamationBoxUnkFC);
++        o->oExclamationBoxUnkF8 = (s + 1.0f) * 0.3f;
++        o->oExclamationBoxUnkF4 = (-s + 1.0f) * 0.5f + 1.0f;
++        o->oGraphYOffset = (-s + 1.0f) * 26.0f;
++    }
+     o->oExclamationBoxUnkFC += 0x1000;
+     o->header.gfx.scale[0] = o->oExclamationBoxUnkF4 * 2.0f;
+     o->header.gfx.scale[1] = o->oExclamationBoxUnkF8 * 2.0f;
+@@ -127,19 +130,16 @@ void exclamation_box_act_3(void) {
+ void exclamation_box_spawn_contents(struct ExclamationBoxContents *contents, u8 targetContentsID) {
+     struct Object *contentsObj = NULL;
+ 
+-    while (contents->id != EXCLAMATION_BOX_BP_END) {
+-        if (targetContentsID == contents->id) {
+-            contentsObj = spawn_object(o, contents->model, contents->behavior);
+-            contentsObj->oVelY = 20.0f;
+-            contentsObj->oForwardVel = 3.0f;
+-            contentsObj->oMoveAngleYaw = gMarioObject->oMoveAngleYaw;
+-            o->oBhvParams |= contents->bhvParams1stByte << 24;
+-            if (contents->model == MODEL_STAR) {
+-                o->oFlags |= OBJ_FLAG_PERSISTENT_RESPAWN;
+-            }
+-            break;
++    if (targetContentsID < EXCLAMATION_BOX_BP_END) {
++        const struct ExclamationBoxContents *entry = &contents[targetContentsID];
++        contentsObj = spawn_object(o, entry->model, entry->behavior);
++        contentsObj->oVelY = 20.0f;
++        contentsObj->oForwardVel = 3.0f;
++        contentsObj->oMoveAngleYaw = gMarioObject->oMoveAngleYaw;
++        o->oBhvParams |= entry->bhvParams1stByte << 24;
++        if (entry->model == MODEL_STAR) {
++            o->oFlags |= OBJ_FLAG_PERSISTENT_RESPAWN;
+         }
+-        contents++;
+     }
+ }
+ 
+diff --git a/src/game/mario.c b/src/game/mario.c
+index 32c63c9..c7b18fd 100644
+--- a/src/game/mario.c
++++ b/src/game/mario.c
+@@ -1592,7 +1592,8 @@ u32 update_and_return_cap_flags(struct MarioState *m) {
+ 
+         // This code flickers the cap through a long binary string, increasing in how
+         // common it flickers near the end.
+-        if ((m->capTimer < 64) && ((1ULL << m->capTimer) & sCapFlickerFrames)) {
++        if ((m->capTimer < 64)
++            && (((m->capTimer < 32 ? 0x49255555U : 0x44444492U) >> (m->capTimer & 31)) & 1U)) {
+             flags &= ~MARIO_SPECIAL_CAPS;
+             if (!(flags & MARIO_CAPS)) {
+                 flags &= ~MARIO_CAP_ON_HEAD;
+diff --git a/src/game/object_helpers.c b/src/game/object_helpers.c
+index 54cf24f..d5c93a0 100644
+--- a/src/game/object_helpers.c
++++ b/src/game/object_helpers.c
+@@ -349,23 +349,14 @@ f32 approach_f32_symmetric(f32 value, f32 target, f32 increment) {
+ }
+ 
+ s16 approach_s16_symmetric(s16 value, s16 target, s16 increment) {
+-    s16 dist = target - value;
++    s32 dist = (s16) (target - value);
++    s32 sign = dist >> 31;
++    s32 absDist = (dist ^ sign) - sign;
+ 
+-    if (dist >= 0) {
+-        if (dist > increment) {
+-            value += increment;
+-        } else {
+-            value = target;
+-        }
+-    } else {
+-        if (dist < -increment) {
+-            value -= increment;
+-        } else {
+-            value = target;
+-        }
++    if (absDist <= increment) {
++        return target;
+     }
+-
+-    return value;
++    return (s16) (value + ((increment ^ sign) - sign));
+ }
+ 
+ s32 cur_obj_rotate_yaw_toward(s16 target, s16 increment) {
+diff --git a/src/game/paintings.c b/src/game/paintings.c
+index 08706d9..5a9756f 100644
+--- a/src/game/paintings.c
++++ b/src/game/paintings.c
+@@ -587,11 +587,11 @@ void painting_update_ripple_state(struct Painting *painting) {
+         //! 16777216 (1 << 24), at which point it will freeze (due to floating-point
+         //! imprecision?) and the painting will stop rippling. This happens to HMC, DDD, and
+         //! CotMC.
+-        painting->rippleTimer += 1.0;
++        painting->rippleTimer += 1.0f;
+     }
+     if (painting->rippleTrigger == RIPPLE_TRIGGER_PROXIMITY) {
+         // if the painting is barely rippling, make it stop rippling
+-        if (painting->currRippleMag <= 1.0) {
++        if (painting->currRippleMag <= 1.0f) {
+             painting->state = PAINTING_IDLE;
+             gRipplingPainting = NULL;
+         }
+diff --git a/src/game/skybox.c b/src/game/skybox.c
+index 055d1ce..6e926f4 100644
+--- a/src/game/skybox.c
++++ b/src/game/skybox.c
+@@ -137,11 +137,8 @@ u8 sSkyboxColors[][3] = {
+  */
+ s32 calculate_skybox_scaled_x(s8 player, f32 fov) {
+     f32 yaw = sSkyBoxInfo[player].yaw;
+-
+-    //! double literals are used instead of floats
+-    f32 yawScaled = SCREEN_WIDTH * 360.0 * yaw / (fov * 65536.0);
+-    // Round the scaled yaw. Since yaw is a u16, it doesn't need to check for < 0
+-    s32 scaledX = yawScaled + 0.5;
++    f32 yawScaled = SCREEN_WIDTH * 360.0f * yaw / (fov * 65536.0f);
++    s32 scaledX = (s32) (yawScaled + 0.5f);
+ 
+     if (scaledX > SKYBOX_WIDTH) {
+         scaledX -= scaledX / SKYBOX_WIDTH * SKYBOX_WIDTH;
+@@ -149,18 +146,9 @@ s32 calculate_skybox_scaled_x(s8 player, f32 fov) {
+     return SKYBOX_WIDTH - scaledX;
+ }
+ 
+-/**
+- * Convert the camera's pitch into a y position in the scaled skybox image.
+- *
+- * fov may have been used in an earlier version, but the developers changed the function to always use
+- * 90 degrees.
+- */
+ s32 calculate_skybox_scaled_y(s8 player, UNUSED f32 fov) {
+-    // Convert pitch to degrees. Pitch is bounded between -90 (looking down) and 90 (looking up).
+-    f32 pitchInDegrees = (f32) sSkyBoxInfo[player].pitch * 360.0 / 65535.0;
+-
+-    // Scale by 360 / fov
+-    f32 degreesToScale = 360.0f * pitchInDegrees / 90.0;
++    f32 pitchInDegrees = (f32) sSkyBoxInfo[player].pitch * (360.0f / 65535.0f);
++    f32 degreesToScale = 4.0f * pitchInDegrees;
+     s32 roundedY = round_float(degreesToScale);
+ 
+     // Since pitch can be negative, and the tile grid starts 1 octant above the camera's focus, add

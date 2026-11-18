@@ -1,0 +1,20 @@
+--- a/Makefile
++++ b/Makefile
+@@ -23,7 +23,7 @@
+ #   ido - uses the SGI IRIS Development Option compiler, which is used to build
+ #         an original matching N64 ROM
+ #   gcc - uses the GNU C Compiler
+-COMPILER ?= ido
++COMPILER ?= gcc
+ $(eval $(call validate-option,COMPILER,ido gcc))
+ 
+ 
+@@ -112,7 +112,7 @@
+ else ifeq ($(COMPILER),gcc)
+   NON_MATCHING := 1
+   MIPSISET     := -mips3
+-  OPT_FLAGS    := -O2 -fno-fast-math
++  OPT_FLAGS    := -O2 -ffast-math
+ endif
+ 
+ 

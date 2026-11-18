@@ -204,6 +204,7 @@ struct Runner : ares::Platform {
 
     auto& cp = N64::cpu.profile;
     auto& rp = N64::rsp.profile;
+    auto& dp = N64::rdp.profile;
     auto& mp = N64::rdram.profile;
     std::ostringstream j;
     j << "{\"frame\":" << n
@@ -213,6 +214,17 @@ struct Runner : ares::Platform {
       << ",\"dcache_hits\":" << cp.dcacheHits << ",\"dcache_misses\":" << cp.dcacheMisses
       << ",\"dcache_writebacks\":" << cp.dcacheWritebacks
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
+      << ",\"rdp_cycles\":" << dp.cycles
+      << ",\"rdp_fill_cycles\":" << dp.fillCycles
+      << ",\"rdp_tmem_cycles\":" << dp.tmemCycles
+      << ",\"rdp_sync_cycles\":" << dp.syncCycles
+      << ",\"rdp_commands\":" << dp.commands
+      << ",\"rdp_triangles\":" << dp.triangles
+      << ",\"rdp_rectangles\":" << dp.rectangles
+      << ",\"rdp_pixels\":" << dp.pixels
+      << ",\"rdp_tmem_loads\":" << dp.tmemLoads
+      << ",\"rdp_tmem_bytes\":" << dp.tmemBytes
+      << ",\"rdp_syncs\":" << dp.syncs
       << ",\"rdram\":{";
     bool first = true;
     for(u32 d = 0; d < (u32)N64::RBusDevice::NUM_RBUS_HW_DEVICES; d++) {

@@ -1,0 +1,98 @@
+--- a/src/render.c
++++ b/src/render.c
+@@ -153,10 +153,7 @@
+                       vec3_t pos, float yaw, vec3_t scale, const float color[4],
+                       const surface_t *tex)
+ {
+-    rdpq_mode_combiner(COMBINER_LIT_TEX_2PASS);
+-    rdpq_mode_blender(0);
+-    rdpq_mode_zbuf(true, true);
+-    rdpq_tex_upload(TILE0, tex, &tex_repeat);
++    (void)tex;
+ 
+     mat4_t model = model_matrix(pos, yaw, scale);
+     mat4_t mvp = mat_mul(proj, mat_mul(view, model));
+@@ -188,13 +185,12 @@
+         { { 0.0f, 0.0f }, { 0.0f, 16.0f },  { 16.0f, 16.0f } },
+     };
+     mat4_t vp = mat_mul(proj, view);
+-    rdpq_mode_combiner(COMBINER_LIT_TEX_2PASS);
++    rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
+     rdpq_mode_blender(0);
+     rdpq_mode_zbuf(true, true);
+-    // Heights and TMEM uploads are redone for every terrain cell.
++    rdpq_tex_upload(TILE0, &surf_grass, &tex_repeat);
+     for (int i = 0; i < TERRAIN_CELLS; i++) {
+         for (int j = 0; j < TERRAIN_CELLS; j++) {
+-            rdpq_tex_upload(TILE0, &surf_grass, &tex_repeat);
+             float x0 = -ARENA + i * cell, x1 = x0 + cell;
+             float z0 = -ARENA + j * cell, z1 = z0 + cell;
+             vec3_t p00 = vec3(x0, terrain_height(x0, z0), z0);
+@@ -224,10 +220,6 @@
+     static const float uv[4][2] = {
+         { 0.0f, 15.0f }, { 15.0f, 15.0f }, { 15.0f, 0.0f }, { 0.0f, 0.0f },
+     };
+-    rdpq_mode_combiner(COMBINER_LIT_TEX_2PASS);
+-    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+-    rdpq_mode_zbuf(true, false);
+-    rdpq_tex_upload(TILE0, &surf_particle, NULL);
+ 
+     mat4_t inv_rot = mat_identity();
+     for (int i = 0; i < 3; i++)
+@@ -294,25 +286,33 @@
+ 
+     rdpq_set_mode_standard();
+     rdpq_mode_filter(FILTER_BILINEAR);
+-    rdpq_mode_combiner(COMBINER_LIT_TEX_2PASS);
++    rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
+     rdpq_mode_zbuf(true, true);
+ 
+     draw_terrain();
+ 
++    rdpq_tex_upload(TILE0, &surf_stone, &tex_repeat);
+     for (int i = 0; i < world.box_count; i++) {
+         const box_t *b = &world.boxes[i];
+         const float col[4] = { b->color[0], b->color[1], b->color[2], 1.0f };
+         draw_mesh(cube_pos, cube_tri, 12, b->center, b->yaw, b->half, col, &surf_stone);
+     }
+ 
++    rdpq_tex_upload(TILE0, &surf_enemy, &tex_repeat);
+     for (int i = 0; i < world.enemy_count; i++) {
+         const enemy_t *e = &world.enemies[i];
+         const float col[4] = { e->color[0], e->color[1], e->color[2], 1.0f };
+         float squash = e->state == ENEMY_STUNNED ? 0.35f : 0.6f;
+         draw_mesh(cube_pos, cube_tri, 12, e->pos, e->heading, vec3(0.7f, squash, 0.7f), col, &surf_enemy);
+-        draw_shadow(e->pos, 0.7f);
+-    }
+-
++    }
++    for (int i = 0; i < world.enemy_count; i++) {
++        draw_shadow(world.enemies[i].pos, 0.7f);
++    }
++
++    rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
++    rdpq_mode_blender(0);
++    rdpq_mode_zbuf(true, true);
++    rdpq_tex_upload(TILE0, &surf_gem, &tex_repeat);
+     for (int i = 0; i < world.gem_count; i++) {
+         const gem_t *g = &world.gems[i];
+         if (g->taken) continue;
+@@ -331,6 +331,7 @@
+     int lod = cam_dist < PIP_LOD_MEDIUM ? 0 : (cam_dist < PIP_LOD_LOW ? 1 : 2);
+     bool blink = pl->state == PLAYER_HURT && (pl->timer & 2);
+     if (!blink) {
++        rdpq_tex_upload(TILE0, &surf_pip, &tex_repeat);
+         draw_mesh(cube_pos, cube_tri, 12, pl->pos, pl->yaw, vec3(0.6f, 0.45f, 0.6f), body, &surf_pip);
+         vec3_t head_pos = vadd(pl->pos, vec3(0, 0.75f, 0));
+         if (lod <= 1)
+@@ -341,6 +342,10 @@
+     }
+     draw_shadow(pl->pos, 0.8f);
+ 
++    rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
++    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
++    rdpq_mode_zbuf(true, false);
++    rdpq_tex_upload(TILE0, &surf_particle, NULL);
+     for (int i = 0; i < MAX_PARTICLES; i++) {
+         const particle_t *p = &world.particles[i];
+         if (!p->alive) continue;

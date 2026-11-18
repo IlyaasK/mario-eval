@@ -1,21 +1,19 @@
-diff -r base/src/render.c r2-engine/src/render.c
---- base/src/render.c	2026-11-14 20:44:26.834088696 -0500
-+++ r2-engine/src/render.c	2026-11-14 20:45:42.518880859 -0500
-@@ -8,7 +8,9 @@
+--- a/src/render.c
++++ b/src/render.c
+@@ -18,7 +18,9 @@
  
  static mat4_t proj;
  static mat4_t view;
-+static mat4_t view_proj;     // proj * view, once per frame
++static mat4_t view_proj;
  static vec3_t light_dir;
 +static float heights[TERRAIN_CELLS + 1][TERRAIN_CELLS + 1];
  
- // Unit cube, 12 triangles, counter-clockwise when seen from outside.
- static const float cube_pos[8][3] = {
-@@ -32,6 +34,13 @@
- {
-     proj = mat_perspective(1.0471976f, (float)SCREEN_W / (float)SCREEN_H, 0.5f, 200.0f);
-     light_dir = vnormalize(vec3(0.4f, 1.0f, 0.3f));
-+    // The terrain never changes: evaluate its height field once.
+ static uint16_t tex_grass_buf[TEX_DIM * TEX_DIM]    __attribute__((aligned(16)));
+ static uint16_t tex_stone_buf[TEX_DIM * TEX_DIM]    __attribute__((aligned(16)));
+@@ -82,6 +84,12 @@
+     load_dfs_texture("/pip.tex",      tex_pip_buf,      &surf_pip);
+     load_dfs_texture("/gem0.tex",     tex_gem_buf,      &surf_gem);
+     load_dfs_texture("/particle.tex", tex_particle_buf, &surf_particle);
 +    const float cell = (2.0f * ARENA) / TERRAIN_CELLS;
 +    for (int i = 0; i <= TERRAIN_CELLS; i++)
 +        for (int j = 0; j <= TERRAIN_CELLS; j++) {
@@ -25,29 +23,29 @@ diff -r base/src/render.c r2-engine/src/render.c
  }
  
  // Build an object's model matrix from its placement.
-@@ -64,11 +73,10 @@
-     return true;
- }
- 
--// Project a world-space point for a billboard (rebuilds view-projection).
-+// Project a world-space point for a billboard.
- static bool project_world(const float world_pos[3], float shade, const float color[4], float out[7])
+@@ -122,8 +130,7 @@
+ static bool project_world(const float world_pos[3], float shade, const float color[4],
+                           float u, float tcoord, float out[10])
  {
 -    mat4_t vp = mat_mul(proj, view);
--    return project_vertex(&vp, world_pos, shade, color, out);
-+    return project_vertex(&view_proj, world_pos, shade, color, out);
+-    return project_vertex(&vp, world_pos, shade, color, u, tcoord, out);
++    return project_vertex(&view_proj, world_pos, shade, color, u, tcoord, out);
  }
  
  static float face_shade(vec3_t a, vec3_t b, vec3_t c)
-@@ -116,16 +124,15 @@
-     const float cell = (2.0f * ARENA) / TERRAIN_CELLS;
-     const float green[4] = { 0.35f, 0.62f, 0.30f, 1.0f };
-     const float dark[4] = { 0.30f, 0.54f, 0.27f, 1.0f };
+@@ -187,20 +194,19 @@
+         { { 0.0f, 0.0f }, { 16.0f, 16.0f }, { 16.0f, 0.0f } },
+         { { 0.0f, 0.0f }, { 0.0f, 16.0f },  { 16.0f, 16.0f } },
+     };
 -    mat4_t vp = mat_mul(proj, view);
--    // Heights are recomputed for every triangle corner that uses them.
 +    const mat4_t *vp = &view_proj;
+     rdpq_mode_combiner(COMBINER_LIT_TEX_2PASS);
+     rdpq_mode_blender(0);
+     rdpq_mode_zbuf(true, true);
+-    // Heights and TMEM uploads are redone for every terrain cell.
      for (int i = 0; i < TERRAIN_CELLS; i++) {
          for (int j = 0; j < TERRAIN_CELLS; j++) {
+             rdpq_tex_upload(TILE0, &surf_grass, &tex_repeat);
              float x0 = -ARENA + i * cell, x1 = x0 + cell;
              float z0 = -ARENA + j * cell, z1 = z0 + cell;
 -            vec3_t p00 = vec3(x0, terrain_height(x0, z0), z0);
@@ -61,37 +59,37 @@ diff -r base/src/render.c r2-engine/src/render.c
              const float *col = ((i + j) & 1) ? green : dark;
              vec3_t quad[2][3] = { { p00, p11, p10 }, { p00, p01, p11 } };
              for (int t = 0; t < 2; t++) {
-@@ -134,7 +141,7 @@
+@@ -209,7 +215,7 @@
                  bool ok = true;
                  for (int k = 0; k < 3; k++) {
                      float local[3] = { quad[t][k].x, quad[t][k].y, quad[t][k].z };
--                    ok = ok && project_vertex(&vp, local, shade, col, v[k]);
-+                    ok = ok && project_vertex(vp, local, shade, col, v[k]);
+-                    ok = ok && project_vertex(&vp, local, shade, col,
++                    ok = ok && project_vertex(vp, local, shade, col,
+                                               q_uv[t][k][0], q_uv[t][k][1], v[k]);
                  }
-                 if (ok) draw_triangle(v[0], v[1], v[2]);
-             }
-@@ -183,14 +190,14 @@
+                 if (ok) draw_triangle_tex(v[0], v[1], v[2]);
+@@ -267,14 +273,14 @@
          if (fh > h) h = fh;
      }
      const float col[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
 -    mat4_t vp = mat_mul(proj, view);
 +    const mat4_t *vp = &view_proj;
-     float v[4][7];
+     float v[4][10];
      float local[4][3] = {
          { pos.x - radius, h + 0.05f, pos.z - radius }, { pos.x + radius, h + 0.05f, pos.z - radius },
          { pos.x + radius, h + 0.05f, pos.z + radius }, { pos.x - radius, h + 0.05f, pos.z + radius },
      };
      for (int k = 0; k < 4; k++)
--        if (!project_vertex(&vp, local[k], 1.0f, col, v[k])) return;
-+        if (!project_vertex(vp, local[k], 1.0f, col, v[k])) return;
-     draw_triangle(v[0], v[2], v[1]);
-     draw_triangle(v[0], v[3], v[2]);
- }
-@@ -198,6 +205,7 @@
- void render_frame(void)
- {
+-        if (!project_vertex(&vp, local[k], 1.0f, col, 0.0f, 0.0f, v[k])) return;
++        if (!project_vertex(vp, local[k], 1.0f, col, 0.0f, 0.0f, v[k])) return;
+     rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+     rdpq_mode_blender(0);
+     rdpq_mode_zbuf(true, true);
+@@ -291,6 +297,7 @@
+     load_dfs_texture(gem_paths[(world.frame >> 3) & 3], tex_gem_buf, &surf_gem);
+ 
      view = mat_look_at(world.cam_pos, world.cam_target, vec3(0, 1, 0));
 +    view_proj = mat_mul(proj, view);
  
      rdpq_set_mode_standard();
-     rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+     rdpq_mode_filter(FILTER_BILINEAR);

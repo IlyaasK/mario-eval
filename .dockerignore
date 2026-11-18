@@ -1,4 +1,13 @@
 results/
+cache/reference/
+cache/sm64-reference/
 .git/
-**/build/
+sm64/decomp/.git/
+calibration/
+sm64/calibration/
+workload/build/
+sm64/decomp/build/
+sm64/decomp/build_*/
 **/*.z64
+**/*.n64
+**/*.v64

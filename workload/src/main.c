@@ -1,8 +1,8 @@
 // main.c - Pip's Garden main loop.
 //
-// Default build (graded): runs unthrottled, renders into its own framebuffer
-// and reports every frame to the harness. PLAY=1 build: shows frames on the
-// TV and plays audio, for running on real hardware or by hand.
+// Default build (graded): runs unthrottled, renders into double-buffered
+// framebuffers and reports every frame to the harness. PLAY=1 build: shows
+// frames on the TV and plays audio, for running on real hardware or by hand.
 #include <libdragon.h>
 #include "game.h"
 
@@ -20,6 +20,7 @@ static int scene_from_pad(mev_pad_t pad)
 int main(void)
 {
     mev_init();
+    dfs_init(DFS_DEFAULT_LOCATION);
     rdpq_init();
     render_init();
 
@@ -29,8 +30,12 @@ int main(void)
     audio_init(MEV_AUDIO_RATE, 4);
     audio_set_buffer_granularity(MEV_AUDIO_SAMPLES);
 #else
-    surface_t fb = surface_alloc(FMT_RGBA16, SCREEN_W, SCREEN_H);
+    surface_t fbs[2] = {
+        surface_alloc(FMT_RGBA16, SCREEN_W, SCREEN_H),
+        surface_alloc(FMT_RGBA16, SCREEN_W, SCREEN_H),
+    };
     surface_t zbuf = surface_alloc(FMT_RGBA16, SCREEN_W, SCREEN_H);
+    int fb_idx = 0;
 #endif
 
     bool started = false;
@@ -59,11 +64,13 @@ int main(void)
         for (int i = 0; i < MEV_AUDIO_SAMPLES * 2; i++) dst[i] = audio_block[i];
         audio_write_end();
 #else
-        rdpq_attach_clear(&fb, &zbuf);
+        surface_t *fb = &fbs[fb_idx];
+        fb_idx ^= 1;
+        rdpq_attach_clear(fb, &zbuf);
         render_frame();
         rdpq_detach_wait();
         world_observe(&obs);
-        mev_end_frame(&obs, &fb, audio_block);
+        mev_end_frame(&obs, fb, audio_block);
 #endif
     }
 }

@@ -1,0 +1,462 @@
+diff --git i/Makefile w/Makefile
+index b267233..7a6eab1 100644
+--- i/Makefile
++++ w/Makefile
+@@ -112,7 +112,7 @@ ifeq      ($(COMPILER),ido)
+ else ifeq ($(COMPILER),gcc)
+   NON_MATCHING := 1
+   MIPSISET     := -mips3
+-  OPT_FLAGS    := -O2
++  OPT_FLAGS    := -O2 -fno-fast-math
+ endif
+ 
+ 
+@@ -135,9 +135,13 @@ endif
+ # COMPARE - whether to verify the SHA-1 hash of the ROM after building
+ #   1 - verifies the SHA-1 hash of the selected version of the game
+ #   0 - does not verify the hash
+-COMPARE ?= 1
++COMPARE ?= 0
+ $(eval $(call validate-option,COMPARE,0 1))
+ 
++ifneq ($(PLAY),)
++  DEFINES += PLAY=1
++endif
++
+ TARGET_STRING := sm64.$(VERSION).$(GRUCODE)
+ # If non-default settings were chosen, disable COMPARE
+ ifeq ($(filter $(TARGET_STRING), sm64.jp.f3d_old sm64.us.f3d_old sm64.eu.f3d_new sm64.sh.f3d_new sm64.cn.f3d_new),)
+@@ -189,7 +193,7 @@ PYTHON := python3
+ ifeq ($(filter clean distclean print-%,$(MAKECMDGOALS)),)
+ 
+   # Make sure assets exist
+-  NOEXTRACT ?= 0
++  NOEXTRACT ?= $(if $(wildcard baserom.$(VERSION).z64),0,1)
+   ifeq ($(NOEXTRACT),0)
+     DUMMY != $(PYTHON) extract_assets.py $(VERSION) >&2 || echo FAIL
+     ifeq ($(DUMMY),FAIL)
+@@ -397,7 +401,8 @@ CC_CHECK := gcc
+ CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(CC_CFLAGS) $(TARGET_CFLAGS) -std=gnu90 -Wall -Wextra -Wno-format-security -Wno-main -DNON_MATCHING -DAVOID_UB $(DEF_INC_CFLAGS)
+ 
+ # C compiler options
+-CFLAGS = -G 0 $(OPT_FLAGS) $(TARGET_CFLAGS) $(MIPSISET) $(DEF_INC_CFLAGS)
++EXTRA_CFLAGS ?=
++CFLAGS = -G 0 $(OPT_FLAGS) $(TARGET_CFLAGS) $(MIPSISET) $(DEF_INC_CFLAGS) $(EXTRA_CFLAGS)
+ ifeq ($(COMPILER),gcc)
+   CFLAGS += -mno-shared -march=vr4300 -mfix4300 -mabi=32 -mhard-float -mdivide-breaks -fno-stack-protector -fno-common -fno-zero-initialized-in-bss -fno-PIC -mno-abicalls -fno-strict-aliasing -fno-inline-functions -ffreestanding -fwrapv -Wall -Wextra
+ else
+@@ -930,7 +935,17 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
+ 
+ 
+ 
+-.PHONY: all clean distclean default diff test load libultra
++PLAY_CHECK_SRCS := src/game/main.c src/game/game_init.c src/game/sound_init.c src/game/level_update.c src/audio/external.c src/audio/heap.c src/engine/behavior_script.c src/game/mev.c
++
++check-play:
++	@mkdir -p $(BUILD_DIR)/play_check
++	@for f in $(PLAY_CHECK_SRCS); do \
++	  $(CC_CHECK) $(CC_CHECK_CFLAGS) -DPLAY=1 $$f || exit 1; \
++	  $(CC) -c $(CFLAGS) -DPLAY=1 -o $(BUILD_DIR)/play_check/$$(basename $$f .c).o $$f || exit 1; \
++	done
++	@$(RM) -r $(BUILD_DIR)/play_check
++
++.PHONY: all clean distclean default diff test load libultra check-play
+ # with no prerequisites, .SECONDARY causes no intermediate target to be removed
+ .SECONDARY:
+ 
+diff --git i/src/audio/external.c w/src/audio/external.c
+index a5140d7..f6a0187 100644
+--- i/src/audio/external.c
++++ w/src/audio/external.c
+@@ -808,6 +808,66 @@ struct SPTask *create_next_audio_frame_task(void) {
+     decrease_sample_dma_ttls();
+     return gAudioTask;
+ }
++
++#ifndef PLAY
++struct SPTask *mev_create_audio_frame_task(s16 *outBuf, s32 samples, OSMesgQueue *doneQueue) {
++    s32 writtenCmds;
++    s32 index;
++    OSTask_t *task;
++    s32 flags;
++
++    gAudioFrameCount++;
++    if (gAudioLoadLock != AUDIO_LOCK_NOT_LOADING) {
++        return NULL;
++    }
++
++    gAudioTaskIndex ^= 1;
++    gCurrAiBufferIndex++;
++    gCurrAiBufferIndex %= NUMAIBUFFERS;
++    gCurrAudioFrameDmaCount = 0;
++
++    gAudioTask = &gAudioTasks[gAudioTaskIndex];
++    gAudioCmd = gAudioCmdBuffers[gAudioTaskIndex];
++
++    index = gCurrAiBufferIndex;
++    gCurrAiBuffer = outBuf;
++    gAiBufferLengths[index] = (u16) samples;
++
++    if (sGameLoopTicked != 0) {
++        update_game_sound();
++        sGameLoopTicked = 0;
++    }
++
++    flags = 0;
++    gAudioCmd = synthesis_execute(gAudioCmd, &writtenCmds, outBuf, samples);
++    gAudioRandom = ((gAudioRandom + gAudioFrameCount) * gAudioFrameCount);
++
++    index = gAudioTaskIndex;
++    gAudioTask->msgqueue = doneQueue;
++    gAudioTask->msg = (OSMesg) 1;
++
++    task = &gAudioTask->task.t;
++    task->type = M_AUDTASK;
++    task->flags = flags;
++    task->ucode_boot = rspF3DBootStart;
++    task->ucode_boot_size = (u8 *) rspF3DBootEnd - (u8 *) rspF3DBootStart;
++    task->ucode = rspAspMainStart;
++    task->ucode_size = 0x800;
++    task->ucode_data = rspAspMainDataStart;
++    task->ucode_data_size = (rspAspMainDataEnd - rspAspMainDataStart) * sizeof(u64);
++    task->dram_stack = NULL;
++    task->dram_stack_size = 0;
++    task->output_buff = NULL;
++    task->output_buff_size = NULL;
++    task->data_ptr = gAudioCmdBuffers[index];
++    task->data_size = writtenCmds * sizeof(u64);
++    task->yield_data_ptr = NULL;
++    task->yield_data_size = 0;
++
++    decrease_sample_dma_ttls();
++    return gAudioTask;
++}
++#endif
+ #endif
+ 
+ /**
+diff --git i/src/audio/external.h w/src/audio/external.h
+index d2e59b1..0caf029 100644
+--- i/src/audio/external.h
++++ w/src/audio/external.h
+@@ -27,6 +27,7 @@ extern u32 gAudioRandom;
+ extern u8 gAudioSPTaskYieldBuffer[]; // ucode yield data ptr; only used in JP
+ 
+ struct SPTask *create_next_audio_frame_task(void);
++struct SPTask *mev_create_audio_frame_task(s16 *outBuf, s32 samples, OSMesgQueue *doneQueue);
+ void play_sound(s32 soundBits, f32 *pos);
+ void audio_signal_game_loop_tick(void);
+ void seq_player_fade_out(u8 player, u16 fadeDuration);
+diff --git i/src/audio/heap.c w/src/audio/heap.c
+index 5b23438..0dcedf8 100644
+--- i/src/audio/heap.c
++++ w/src/audio/heap.c
+@@ -1087,10 +1087,14 @@ s32 audio_shut_down_and_reset_step(void) {
+  */
+ void wait_for_audio_frames(s32 frames) {
+     gAudioFrameCount = 0;
++#ifdef PLAY
+     // Sound thread will update gAudioFrameCount
+     while (gAudioFrameCount < frames) {
+         // spin
+     }
++#else
++    gAudioFrameCount = frames;
++#endif
+ }
+ #endif
+ 
+diff --git i/src/engine/behavior_script.c w/src/engine/behavior_script.c
+index 264ffc2..3d2fea1 100644
+--- i/src/engine/behavior_script.c
++++ w/src/engine/behavior_script.c
+@@ -30,6 +30,10 @@
+ 
+ static u16 gRandomSeed16;
+ 
++u16 mev_peek_random_u16(void) {
++    return gRandomSeed16;
++}
++
+ // Unused function that directly jumps to a behavior command and resets the object's stack index.
+ UNUSED static void goto_behavior_unused(const BehaviorScript *bhvAddr) {
+     gCurBhvCommand = segmented_to_virtual(bhvAddr);
+diff --git i/src/engine/behavior_script.h w/src/engine/behavior_script.h
+index 92ba109..66eea90 100644
+--- i/src/engine/behavior_script.h
++++ w/src/engine/behavior_script.h
+@@ -20,6 +20,7 @@
+ #define obj_and_int(object, offset, value) object->OBJECT_FIELD_S32(offset) &= (s32)(value)
+ 
+ u16 random_u16(void);
++u16 mev_peek_random_u16(void);
+ float random_float(void);
+ s32 random_sign(void);
+ 
+diff --git i/src/game/game_init.c w/src/game/game_init.c
+index 89da5bf..c969ba3 100644
+--- i/src/game/game_init.c
++++ w/src/game/game_init.c
+@@ -19,6 +19,9 @@
+ #include "segment2.h"
+ #include "segment_symbols.h"
+ #include "rumble_init.h"
++#ifndef PLAY
++#include "mev.h"
++#endif
+ 
+ // First 3 controller slots
+ struct Controller gControllers[3];
+@@ -337,6 +340,9 @@ void render_init(void) {
+     clear_framebuffer(0);
+     end_master_display_list();
+     exec_display_list(&gGfxPool->spTask);
++#ifndef PLAY
++    osRecvMesg(&gGfxVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
++#endif
+ 
+     sRenderingFramebuffer++;
+     gGlobalTimer++;
+@@ -361,6 +367,7 @@ void select_gfx_pool(void) {
+  * - Selects which framebuffer will be rendered and displayed to next time.
+  */
+ void display_and_vsync(void) {
++#ifdef PLAY
+     profiler_log_thread5_time(BEFORE_DISPLAY_LISTS);
+     osRecvMesg(&gGfxVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+     if (gGoddardVblankCallback != NULL) {
+@@ -380,6 +387,29 @@ void display_and_vsync(void) {
+         sRenderingFramebuffer = 0;
+     }
+     gGlobalTimer++;
++#else
++    uintptr_t completedFb = gPhysicalFramebuffers[sRenderingFramebuffer];
++
++    profiler_log_thread5_time(BEFORE_DISPLAY_LISTS);
++    if (gGoddardVblankCallback != NULL) {
++        gGoddardVblankCallback();
++        gGoddardVblankCallback = NULL;
++    }
++    exec_display_list(&gGfxPool->spTask);
++    profiler_log_thread5_time(AFTER_DISPLAY_LISTS);
++    osRecvMesg(&gGfxVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
++    mev_step_audio();
++    osViSwapBuffer((void *) PHYSICAL_TO_VIRTUAL(completedFb));
++    profiler_log_thread5_time(THREAD5_END);
++    if (++sRenderedFramebuffer == 3) {
++        sRenderedFramebuffer = 0;
++    }
++    if (++sRenderingFramebuffer == 3) {
++        sRenderingFramebuffer = 0;
++    }
++    gGlobalTimer++;
++    mev_observe_and_end_frame(completedFb);
++#endif
+ }
+ 
+ // Controls
+@@ -523,6 +553,7 @@ void read_controller_inputs(void) {
+     s32 i;
+ 
+     // If any controllers are plugged in, update the controller information.
++#ifdef PLAY
+     if (gControllerBits) {
+         osRecvMesg(&gSIEventMesgQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+         osContGetReadData(&gControllerPads[0]);
+@@ -530,6 +561,9 @@ void read_controller_inputs(void) {
+         release_rumble_pak_control();
+ #endif
+     }
++#else
++    mev_read_pad_sync();
++#endif
+     run_demo_inputs();
+ 
+     for (i = 0; i < 2; i++) {
+@@ -660,10 +694,15 @@ void thread5_game_loop(UNUSED void *arg) {
+ 
+     save_file_load_all();
+ 
++#ifdef PLAY
+     set_vblank_handler(2, &gGameVblankHandler, &gGameVblankQueue, (OSMesg) 1);
+ 
+     // Point address to the entry point into the level script data.
+     addr = segmented_to_virtual(level_script_entry);
++#else
++    mev_init();
++    addr = mev_entry_script();
++#endif
+ 
+     play_music(SEQ_PLAYER_SFX, SEQUENCE_ARGS(0, SEQ_SOUND_PLAYER), 0);
+     set_sound_mode(save_file_get_sound_mode());
+@@ -677,6 +716,7 @@ void thread5_game_loop(UNUSED void *arg) {
+         }
+         profiler_log_thread5_time(THREAD5_START);
+ 
++#ifdef PLAY
+         // If any controllers are plugged in, start read the data for when
+         // read_controller_inputs is called later.
+         if (gControllerBits) {
+@@ -685,6 +725,7 @@ void thread5_game_loop(UNUSED void *arg) {
+ #endif
+             osContStartReadData(&gSIEventMesgQueue);
+         }
++#endif
+ 
+         audio_game_loop_tick();
+         select_gfx_pool();
+diff --git i/src/game/level_update.c w/src/game/level_update.c
+index a6186c3..b46fa64 100644
+--- i/src/game/level_update.c
++++ w/src/game/level_update.c
+@@ -1303,7 +1303,11 @@ s32 lvl_set_current_level(UNUSED s16 arg0, s32 levelNum) {
+         return 0;
+     }
+ 
++#ifndef PLAY
++    return 0;
++#else
+     return 1;
++#endif
+ }
+ 
+ /**
+diff --git i/src/game/main.c w/src/game/main.c
+index 4d8bf9b..50301e9 100644
+--- i/src/game/main.c
++++ w/src/game/main.c
+@@ -19,6 +19,7 @@
+ #define MESG_VI_VBLANK 102
+ #define MESG_START_GFX_SPTASK 103
+ #define MESG_NMI_REQUEST 104
++#define MESG_START_AUD_SPTASK 105
+ 
+ OSThread D_80339210; // unused?
+ OSThread gIdleThread;
+@@ -48,6 +49,10 @@ struct SPTask *sCurrentAudioSPTask = NULL;
+ struct SPTask *sCurrentDisplaySPTask = NULL;
+ struct SPTask *sNextAudioSPTask = NULL;
+ struct SPTask *sNextDisplaySPTask = NULL;
++#ifndef PLAY
++static s8 sMevGfxSpDone = FALSE;
++static s8 sMevGfxDpDone = FALSE;
++#endif
+ s8 sAudioEnabled = TRUE;
+ u32 gNumVblanks = 0;
+ s8 gResetTimer = 0;
+@@ -121,7 +126,9 @@ void setup_mesg_queues(void) {
+ 
+     osCreateMesgQueue(&gSPTaskMesgQueue, gUnknownMesgBuf, ARRAY_COUNT(gUnknownMesgBuf));
+     osCreateMesgQueue(&gIntrMesgQueue, gIntrMesgBuf, ARRAY_COUNT(gIntrMesgBuf));
++#ifdef PLAY
+     osViSetEvent(&gIntrMesgQueue, (OSMesg) MESG_VI_VBLANK, 1);
++#endif
+ 
+     osSetEventMesg(OS_EVENT_SP, &gIntrMesgQueue, (OSMesg) MESG_SP_COMPLETE);
+     osSetEventMesg(OS_EVENT_DP, &gIntrMesgQueue, (OSMesg) MESG_DP_COMPLETE);
+@@ -189,6 +196,10 @@ void start_sptask(s32 taskType) {
+     if (taskType == M_AUDTASK) {
+         gActiveSPTask = sCurrentAudioSPTask;
+     } else {
++#ifndef PLAY
++        sMevGfxSpDone = FALSE;
++        sMevGfxDpDone = FALSE;
++#endif
+         gActiveSPTask = sCurrentDisplaySPTask;
+     }
+ 
+@@ -315,11 +326,27 @@ void handle_sp_complete(void) {
+             // that needs to arrive before we can consider the task completely finished and
+             // null out sCurrentDisplaySPTask. That happens in handle_dp_complete.
+             profiler_log_gfx_time(RSP_COMPLETE);
++#ifndef PLAY
++            sMevGfxSpDone = TRUE;
++            if (sMevGfxDpDone && sCurrentDisplaySPTask != NULL) {
++                if (sCurrentDisplaySPTask->msgqueue != NULL) {
++                    osSendMesg(sCurrentDisplaySPTask->msgqueue, sCurrentDisplaySPTask->msg, OS_MESG_NOBLOCK);
++                }
++                sCurrentDisplaySPTask->state = SPTASK_STATE_FINISHED_DP;
++                sCurrentDisplaySPTask = NULL;
++            }
++#endif
+         }
+     }
+ }
+ 
+ void handle_dp_complete(void) {
++#ifndef PLAY
++    sMevGfxDpDone = TRUE;
++    if (!sMevGfxSpDone || sCurrentDisplaySPTask == NULL) {
++        return;
++    }
++#endif
+     // Gfx SP task is completely done.
+     if (sCurrentDisplaySPTask->msgqueue != NULL) {
+         osSendMesg(sCurrentDisplaySPTask->msgqueue, sCurrentDisplaySPTask->msg, OS_MESG_NOBLOCK);
+@@ -357,6 +384,18 @@ void thread3_main(UNUSED void *arg) {
+             case MESG_START_GFX_SPTASK:
+                 start_gfx_sptask();
+                 break;
++#ifndef PLAY
++            case MESG_START_AUD_SPTASK:
++                if (gActiveSPTask == NULL && sCurrentAudioSPTask != NULL
++                    && sCurrentAudioSPTask->state == SPTASK_STATE_NOT_STARTED) {
++                    if (sAudioEnabled) {
++                        start_sptask(M_AUDTASK);
++                    } else {
++                        pretend_audio_sptask_done();
++                    }
++                }
++                break;
++#endif
+             case MESG_NMI_REQUEST:
+                 handle_nmi_request();
+                 break;
+@@ -391,6 +430,20 @@ void dispatch_audio_sptask(struct SPTask *spTask) {
+     }
+ }
+ 
++#ifndef PLAY
++s32 exec_audio_sptask_sync(struct SPTask *spTask) {
++    if (sAudioEnabled && spTask != NULL) {
++        osWritebackDCacheAll();
++        spTask->state = SPTASK_STATE_NOT_STARTED;
++        sCurrentAudioSPTask = spTask;
++        sNextAudioSPTask = NULL;
++        osSendMesg(&gIntrMesgQueue, (OSMesg) MESG_START_AUD_SPTASK, OS_MESG_NOBLOCK);
++        return 1;
++    }
++    return 0;
++}
++#endif
++
+ void exec_display_list(struct SPTask *spTask) {
+     if (spTask != NULL) {
+         osWritebackDCacheAll();
+diff --git i/src/game/sound_init.c w/src/game/sound_init.c
+index 1ef5331..1276074 100644
+--- i/src/game/sound_init.c
++++ w/src/game/sound_init.c
+@@ -340,7 +340,9 @@ void thread4_sound(UNUSED void *arg) {
+     vec3f_copy(unused80339DC0, gVec3fZero);
+ 
+     osCreateMesgQueue(&sSoundMesgQueue, sSoundMesgBuf, ARRAY_COUNT(sSoundMesgBuf));
++#ifdef PLAY
+     set_vblank_handler(1, &sSoundVblankHandler, &sSoundMesgQueue, (OSMesg) 512);
++#endif
+ 
+     while (TRUE) {
+         OSMesg msg;
+diff --git i/tools/armips.cpp w/tools/armips.cpp
+index 271bf55..ea8b916 100644
+--- i/tools/armips.cpp
++++ w/tools/armips.cpp
+@@ -32,7 +32,7 @@ SOFTWARE.
+ 
+ 
+ #define _CRT_SECURE_NO_WARNINGS
+-#undef __STRICT_ANSI__
++#include <cstdint>
+ 
+ #if defined(__clang__)
+ #if __has_feature(cxx_exceptions)
