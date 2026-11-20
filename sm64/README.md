@@ -24,7 +24,7 @@ US ROM you own.
 5. Builds the host tools (including `ido-static-recomp`) and verifies both the
    playable `#ifdef PLAY` check (`make check-play`) and the baseline ROM.
 
-## 2. Precompute & calibrate (12 courses × 15 calibration rungs)
+## 2. Precompute and calibrate
 
 ```sh
 python3 sm64/corpus/make_replays.py --heldout /path/to/private-heldout-sm64
@@ -37,13 +37,12 @@ invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
 
 - `r0-unchanged` to `r9-kaze-partial`: compiler flags and a growing subset of
   Kaze Emanuar's techniques.
-- **`r10-kaze-master`, the human-expert reference (1.68x console speedup)**:
-  every optimization from Kaze's public videos and code releases that keeps the
-  game the same for the player, and nothing else. It was reconstructed from all
-  of his video transcripts, the source code he shows on screen, and his two code
-  downloads (the "How Optimizations made Mario 64 SLOWER" repository and the
-  audio code from "Revolutionizing N64 programming!"). It is not Kaze's own
-  engine, which also rewrites physics and assets in ways that change the game.
+- **`r10-kaze-master`, the human-expert reference (1.69x console speedup)**:
+  a reconstruction of applicable optimizations from Kaze's public videos,
+  on-screen code, and two code downloads (the "How Optimizations made Mario 64
+  SLOWER" repository and the audio code from "Revolutionizing N64 programming!").
+  It is not Kaze's own engine, which rewrites physics and assets in ways that
+  change the game.
   Techniques that change gameplay or audio (one-raycast walls, his rewritten
   trig and sound engine) are left out; visual changes he ships are accepted as
   precomputed variants (full-detail Mario, no LOD, F3DEX2, reduced-aliasing

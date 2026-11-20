@@ -591,6 +591,93 @@ index c88b5c0..a003289 100755
          BUILD_DIR/src/engine/graph_node_manager.o(.text);
          BUILD_DIR/src/engine/geo_layout.o(.text);
          BUILD_DIR/src/engine/level_script.o(.text);
+diff --git a/src/audio/load.c b/src/audio/load.c
+index aa0c71d..fbfc369 100644
+--- a/src/audio/load.c
++++ b/src/audio/load.c
+@@ -408,8 +408,7 @@ out2:
+ }
+ 
+ #if defined(VERSION_JP) || defined(VERSION_US)
+-// This function gets optimized out on US due to being static and never called
+-UNUSED static
++static
+ #endif
+ void patch_sound(UNUSED struct AudioBankSound *sound, UNUSED u8 *memBase, UNUSED u8 *offsetBase) {
+     struct AudioBankSample *sample;
+@@ -447,35 +446,7 @@ void patch_sound(UNUSED struct AudioBankSound *sound, UNUSED u8 *memBase, UNUSED
+ #undef PATCH
+ }
+ 
+-#ifdef VERSION_EU
+-#define PATCH_SOUND patch_sound
+-#else
+-// copt inline of the above
+-#define PATCH_SOUND(_sound, mem, offset)                                                  \
+-{                                                                                         \
+-    struct AudioBankSound *sound = _sound;                                                \
+-    struct AudioBankSample *sample;                                                       \
+-    void *patched;                                                                        \
+-    if ((*sound).sample != (void *) 0)                                                    \
+-    {                                                                                     \
+-        patched = (void *)(((uintptr_t)(*sound).sample) + ((uintptr_t)((u8 *) mem)));     \
+-        (*sound).sample = patched;                                                        \
+-        sample = (*sound).sample;                                                         \
+-        if ((*sample).loaded == 0)                                                        \
+-        {                                                                                 \
+-            patched = (void *)(((uintptr_t)(*sample).sampleAddr) + ((uintptr_t) offset)); \
+-            (*sample).sampleAddr = patched;                                               \
+-            patched = (void *)(((uintptr_t)(*sample).loop) + ((uintptr_t)((u8 *) mem)));  \
+-            (*sample).loop = patched;                                                     \
+-            patched = (void *)(((uintptr_t)(*sample).book) + ((uintptr_t)((u8 *) mem)));  \
+-            (*sample).book = patched;                                                     \
+-            (*sample).loaded = 1;                                                         \
+-        }                                                                                 \
+-    }                                                                                     \
+-}
+-#endif
+-
+-// on US/JP this inlines patch_sound, using some -sopt compiler flag
++// Share the sample relocator instead of expanding a copy for each instrument slot.
+ void patch_audio_bank(struct AudioBank *mem, u8 *offset, u32 numInstruments, u32 numDrums) {
+     struct Instrument *instrument;
+     struct Instrument **itInstrs;
+@@ -516,14 +487,8 @@ void patch_audio_bank(struct AudioBank *mem, u8 *offset, u32 numInstruments, u32
+                 drum = PATCH(patched, mem);
+                 mem->drums[i] = drum;
+                 if (drum->loaded == 0) {
+-#if defined(VERSION_JP) || defined(VERSION_US)
+-                    //! copt replaces drum with 'patched' for these two lines
+-                    PATCH_SOUND(&(*(struct Drum *)patched).sound, mem, offset);
+-                    patched = (*(struct Drum *)patched).envelope;
+-#else
+                     patch_sound(&drum->sound, (u8 *) mem, offset);
+                     patched = drum->envelope;
+-#endif
+                     drum->envelope = BASE_OFFSET(mem, patched);
+                     drum->loaded = 1;
+                 }
+@@ -554,9 +519,9 @@ l2:
+                 instrument = *itInstrs;
+ 
+                 if (instrument->loaded == 0) {
+-                    PATCH_SOUND(&instrument->lowNotesSound, (u8 *) mem, offset);
+-                    PATCH_SOUND(&instrument->normalNotesSound, (u8 *) mem, offset);
+-                    PATCH_SOUND(&instrument->highNotesSound, (u8 *) mem, offset);
++                    patch_sound(&instrument->lowNotesSound, (u8 *) mem, offset);
++                    patch_sound(&instrument->normalNotesSound, (u8 *) mem, offset);
++                    patch_sound(&instrument->highNotesSound, (u8 *) mem, offset);
+                     patched = instrument->envelope;
+                     instrument->envelope = BASE_OFFSET(mem, patched);
+                     instrument->loaded = 1;
+@@ -576,7 +541,6 @@ l2:
+ #undef PATCH
+ #undef BASE_OFFSET_REAL
+ #undef BASE_OFFSET
+-#undef PATCH_SOUND
+ }
+ 
+ struct AudioBank *bank_load_immediate(s32 bankId, s32 arg1) {
 diff --git a/src/audio/sequence_unity.c b/src/audio/sequence_unity.c
 new file mode 100644
 index 0000000..dc235f8
@@ -604,7 +691,7 @@ index 0000000..dc235f8
 +#include "effects.c"
 +#include "playback.c"
 diff --git a/src/engine/behavior_script.c b/src/engine/behavior_script.c
-index 3d2fea1..7b0a6a0 100644
+index 3d2fea1..bc5df49 100644
 --- a/src/engine/behavior_script.c
 +++ b/src/engine/behavior_script.c
 @@ -71,8 +71,9 @@ u16 random_u16(void) {
@@ -619,6 +706,143 @@ index 3d2fea1..7b0a6a0 100644
  }
  
  // Return either -1 or 1 with a 50:50 chance.
+@@ -276,18 +277,6 @@ static s32 bhv_cmd_goto(void) {
+     return BHV_PROC_CONTINUE;
+ }
+ 
+-// Command 0x26: Unused. Marks the start of a loop that will repeat a certain number of times.
+-// Uses a u8 as the argument, instead of a s16 like the other version does.
+-// Usage: BEGIN_REPEAT_UNUSED(count)
+-static s32 bhv_cmd_begin_repeat_unused(void) {
+-    s32 count = BHV_CMD_GET_2ND_U8(0);
+-
+-    cur_obj_bhv_stack_push(BHV_CMD_GET_ADDR_OF_CMD(1)); // Store address of the first command of the loop in the stack
+-    cur_obj_bhv_stack_push(count); // Store repeat count in the stack too
+-
+-    gCurBhvCommand++;
+-    return BHV_PROC_CONTINUE;
+-}
+ 
+ // Command 0x05: Marks the start of a loop that will repeat a certain number of times.
+ // Usage: BEGIN_REPEAT(count)
+@@ -395,16 +384,6 @@ static s32 bhv_cmd_set_int(void) {
+     return BHV_PROC_CONTINUE;
+ }
+ 
+-// Command 0x36: Unused. Sets the specified field to an integer. Wastes 4 bytes of space for no reason at all.
+-static s32 bhv_cmd_set_int_unused(void) {
+-    u8 field = BHV_CMD_GET_2ND_U8(0);
+-    s32 value = BHV_CMD_GET_2ND_S16(1); // Taken from 2nd word instead of 1st
+-
+-    cur_obj_set_int(field, value);
+-
+-    gCurBhvCommand += 2; // Twice as long
+-    return BHV_PROC_CONTINUE;
+-}
+ 
+ // Command 0x14: Sets the specified field to a random float in the given range.
+ // Usage: SET_RANDOM_FLOAT(field, min, range)
+@@ -846,6 +825,12 @@ static s32 bhv_cmd_animate_texture(void) {
+ void stub_behavior_script_2(void) {
+ }
+ 
++// Placeholder for behavior commands no script in the game uses; their bodies
++// were removed (Kaze Emanuar, "Mario 64 wastes SO MUCH MEMORY").
++static s32 bhv_cmd_unused_trap(void) {
++    return BHV_PROC_BREAK;
++}
++
+ typedef s32 (*BhvCommandProc)(void);
+ static BhvCommandProc BehaviorCmdTable[] = {
+     bhv_cmd_begin,
+@@ -886,7 +871,7 @@ static BhvCommandProc BehaviorCmdTable[] = {
+     bhv_cmd_set_hitbox,
+     bhv_cmd_nop_4,
+     bhv_cmd_delay_var,
+-    bhv_cmd_begin_repeat_unused,
++    bhv_cmd_unused_trap, // bhv_cmd_begin_repeat_unused: no script uses it (Kaze Emanuar, "Mario 64 wastes SO MUCH MEMORY")
+     bhv_cmd_load_animations,
+     bhv_cmd_animate,
+     bhv_cmd_spawn_child_with_param,
+@@ -902,7 +887,7 @@ static BhvCommandProc BehaviorCmdTable[] = {
+     bhv_cmd_parent_bit_clear,
+     bhv_cmd_animate_texture,
+     bhv_cmd_disable_rendering,
+-    bhv_cmd_set_int_unused,
++    bhv_cmd_unused_trap, // bhv_cmd_set_int_unused: no script uses it (Kaze Emanuar, "Mario 64 wastes SO MUCH MEMORY")
+     bhv_cmd_spawn_water_droplet,
+ };
+ 
+diff --git a/src/engine/geo_layout.c b/src/engine/geo_layout.c
+index 2fd4afa..f4fe917 100644
+--- a/src/engine/geo_layout.c
++++ b/src/engine/geo_layout.c
+@@ -8,6 +8,10 @@
+ 
+ typedef void (*GeoLayoutCommandProc)(void);
+ 
++void geo_layout_cmd_unused_trap(void) {
++    // Unused geo command: its body was removed (Kaze Emanuar, "Mario 64 wastes SO MUCH MEMORY").
++}
++
+ GeoLayoutCommandProc GeoLayoutJumpTable[] = {
+     geo_layout_cmd_branch_and_link,
+     geo_layout_cmd_end,
+@@ -36,7 +40,7 @@ GeoLayoutCommandProc GeoLayoutJumpTable[] = {
+     geo_layout_cmd_node_generated,
+     geo_layout_cmd_node_background,
+     geo_layout_cmd_nop,
+-    geo_layout_cmd_copy_view,
++    geo_layout_cmd_unused_trap, // was geo_layout_cmd_copy_view: no geo layout uses it
+     geo_layout_cmd_node_held_obj,
+     geo_layout_cmd_node_scale,
+     geo_layout_cmd_nop2,
+@@ -706,32 +710,6 @@ void geo_layout_cmd_nop(void) {
+     gGeoLayoutCommand += 0x08 << CMD_SIZE_SHIFT;
+ }
+ 
+-/*
+-  0x1B: Copy the shared children from the object parent from a specific view
+-  to a newly created object parent node.
+-   cmd+0x02: s16 index (of gGeoViews)
+-*/
+-void geo_layout_cmd_copy_view(void) {
+-    struct GraphNodeObjectParent *graphNode;
+-    struct GraphNode *node = NULL;
+-    s16 index = cur_geo_cmd_s16(0x02);
+-
+-    if (index >= 0) {
+-        node = gGeoViews[index];
+-
+-        if (node->type == GRAPH_NODE_TYPE_OBJECT_PARENT) {
+-            node = ((struct GraphNodeObjectParent *) node)->sharedChild;
+-        } else {
+-            node = NULL;
+-        }
+-    }
+-
+-    graphNode = init_graph_node_object_parent(gGraphNodePool, NULL, node);
+-
+-    register_scene_graph_node(&graphNode->node);
+-
+-    gGeoLayoutCommand += 0x04 << CMD_SIZE_SHIFT;
+-}
+ 
+ /*
+   0x1C: Create a held object scene graph node
+diff --git a/src/engine/geo_layout.h b/src/engine/geo_layout.h
+index 6211e14..754c638 100644
+--- a/src/engine/geo_layout.h
++++ b/src/engine/geo_layout.h
+@@ -78,7 +78,7 @@ void geo_layout_cmd_node_object_parent(void);
+ void geo_layout_cmd_node_generated(void);
+ void geo_layout_cmd_node_background(void);
+ void geo_layout_cmd_nop(void);
+-void geo_layout_cmd_copy_view(void);
++void geo_layout_cmd_unused_trap(void);
+ void geo_layout_cmd_node_held_obj(void);
+ void geo_layout_cmd_node_culling_radius(void);
+ 
 diff --git a/src/engine/graph_node.c b/src/engine/graph_node.c
 index 66b49b2..3ce51f5 100644
 --- a/src/engine/graph_node.c
@@ -1663,6 +1887,50 @@ index 0925e96..5df49f5 100644
  
      if (dirX * normX + dirY * normY + dirZ * normZ < 0) {
          behindSurface = 1;
+diff --git a/src/game/debug.c b/src/game/debug.c
+index c2b7172..19f6ae8 100644
+--- a/src/game/debug.c
++++ b/src/game/debug.c
+@@ -488,39 +488,6 @@ void try_do_mario_debug_object_spawn(void) {
+     }
+ }
+ 
+-// TODO: figure out what this is
+-void debug_print_obj_move_flags(void) {
+-#ifndef VERSION_EU // TODO: Is there a better way to diff this? static EU doesn't seem to work.
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_LANDED) {
+-        print_debug_top_down_objectinfo("BOUND   %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_ON_GROUND) {
+-        print_debug_top_down_objectinfo("TOUCH   %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_LEFT_GROUND) {
+-        print_debug_top_down_objectinfo("TAKEOFF %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_ENTERED_WATER) {
+-        print_debug_top_down_objectinfo("DIVE    %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_AT_WATER_SURFACE) {
+-        print_debug_top_down_objectinfo("S WATER %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_UNDERWATER_OFF_GROUND) {
+-        print_debug_top_down_objectinfo("U WATER %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_UNDERWATER_ON_GROUND) {
+-        print_debug_top_down_objectinfo("B WATER %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_IN_AIR) {
+-        print_debug_top_down_objectinfo("SKY     %x", gCurrentObject->oMoveFlags);
+-    }
+-    if (gCurrentObject->oMoveFlags & OBJ_MOVE_OUT_SCOPE) {
+-        print_debug_top_down_objectinfo("OUT SCOPE %x", gCurrentObject->oMoveFlags);
+-    }
+-#endif
+-}
+-
+ // unused, what is this?
+ void debug_enemy_unknown(s16 *enemyArr) {
+     // copy b1-b4 over to an unknown s16 array
 diff --git a/src/game/game_init.c b/src/game/game_init.c
 index c969ba3..e767e35 100644
 --- a/src/game/game_init.c

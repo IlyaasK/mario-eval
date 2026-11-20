@@ -106,6 +106,6 @@ scores 1.0, no upper cap; a failed gate scores −1), so each doubling is worth
 the same.
 
 Reference points on SM64's public routes (console profile): GCC `-O2` alone
-1.40×; `r10-kaze-master`, every optimization from Kaze Emanuar's public videos
-and code that keeps the game the same, 1.68×; `r11-beyond-kaze`, adding our own
+1.39×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's
+public work, 1.69×; `r11-beyond-kaze`, adding our own
 D-cache layout work, 1.62× (earlier, smaller build).
