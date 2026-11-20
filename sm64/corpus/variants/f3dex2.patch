@@ -1,0 +1,18 @@
+--- a/Makefile
++++ b/Makefile
+@@ -39,13 +39,13 @@
+ ifeq      ($(VERSION),jp)
+   DEFINES   += VERSION_JP=1
+   OPT_FLAGS := -g
+-  GRUCODE   ?= f3d_old
++  GRUCODE   ?= f3dex2
+   VERSION_JP_US  ?= true
+   VERSION_SH_CN  ?= false
+ else ifeq ($(VERSION),us)
+   DEFINES   += VERSION_US=1
+   OPT_FLAGS := -g
+-  GRUCODE   ?= f3d_old
++  GRUCODE   ?= f3dex2
+   VERSION_JP_US  ?= true
+   VERSION_SH_CN  ?= false
+ else ifeq ($(VERSION),eu)

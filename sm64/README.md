@@ -83,9 +83,10 @@ container.
   uninitialized locals, out-of-bounds reads) and hibernating distant off-screen
   objects is rewarded; altering 1996 SM64 gameplay/physics quirks (quarter-step
   counts, wall-kick timing, BLJs) fails the gameplay gate.
-- **Accepted visual variants (`full-detail`, `ra-zb-opa`, `full-detail-ra-opa`)**:
-  Always drawing high-polygon Mario (`actors/mario/geo.inc.c`) and/or using
+- **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, and every
+  combination)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
+  switching to Nintendo's F3DEX2 microcode, and/or using
   SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing opaque
   modes (preserving `AA_EN` VI coverage while dropping `IM_RD` framebuffer
   reads, as used by Kaze Emanuar and later N64 first-party games) are
-  precomputed and accepted as whole frames by the video gate.
+  precomputed (every combination) and accepted as whole frames by the video gate.

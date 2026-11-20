@@ -85,8 +85,8 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64
      while any change to 1996 SM64 physics/collision quirks (quarter-steps, wall
      seam geometry, BLJs) fails. On Pip's Garden, `mev_obs_t` is checked bit-exact.
    - **Video**: Every frame as a whole must match either the baseline reference
-     or an **accepted visual variant** (`full-detail`, `ra-zb-opa`,
-     `full-detail-ra-opa`), with ≤ 0.2% pixels exceeding ±2/31 channel
+     or an **accepted visual variant**: any combination of `full-detail`,
+     `ra-zb-opa` and `f3dex2` (precomputed), with ≤ 0.2% pixels exceeding ±2/31 channel
      difference in a 3×3 neighborhood.
    - **Audio**: Overall SNR ≥ 40 dB and worst-frame SNR ≥ 20 dB.
    - **Hardware**: Highest RDRAM byte ≤ 4,194,304 (4 MB retail N64 RAM, no

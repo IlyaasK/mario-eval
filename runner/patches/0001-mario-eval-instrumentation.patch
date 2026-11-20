@@ -1,5 +1,5 @@
 diff --git i/ares/n64/cpu/cpu.cpp w/ares/n64/cpu/cpu.cpp
-index 41964d4..1f234b4 100644
+index 41964d4..08e5e6c 100644
 --- i/ares/n64/cpu/cpu.cpp
 +++ w/ares/n64/cpu/cpu.cpp
 @@ -83,6 +83,7 @@ auto CPU::flushCount() -> void {
@@ -43,11 +43,49 @@ index 41964d4..1f234b4 100644
  
    if(Accuracy::CPU::Recompiler && recompiler.enabled && access.cache) {
      if(vaddrAlignedError<Word>(access.vaddr, false)) return true;
+@@ -192,6 +219,13 @@ auto CPU::icacheFillLine(u64 vaddr, u32 paddr) -> void {
+   icache.line(vaddr).fill(paddr, *this);
+ }
+ 
++//profiling (--profile) refill: same timing, also records the missing line
++auto CPU::icacheFillLineProfiled(u64 vaddr, u32 paddr) -> void {
++  profile.icacheMisses++;
++  if(sampler.enabled) sampler.imissPC[(u32)vaddr & ~31u]++;
++  icache.line(vaddr).fill(paddr, *this);
++}
++
+ template<bool Recompiled>
+ auto CPU::instructionEpilogue() -> void {
+   if constexpr(!Recompiled) {
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..410319b 100644
+index b51000d..b720c70 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
-@@ -1302,6 +1302,28 @@ struct CPU : Thread {
+@@ -53,6 +53,7 @@ struct CPU : Thread {
+   template<bool Recompiled> auto instructionEpilogue() -> void;
+   auto raiseCoprocessor1Exception() -> void;
+   auto icacheFillLine(u64 vaddr, u32 paddr) -> void;
++  auto icacheFillLineProfiled(u64 vaddr, u32 paddr) -> void;
+ 
+   auto power(bool reset) -> void;
+ 
+@@ -152,6 +153,7 @@ struct CPU : Thread {
+       auto& line = this->line(vaddr);
+       if(!line.hit(paddr)) {
+         self.profile.icacheMisses++;
++        if(unlikely(self.sampler.enabled)) self.sampler.imissPC[(u32)vaddr & ~31u]++;
+         line.fill(paddr, cpu);
+       } else {
+         self.profile.icacheHits++;
+@@ -163,6 +165,7 @@ struct CPU : Thread {
+       auto& line = this->line(vaddr);
+       if(!line.hit(paddr)) {
+         self.profile.icacheMisses++;
++        if(unlikely(self.sampler.enabled)) self.sampler.imissPC[(u32)vaddr & ~31u]++;
+         line.fill(paddr, cpu);
+       } else {
+         self.profile.icacheHits++;
+@@ -1302,6 +1305,31 @@ struct CPU : Thread {
      Profile() : data{0} {}
    } profile;
  
@@ -65,37 +103,61 @@ index b51000d..410319b 100644
 +    s64 lastClock = 0;
 +    u32 lastPC = 0;
 +    bool lastIdle = false;
++    bool jitProfile = false;  //set before power-on: recompiled blocks take the profiled I-cache refill
 +    u32 idleRanges = 0;
 +    u32 idleLo[8] = {};
 +    u32 idleHi[8] = {};
 +    s64 idleClocks = 0;  //master-clock units (2 per CPU cycle)
 +    std::unordered_map<u32, u64> histogram;
 +    std::unordered_map<u32, u64> dmissPC;  //data-cache misses by faulting PC
++    std::unordered_map<u64, u64> dmissAddr;  //data-cache misses by (line address << 32 | PC)
++    std::unordered_map<u32, u64> imissPC;  //instruction-cache misses by line address
 +  } sampler;
 +
    struct ProfileSlot {
      Profile cpu;
      struct {
 diff --git i/ares/n64/cpu/dcache.cpp w/ares/n64/cpu/dcache.cpp
-index 4de28e0..17aa844 100644
+index 4de28e0..1005a62 100644
 --- i/ares/n64/cpu/dcache.cpp
 +++ w/ares/n64/cpu/dcache.cpp
-@@ -57,6 +57,7 @@ auto CPU::DataCache::read(u64 vaddr, u32 paddr) -> u64 {
+@@ -57,6 +57,10 @@ auto CPU::DataCache::read(u64 vaddr, u32 paddr) -> u64 {
      }
      line.fill(paddr);
      self.profile.dcacheMisses++;
-+    if(unlikely(self.sampler.enabled)) self.sampler.dmissPC[(u32)self.ipu.pc]++;
++    if(unlikely(self.sampler.enabled)) {
++      self.sampler.dmissPC[(u32)self.ipu.pc]++;
++      self.sampler.dmissAddr[(u64)((u32)vaddr & ~15u) << 32 | (u32)self.ipu.pc]++;
++    }
    } else {
      cpu.step(1 * 2);
      self.profile.dcacheHits++;
-@@ -86,6 +87,7 @@ auto CPU::DataCache::write(u64 vaddr, u32 paddr, u64 data) -> void {
+@@ -86,6 +90,10 @@ auto CPU::DataCache::write(u64 vaddr, u32 paddr, u64 data) -> void {
      }
      line.fill(paddr);
      self.profile.dcacheMisses++;
-+    if(unlikely(self.sampler.enabled)) self.sampler.dmissPC[(u32)self.ipu.pc]++;
++    if(unlikely(self.sampler.enabled)) {
++      self.sampler.dmissPC[(u32)self.ipu.pc]++;
++      self.sampler.dmissAddr[(u64)((u32)vaddr & ~15u) << 32 | (u32)self.ipu.pc]++;
++    }
    } else {
      cpu.step(1 * 2);
      self.profile.dcacheHits++;
+diff --git i/ares/n64/cpu/recompiler.cpp w/ares/n64/cpu/recompiler.cpp
+index 8158048..f0f64af 100644
+--- i/ares/n64/cpu/recompiler.cpp
++++ w/ares/n64/cpu/recompiler.cpp
+@@ -816,7 +816,9 @@ auto CPU::Recompiler::emit(u64 vaddr, u32 address, u64 stateKey) -> Block* {
+       const u32 burst = (slow.icachePaddr & ~0xfffu) | ((lineIndex << 5) & 0xfe0u);
+       const u32 tagKey = (slow.icachePaddr & ~0xfffu) | 1u;
+       const bool sdram = Model::Aleck64() && burst > 0xbfff'ffffu;
+-      if(!emitStateKey.rdramMapIdentity() || (!sdram && burst + 0x1f >= rdram.ram.size)) {
++      if(self.sampler.jitProfile) {
++        callf(&CPU::icacheFillLineProfiled, imm64(slow.vaddr), imm(slow.icachePaddr));
++      } else if(!emitStateKey.rdramMapIdentity() || (!sdram && burst + 0x1f >= rdram.ram.size)) {
+         callf(&CPU::icacheFillLine, imm64(slow.vaddr), imm(slow.icachePaddr));
+       } else {
+         const sljit_sw ramDataField = sdram ? (sljit_sw)(uintptr_t)&aleck64.sdram.data
 diff --git i/ares/n64/rdp/rdp.cpp w/ares/n64/rdp/rdp.cpp
 index b71c407..e0ade1c 100644
 --- i/ares/n64/rdp/rdp.cpp

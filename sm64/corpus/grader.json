@@ -43,9 +43,9 @@
       "policy": "Opaque layers in rendering_graph_node.c may use SGI's official G_RM_RA_ZB_OPA_SURF / G_RM_RA_OPA_SURF reduced-aliasing modes (keeping AA_EN VI silhouette coverage while dropping IM_RD per-pixel framebuffer reads, as used in later N64 titles and Kaze Emanuar's SM64 optimizations)."
     },
     {
-      "id": "full-detail-ra-opa",
-      "patch": "variants/full-detail-ra-opa.patch",
-      "policy": "Combined full-detail Mario and G_RM_RA_ZB_OPA_SURF / G_RM_RA_OPA_SURF opaque layers."
+      "id": "f3dex2",
+      "patch": "variants/f3dex2.patch",
+      "policy": "The game may use Nintendo's later F3DEX2 graphics microcode (shipped with the libultra SDK and used by Kaze Emanuar's SM64 work) instead of the original Fast3D. Its vertex transform and clipping round slightly differently, moving some triangle edges by a sub-pixel; nothing is added or removed."
     }
   ],
   "audio": {

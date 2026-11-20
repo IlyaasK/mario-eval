@@ -25,6 +25,7 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import itertools
 import math
 import os
 import pathlib
@@ -460,15 +461,33 @@ def run_all(rom, items, frames, out_dir, max_fields, timeout):
 
 # ---------------------------------------------------------------- precompute
 
-def patched_copy(source, patch_file):
+def patched_copy(source, patch_files):
+    """Copy source to a scratch dir and apply one or more patches in order."""
+    if isinstance(patch_files, (str, pathlib.Path)):
+        patch_files = [patch_files]
     work = pathlib.Path(tempfile.mkdtemp(prefix="mev-variant-"))
     _copy_source(source, work / "src")
-    proc = subprocess.run(["patch", "-s", "-p1", "-i", str(patch_file)], cwd=work / "src",
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        shutil.rmtree(work, ignore_errors=True)
-        raise GraderError(f"patch {patch_file} does not apply: {proc.stdout}{proc.stderr}")
+    for patch_file in patch_files:
+        proc = subprocess.run(["patch", "-s", "-p1", "-i", str(patch_file)], cwd=work / "src",
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            shutil.rmtree(work, ignore_errors=True)
+            raise GraderError(f"patch {patch_file} does not apply: {proc.stdout}{proc.stderr}")
     return work
+
+
+def variant_combinations(cfg):
+    """Every non-empty combination of the atomic accepted visual changes.
+
+    The video gate matches each frame as a whole against one reference, so a
+    submission that uses several accepted changes needs a reference with
+    exactly that combination. Returns [(id, [patch, ...]), ...]."""
+    atoms = cfg.get("accepted_visual_variants", [])
+    out = []
+    for r in range(1, len(atoms) + 1):
+        for combo in itertools.combinations(atoms, r):
+            out.append(("+".join(v["id"] for v in combo), [v["patch"] for v in combo]))
+    return out
 
 
 def precompute(args):
@@ -509,11 +528,14 @@ def precompute(args):
     finally:
         shutil.rmtree(rom.parent, ignore_errors=True)
 
-    # Accepted visual variants: the baseline with one listed visual change
-    # applied. Each must leave gameplay and audio exactly as they were; only
-    # its video is kept, as an extra reference for the video gate.
-    for variant in cfg.get("accepted_visual_variants", []):
-        vwork = patched_copy(args.source, (corpus / variant["patch"]).resolve())
+    # Accepted visual variants: the baseline with each combination of the
+    # listed visual changes applied. Each must leave gameplay bit-exact and
+    # audio within the audio gate (a microcode swap shifts RSP task timing,
+    # which can move a few samples by a few LSBs); only its video is kept, as
+    # an extra reference for the video gate.
+    for variant_id, patches in variant_combinations(cfg):
+        variant = {"id": variant_id}
+        vwork = patched_copy(args.source, [(corpus / p).resolve() for p in patches])
         vrom = None
         try:
             vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant['id']}.log")
@@ -525,9 +547,14 @@ def precompute(args):
                 if vres[w["id"]].get("status") != "completed":
                     raise GraderError(f"variant {variant['id']} did not complete {w['id']}")
                 base_run, var_run = load_run(cache / "runs" / w["id"]), load_run(vdir / w["id"])
-                if base_run["obs"] != var_run["obs"] or base_run["audio"] != var_run["audio"]:
-                    raise GraderError(f"variant {variant['id']} changes gameplay or audio on {w['id']}; "
+                if base_run["obs"] != var_run["obs"]:
+                    raise GraderError(f"variant {variant['id']} changes gameplay on {w['id']}; "
                                       "an accepted visual change must be visual only")
+                au = compare_audio(base_run["audio"], var_run["audio"], base_run["rows"], var_run["rows"], cfg)
+                if not au["pass"]:
+                    raise GraderError(f"variant {variant['id']} changes audio on {w['id']}: {au}")
+                if base_run["audio"] != var_run["audio"]:
+                    print(f"variant {variant['id']} {w['id']}: audio SNR {au['snr_db']:.1f} dB", file=sys.stderr)
                 video = (vdir / w["id"] / "video.bin").read_bytes()
                 (cache / "runs" / w["id"] / f"video.{variant['id']}.bin.z").write_bytes(zlib.compress(video, 6))
             shutil.rmtree(vdir, ignore_errors=True)

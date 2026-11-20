@@ -268,7 +268,7 @@ auto nall::main(Arguments arguments) -> void {
   if(arguments.take("--out", value)) opt.out = value;
   if(arguments.take("--frames", value)) opt.frames = value.natural();
   if(arguments.take("--max-fields", value)) opt.maxFields = value.natural();
-  if(arguments.take("--profile", value)) opt.profile = value;
+  if(arguments.take("--profile", value)) { opt.profile = value; N64::cpu.sampler.jitProfile = true; }
   // --idle-range LO:HI (hex virtual addresses, repeatable): CPU time spent
   // executing inside these ranges is reported as cpu_idle_cycles.
   while(arguments.take("--idle-range", value)) {
@@ -354,6 +354,12 @@ auto nall::main(Arguments arguments) -> void {
     std::ofstream m(opt.profile + ".dmiss");
     m << "# data-cache misses by faulting PC\n";
     for(auto& [pc, n] : N64::cpu.sampler.dmissPC) m << std::hex << pc << std::dec << " " << n << "\n";
+    std::ofstream da(opt.profile + ".dmissaddr");
+    da << "# data-cache misses: line address, faulting PC, count\n";
+    for(auto& [k, n] : N64::cpu.sampler.dmissAddr) da << std::hex << (u32)(k >> 32) << " " << (u32)k << std::dec << " " << n << "\n";
+    std::ofstream im(opt.profile + ".imiss");
+    im << "# instruction-cache misses by line address\n";
+    for(auto& [pc, n] : N64::cpu.sampler.imissPC) im << std::hex << pc << std::dec << " " << n << "\n";
   }
   runner.root->unload();
   exit(status == "completed" ? 0 : 1);
