@@ -1,0 +1,169 @@
+diff -r a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -878,6 +878,12 @@
+ 
+ endif
+ 
++# Rainbow Ride decoration pieces baked into level display lists (Kaze Emanuar)
++$(BUILD_DIR)/levels/rr/baked_statics.inc.c: tools/bake_rr_statics.py levels/rr/script.c
++	$(call print,Baking:,levels/rr,$@)
++	$(V)$(PYTHON) tools/bake_rr_statics.py $@
++$(BUILD_DIR)/levels/rr/leveldata.o: $(BUILD_DIR)/levels/rr/baked_statics.inc.c
++
+ # Assemble assembly code
+ $(BUILD_DIR)/%.o: %.s
+ 	$(call print,Assembling:,$<,$@)
+diff -r a/Makefile.orig b/Makefile.orig
+--- a/levels/rr/areas/1/collision.inc.c
++++ b/levels/rr/areas/1/collision.inc.c
+@@ -5418,29 +5418,16 @@
+     COL_TRI_SPECIAL(35, 45, 46, 0x100),
+     COL_TRI_SPECIAL(35, 46, 47, 0x100),
+     COL_TRI_STOP(),
+-    COL_SPECIAL_INIT(23),
++    // 14 decoration pieces are baked into the level mesh (tools/bake_rr_statics.py).
++    COL_SPECIAL_INIT(9),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_null_start,   /*pos*/  2599, -1833,  2071, /*yaw*/   64), // unused, probably an early way to set initial position
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_03, /*pos*/  1902, -1833,  1063, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_04, /*pos*/  3803, -1833,  2036, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_05, /*pos*/ -4888, -2550,  5847, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_06, /*pos*/  5324, -2038,  6155, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_07, /*pos*/  -409, -3164,  5207, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_08, /*pos*/ -3193, -4726,  6670, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_08, /*pos*/ -4680, -1910,   296, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_09, /*pos*/  6506, -1295,   762, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0A, /*pos*/ -4629,   137,  -113, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0B, /*pos*/  2639,  2724,  -622, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0C, /*pos*/  3577,  2486, -2346, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0D, /*pos*/   614, -1116,  3671, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0D, /*pos*/  3554,  4276, -2346, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0E, /*pos*/  5280,  4937,   603, /*yaw*/  128),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_0F, /*pos*/ -4197,  4608, -5119, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_10, /*pos*/  2628,  -143, -1611, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_11, /*pos*/  5094,  3440,  4029, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_12, /*pos*/ -3708,  2006,   270, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_13, /*pos*/  5994,  -988,  1341, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_14, /*pos*/  3917,   624, -1133, /*yaw*/    0),
+-    SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_15, /*pos*/ -3981,  3328, -2736, /*yaw*/    0),
+     SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_16, /*pos*/ -6053,  4096, -3197, /*yaw*/    0),
+     COL_END(),
+ #endif
+diff -r a/levels/rr/areas/1/geo.inc.c b/levels/rr/areas/1/geo.inc.c
+--- a/levels/rr/areas/1/geo.inc.c
++++ b/levels/rr/areas/1/geo.inc.c
+@@ -16,6 +16,9 @@
+                 GEO_CAMERA(14, 0, 2000, 6000, 0, 0, -8000, geo_camera_main),
+                 GEO_OPEN_NODE(),
+                     GEO_ASM(0, geo_exec_flying_carpet_timer_update),
++                    GEO_DISPLAY_LIST(LAYER_OPAQUE, rr_baked_statics_layer_opaque),
++                    GEO_DISPLAY_LIST(LAYER_ALPHA, rr_baked_statics_layer_alpha),
++                    GEO_DISPLAY_LIST(LAYER_TRANSPARENT, rr_baked_statics_layer_transparent),
+                     GEO_DISPLAY_LIST(LAYER_ALPHA, dl_cruiser_metal_holes),
+                     GEO_RENDER_OBJ(),
+                     GEO_ASM(0, geo_envfx_main),
+diff -r a/levels/rr/header.h b/levels/rr/header.h
+--- a/levels/rr/header.h
++++ b/levels/rr/header.h
+@@ -110,4 +110,9 @@
+ // script
+ extern const LevelScript level_rr_entry[];
+ 
++// Baked decoration pieces (tools/bake_rr_statics.py)
++extern const Gfx rr_baked_statics_layer_opaque[];
++extern const Gfx rr_baked_statics_layer_alpha[];
++extern const Gfx rr_baked_statics_layer_transparent[];
++
+ #endif
+diff -r a/levels/rr/leveldata.c b/levels/rr/leveldata.c
+--- a/levels/rr/leveldata.c
++++ b/levels/rr/leveldata.c
+@@ -66,3 +66,5 @@
+ #include "levels/rr/areas/1/collision.inc.c"
+ #include "levels/rr/areas/1/macro.inc.c"
+ #include "levels/rr/areas/1/trajectory.inc.c"
++
++#include "levels/rr/baked_statics.inc.c"
+Only in b: tools
+--- a/tools/bake_rr_statics.py
++++ b/tools/bake_rr_statics.py
+@@ -0,0 +1,79 @@
++#!/usr/bin/env python3
++"""Bake Rainbow Ride's static decoration pieces into level display lists.
++
++Kaze Emanuar ("How Optimizations made Mario 64 SLOWER", code release
++KazeEmanuar/SM64-but-some-optimizations-are-removed) merged these
++special_level_geo_* objects into one level mesh, so the CPU no longer
++processes, culls and transforms them as objects every frame. This generator
++does the same at build time from the decomp's own model files: it emits a copy
++of each piece's vertices moved to the piece's spawn position (all have yaw 0)
++and one display list per render layer. No model data is stored in the repo.
++
++usage: bake_rr_statics.py OUT.inc.c
++"""
++import pathlib
++import re
++import sys
++
++# (preset, x, y, z): the pieces Kaze baked (his collision.inc.c comments them out).
++PIECES = [
++    ("03", 1902, -1833, 1063), ("04", 3803, -1833, 2036), ("07", -409, -3164, 5207),
++    ("09", 6506, -1295, 762), ("0A", -4629, 137, -113), ("0B", 2639, 2724, -622),
++    ("0C", 3577, 2486, -2346), ("0D", 614, -1116, 3671), ("10", 2628, -143, -1611),
++    ("11", 5094, 3440, 4029), ("12", -3708, 2006, 270), ("13", 5994, -988, 1341),
++    ("14", 3917, 624, -1133), ("15", -3981, 3328, -2736),
++]
++LAYERS = ["LAYER_OPAQUE", "LAYER_ALPHA", "LAYER_TRANSPARENT"]
++LEVEL = pathlib.Path("levels/rr")
++
++
++def geo_for_preset(preset):
++    script = (LEVEL / "script.c").read_text()
++    m = re.search(rf"MODEL_LEVEL_GEOMETRY_{preset},\s*(\w+)\)", script)
++    geo = m.group(1)
++    for f in sorted((LEVEL / "areas/1").glob("*/geo.inc.c")):
++        text = f.read_text()
++        if re.search(rf"const GeoLayout {geo}\[\]", text):
++            return f.parent, text
++    raise SystemExit(f"no geo for {preset}")
++
++
++def main():
++    out = pathlib.Path(sys.argv[1])
++    lines = ["// Generated by tools/bake_rr_statics.py; do not edit.", ""]
++    layer_dls = {layer: [] for layer in LAYERS}
++    for preset, x, y, z in PIECES:
++        piece_dir, geo = geo_for_preset(preset)
++        model = "\n".join(f.read_text() for f in sorted(piece_dir.glob("*.inc.c")) if f.name != "geo.inc.c")
++        prefix = f"rr_baked_{preset}_{piece_dir.name}_"
++        names = re.findall(r"^(?:static )?const (?:Vtx|Gfx) (\w+)\[\]", model, re.M)
++        rename = {n: prefix + n for n in names}
++        body = []
++        for block in re.findall(r"^(?:static )?const (?:Vtx|Gfx) \w+\[\] = \{.*?\n\};", model, re.S | re.M):
++            if " Vtx " in block.split("=")[0]:
++                block = block if block.startswith("static") else "static " + block
++                def move(m):
++                    vx, vy, vz = int(m.group(1)) + x, int(m.group(2)) + y, int(m.group(3)) + z
++                    for v in (vx, vy, vz):
++                        if not -32768 <= v <= 32767:
++                            raise SystemExit(f"vertex out of s16 range in {piece_dir}")
++                    return f"{{{{{{{vx:6d}, {vy:6d}, {vz:6d}}}"
++                block = re.sub(r"\{\{\{\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\}", move, block)
++            if not block.startswith("static"):
++                block = "static " + block
++            block = re.sub(r"\b(\w+)\b", lambda m: rename.get(m.group(1), m.group(1)), block)
++            body.append(block)
++        lines += [f"// special_level_geo_{preset} at ({x}, {y}, {z}), from {piece_dir}"] + body + [""]
++        for layer, dl in re.findall(r"GEO_DISPLAY_LIST\((LAYER_\w+),\s*(\w+)\)", geo):
++            layer_dls[layer].append(rename[dl])
++    for layer in LAYERS:
++        name = "rr_baked_statics_" + layer.lower()
++        lines.append(f"const Gfx {name}[] = {{")
++        lines += [f"    gsSPDisplayList({dl})," for dl in layer_dls[layer]]
++        lines += ["    gsSPEndDisplayList(),", "};", ""]
++    out.parent.mkdir(parents=True, exist_ok=True)
++    out.write_text("\n".join(lines))
++
++
++if __name__ == "__main__":
++    main()

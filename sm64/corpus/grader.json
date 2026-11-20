@@ -46,6 +46,17 @@
       "id": "f3dex2",
       "patch": "variants/f3dex2.patch",
       "policy": "The game may use Nintendo's later F3DEX2 graphics microcode (shipped with the libultra SDK and used by Kaze Emanuar's SM64 work) instead of the original Fast3D. Its vertex transform and clipping round slightly differently, moving some triangle edges by a sub-pixel; nothing is added or removed."
+    },
+    {
+      "id": "no-lod",
+      "patch": "variants/no-lod.patch",
+      "policy": "Level-of-detail switching may be removed everywhere, as Kaze Emanuar does in \"How Optimizations made Mario 64 SLOWER\": the near, full-detail model is always drawn at any distance and the far low-detail alternatives never are, so nothing pops in or swaps model. Gameplay and audio must be unchanged."
+    },
+    {
+      "id": "rr-statics",
+      "patch": "variants/rr-statics.patch",
+      "workloads": ["rr"],
+      "policy": "Rainbow Ride's 14 static decoration pieces (special_level_geo_03/04/07/09/0A/0B/0C/0D/10-15) may be baked into the level mesh instead of being spawned as objects, exactly the set Kaze Emanuar merged in his \"How Optimizations made Mario 64 SLOWER\" code release. The same triangles at the same places; draw order and vertex rounding may move edge pixels."
     }
   ],
   "audio": {

@@ -58,18 +58,20 @@ index 41964d4..08e5e6c 100644
  auto CPU::instructionEpilogue() -> void {
    if constexpr(!Recompiled) {
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..5513f1a 100644
+index b51000d..092910d 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
-@@ -53,6 +53,7 @@ struct CPU : Thread {
+@@ -53,6 +53,9 @@ struct CPU : Thread {
    template<bool Recompiled> auto instructionEpilogue() -> void;
    auto raiseCoprocessor1Exception() -> void;
    auto icacheFillLine(u64 vaddr, u32 paddr) -> void;
++  auto uncachedRdramRead() -> void;
++  auto uncachedRdramWrite() -> void;
 +  auto icacheFillLineProfiled(u64 vaddr, u32 paddr) -> void;
  
    auto power(bool reset) -> void;
  
-@@ -152,6 +153,7 @@ struct CPU : Thread {
+@@ -152,6 +155,7 @@ struct CPU : Thread {
        auto& line = this->line(vaddr);
        if(!line.hit(paddr)) {
          self.profile.icacheMisses++;
@@ -77,7 +79,7 @@ index b51000d..5513f1a 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -163,6 +165,7 @@ struct CPU : Thread {
+@@ -163,6 +167,7 @@ struct CPU : Thread {
        auto& line = this->line(vaddr);
        if(!line.hit(paddr)) {
          self.profile.icacheMisses++;
@@ -85,7 +87,14 @@ index b51000d..5513f1a 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1302,6 +1305,32 @@ struct CPU : Thread {
+@@ -1297,11 +1302,38 @@ struct CPU : Thread {
+       s64 cpuCyclesExc;
+       s64 icacheHits, icacheMisses, icacheWritebacks;
+       s64 dcacheHits, dcacheMisses, dcacheWritebacks;
++      s64 uncachedReads, uncachedWrites;  //mario-eval: CPU accesses to RDRAM that bypass the caches
+     };
+-    s64 data[8];
++    s64 data[10];
      Profile() : data{0} {}
    } profile;
  
@@ -152,6 +161,55 @@ index 4de28e0..de340a2 100644
    } else {
      cpu.step(1 * 2);
      self.profile.dcacheHits++;
+diff --git i/ares/n64/cpu/memory.cpp w/ares/n64/cpu/memory.cpp
+index f362ef6..827c915 100644
+--- i/ares/n64/cpu/memory.cpp
++++ w/ares/n64/cpu/memory.cpp
+@@ -154,12 +154,28 @@ static auto reverseEndianPaddr(u32 paddr) -> u32 {
+   return paddr;
+ }
+ 
++//mario-eval: ares charges no time for uncached RDRAM accesses ("not implemented
++//until we implement the CPU write queue"), which would make bypassing the caches
++//free. A read waits for RDRAM like a D-cache fill (40 cycles here; CEN64 uses 38
++//per word); a write goes through the write buffer, charged a quarter of a
++//4-word line write-back.
++auto CPU::uncachedRdramRead() -> void {
++  step(40 * 2);
++  profile.uncachedReads++;
++}
++
++auto CPU::uncachedRdramWrite() -> void {
++  step(10 * 2);
++  profile.uncachedWrites++;
++}
++
+ auto CPU::fetch(PhysAccess access) -> maybe<u32> {
+   step(1 * 2);
+   if(!access) return nothing;
+   u32 paddr = access.paddr;
+   if(context.littleEndian()) paddr = reverseEndianPaddr<Word>(paddr);
+   if(access.cache) return icache.fetch(access.vaddr, paddr, cpu);
++  if(paddr <= 0x03ef'ffff) uncachedRdramRead();
+   return busRead<Word>(paddr);
+ }
+ 
+@@ -170,6 +186,7 @@ auto CPU::read(PhysAccess access) -> maybe<u64> {
+   u32 paddr = access.paddr;
+   if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
+   if(access.cache) return dcache.read<Size>(access.vaddr, paddr);
++  if(paddr <= 0x03ef'ffff) uncachedRdramRead();
+   return busRead<Size>(paddr);
+ }
+ 
+@@ -190,6 +207,7 @@ auto CPU::write(PhysAccess access, u64 data) -> bool {
+   u32 paddr = access.paddr;
+   if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
+   if(access.cache) return dcache.write<Size>(access.vaddr, paddr, data), true;
++  if(paddr <= 0x03ef'ffff) uncachedRdramWrite();
+   return busWrite<Size>(paddr, data), true;
+ }
+ 
 diff --git i/ares/n64/cpu/recompiler.cpp w/ares/n64/cpu/recompiler.cpp
 index 8158048..f0f64af 100644
 --- i/ares/n64/cpu/recompiler.cpp

@@ -213,6 +213,7 @@ struct Runner : ares::Platform {
       << ",\"icache_hits\":" << cp.icacheHits << ",\"icache_misses\":" << cp.icacheMisses
       << ",\"dcache_hits\":" << cp.dcacheHits << ",\"dcache_misses\":" << cp.dcacheMisses
       << ",\"dcache_writebacks\":" << cp.dcacheWritebacks
+      << ",\"uncached_reads\":" << cp.uncachedReads << ",\"uncached_writes\":" << cp.uncachedWrites
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
       << ",\"cpu_idle_cycles\":" << N64::cpu.sampler.idleClocks / 2
       << ",\"rdp_cycles\":" << dp.cycles

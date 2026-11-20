@@ -218,7 +218,8 @@ def metrics(run):
     draw frame N, all sharing RDRAM. So a frame's console cost is estimated as
     the busiest unit: max(CPU, RSP busy, RDP busy, RDRAM time at peak
     bandwidth). CPU time excludes the idle thread (waiting for the RCP) and
-    adds BUS_CONTENTION_CYCLES per cache miss/write-back. The RDP model is
+    adds BUS_CONTENTION_CYCLES per bus transaction (cache miss/write-back, or
+    an uncached RDRAM access, whose own latency the runner charges). The RDP model is
     approximate (see docs/n64-cost-model.md).
     """
     rows = run["rows"]
@@ -226,7 +227,8 @@ def metrics(run):
     ticks = d("count_ticks")
     idle = d("cpu_idle_cycles")
     cpu_busy = ticks - idle
-    bus_events = d("icache_misses") + d("dcache_misses") + d("dcache_writebacks")
+    bus_events = (d("icache_misses") + d("dcache_misses") + d("dcache_writebacks")
+                  + d("uncached_reads") + d("uncached_writes"))
     cpu_eff = cpu_busy + BUS_CONTENTION_CYCLES * bus_events
     rsp = np.array([busy_rsp(b) - busy_rsp(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     rdp = d("rdp_cycles")
@@ -481,13 +483,25 @@ def variant_combinations(cfg):
 
     The video gate matches each frame as a whole against one reference, so a
     submission that uses several accepted changes needs a reference with
-    exactly that combination. Returns [(id, [patch, ...]), ...]."""
+    exactly that combination. An atom may list the "workloads" it can change
+    (e.g. one course's scenery); elsewhere the combination looks exactly like
+    the combination without it. Smaller combinations come first.
+    Returns [(id, [atom, ...]), ...]."""
     atoms = cfg.get("accepted_visual_variants", [])
     out = []
     for r in range(1, len(atoms) + 1):
         for combo in itertools.combinations(atoms, r):
-            out.append(("+".join(v["id"] for v in combo), [v["patch"] for v in combo]))
+            out.append(("+".join(v["id"] for v in combo), list(combo)))
     return out
+
+
+def effective_variant(atoms, workload):
+    """Id of the combination that renders this workload identically to `atoms`
+    (the atoms that can change it), or None for the unmodified baseline.
+    Held-out routes may visit any course, so every atom counts for them."""
+    def affects(v):
+        return "workloads" not in v or workload["split"] != "public" or workload["id"] in v["workloads"]
+    return "+".join(v["id"] for v in atoms if affects(v)) or None
 
 
 def precompute(args):
@@ -533,17 +547,31 @@ def precompute(args):
     # audio within the audio gate (a microcode swap shifts RSP task timing,
     # which can move a few samples by a few LSBs); only its video is kept, as
     # an extra reference for the video gate.
-    for variant_id, patches in variant_combinations(cfg):
+    for variant_id, atoms in variant_combinations(cfg):
         variant = {"id": variant_id}
-        vwork = patched_copy(args.source, [(corpus / p).resolve() for p in patches])
+        # Workloads this combination renders like a smaller one reuse its video.
+        own = []
+        for w in items:
+            same = effective_variant(atoms, w)
+            run_dir = cache / "runs" / w["id"]
+            if same == variant_id:
+                own.append(w)
+            elif same is None:
+                shutil.copyfile(run_dir / "video.bin.z", run_dir / f"video.{variant_id}.bin.z")
+            else:
+                shutil.copyfile(run_dir / f"video.{same}.bin.z", run_dir / f"video.{variant_id}.bin.z")
+        if not own:
+            index["variants"].append(variant_id)
+            continue
+        vwork = patched_copy(args.source, [(corpus / v["patch"]).resolve() for v in atoms])
         vrom = None
         try:
             vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant['id']}.log")
             if vrom is None:
                 raise GraderError(f"variant {variant['id']} failed to build: {verr}")
             vdir = cache / "variant-runs" / variant["id"]
-            vres = run_all(vrom, items, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
-            for w in items:
+            vres = run_all(vrom, own, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
+            for w in own:
                 if vres[w["id"]].get("status") != "completed":
                     raise GraderError(f"variant {variant['id']} did not complete {w['id']}")
                 base_run, var_run = load_run(cache / "runs" / w["id"]), load_run(vdir / w["id"])
