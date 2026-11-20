@@ -58,7 +58,7 @@ index 41964d4..08e5e6c 100644
  auto CPU::instructionEpilogue() -> void {
    if constexpr(!Recompiled) {
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..b720c70 100644
+index b51000d..5513f1a 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
 @@ -53,6 +53,7 @@ struct CPU : Thread {
@@ -85,7 +85,7 @@ index b51000d..b720c70 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1302,6 +1305,31 @@ struct CPU : Thread {
+@@ -1302,6 +1305,32 @@ struct CPU : Thread {
      Profile() : data{0} {}
    } profile;
  
@@ -111,6 +111,7 @@ index b51000d..b720c70 100644
 +    std::unordered_map<u32, u64> histogram;
 +    std::unordered_map<u32, u64> dmissPC;  //data-cache misses by faulting PC
 +    std::unordered_map<u64, u64> dmissAddr;  //data-cache misses by (line address << 32 | PC)
++    std::unordered_map<u64, u64> wbAddr;  //D-cache writebacks by (physical line << 32 | last writer PC)
 +    std::unordered_map<u32, u64> imissPC;  //instruction-cache misses by line address
 +  } sampler;
 +
@@ -118,10 +119,18 @@ index b51000d..b720c70 100644
      Profile cpu;
      struct {
 diff --git i/ares/n64/cpu/dcache.cpp w/ares/n64/cpu/dcache.cpp
-index 4de28e0..1005a62 100644
+index 4de28e0..de340a2 100644
 --- i/ares/n64/cpu/dcache.cpp
 +++ w/ares/n64/cpu/dcache.cpp
-@@ -57,6 +57,10 @@ auto CPU::DataCache::read(u64 vaddr, u32 paddr) -> u64 {
+@@ -15,6 +15,7 @@ auto CPU::DataCache::Line::fill(u32 paddr) -> void {
+ auto CPU::DataCache::Line::writeBack() -> void {
+   cpu.step(40 * 2);
+   const u32 tag = tagKey & ~0x0000'0fffu;
++  if(unlikely(cpu.sampler.enabled)) cpu.sampler.wbAddr[(u64)(tag | index) << 32 | (u32)dirtyPc]++;
+   cpu.busWriteBurst<DCache>(tag | index, words);
+ }
+ 
+@@ -57,6 +58,10 @@ auto CPU::DataCache::read(u64 vaddr, u32 paddr) -> u64 {
      }
      line.fill(paddr);
      self.profile.dcacheMisses++;
@@ -132,7 +141,7 @@ index 4de28e0..1005a62 100644
    } else {
      cpu.step(1 * 2);
      self.profile.dcacheHits++;
-@@ -86,6 +90,10 @@ auto CPU::DataCache::write(u64 vaddr, u32 paddr, u64 data) -> void {
+@@ -86,6 +91,10 @@ auto CPU::DataCache::write(u64 vaddr, u32 paddr, u64 data) -> void {
      }
      line.fill(paddr);
      self.profile.dcacheMisses++;

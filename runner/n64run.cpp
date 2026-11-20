@@ -357,6 +357,9 @@ auto nall::main(Arguments arguments) -> void {
     std::ofstream da(opt.profile + ".dmissaddr");
     da << "# data-cache misses: line address, faulting PC, count\n";
     for(auto& [k, n] : N64::cpu.sampler.dmissAddr) da << std::hex << (u32)(k >> 32) << " " << (u32)k << std::dec << " " << n << "\n";
+    std::ofstream wb(opt.profile + ".wb");
+    wb << "# data-cache writebacks: physical line, last writer PC, count\n";
+    for(auto& [k, n] : N64::cpu.sampler.wbAddr) wb << std::hex << (u32)(k >> 32) << " " << (u32)k << std::dec << " " << n << "\n";
     std::ofstream im(opt.profile + ".imiss");
     im << "# instruction-cache misses by line address\n";
     for(auto& [pc, n] : N64::cpu.sampler.imissPC) im << std::hex << pc << std::dec << " " << n << "\n";
