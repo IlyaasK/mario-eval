@@ -77,12 +77,18 @@ SM64_PATCHES = [
      "Packs XZ + Y bounds into D-cache line 0, caches stationary platform surfaces across frames, and bump-allocates the 240-slot object pool."),
     ("r9-kaze-partial", "Kaze Rung 3 (partial reference): lazy <code>Mtx</code> + fast frustum cull + coin TMEM batch + <code>&minus;304 KB</code> RAM",
      "Full-stack partial Kaze Emanuar reference: defers fixed-point <code>Mtx</code> allocation past frustum cull, batches coin TMEM loads, enables <code>RA_ZB_OPA</code> + <code>CACHE 0x0d</code>, and trims 304 KB of RDRAM."),
+    ("r10-kaze-master", "Kaze master reference: every technique from Kaze Emanuar's videos and code releases, nothing else",
+     "Reconstructed from all 403 of his video transcripts, the source code he shows on screen and his two code downloads: F3DEX2, no LOD, size-optimised I-cache-sized code, vertical culling, billboard-once-per-camera, fused matrix builds, audio I-cache blocking, Rainbow Ride decoration baked into the level. Not Kaze's own engine."),
+    ("r11-beyond-kaze", "Beyond Kaze: r10-style build plus our own cache-layout work",
+     "Adds techniques Kaze never described (object field slots ordered for 16-byte D-cache lines, skipped unchanged stores, audio struct reorder, double buffering). Shows the reward keeps rising past the human reference."),
     ("i0-gcc-fastmath", "GCC <code>-O2 -ffast-math</code>", "Breaks Mario physics/collision trajectories."),
     ("i1-mute-audio", "Disable audio synthesis (<code>sAudioEnabled = FALSE</code>)", "Caught by the 40 dB audio SNR gate."),
     ("i2-low-poly-mario", "Force low-poly Mario at all distances", "Caught by the video gate."),
     ("i3-half-physics-step", "Two quarter-steps instead of four in <code>mario_step.c</code>", "Caught by the Player Equivalence gameplay gate."),
     ("i4-tamper", "Modify <code>src/game/mev.h</code>", "Caught by the harness integrity gate."),
 ]
+
+EXPERT_REF = "r10-kaze-master"  # the human-expert reference rung
 
 PROFILES = ["console", "speed", "rdp", "rsp", "traffic", "memory"]
 
@@ -139,7 +145,7 @@ PIPELINE_SVG = """<svg viewBox="0 0 960 156" role="img" aria-label="Grading pipe
     <text x="424" y="63" text-anchor="middle">ares N64</text>
     <text x="424" y="81" text-anchor="middle" opacity="0.7">93.75MHz CPU + I/D$</text>
     <text x="424" y="99" text-anchor="middle" opacity="0.7">62.5MHz RSP/RDP + Bus</text>
-    <text x="645" y="36" text-anchor="middle">6 gates (12 courses)</text>
+    <text x="645" y="36" text-anchor="middle">6 gates (6 courses)</text>
     <text x="645" y="57" text-anchor="middle" opacity="0.7">player-equiv / exact</text>
     <text x="645" y="75" text-anchor="middle" opacity="0.7">video + 40 dB audio</text>
     <text x="645" y="93" text-anchor="middle" opacity="0.7">integrity + 4 MB RAM</text>
@@ -346,7 +352,7 @@ def cal_table(rows, compact=False, anchor_prefix=""):
         row_cls = []
         if s["status"] != "valid":
             row_cls.append("invalid")
-        elif slug == "r9-kaze-partial":
+        elif slug == EXPERT_REF:
             row_cls.append("ceiling-row")
         cls = f' class="{" ".join(row_cls)}"' if row_cls else ""
         tag = f'<span class="tag {s["status"]}">{s["status"]}</span>'
@@ -388,10 +394,10 @@ def baseline_table(rows):
 
 
 def sm64_bottleneck_svg(sm64_rows):
-    """Render an inline SVG comparing r0-unchanged vs r9-kaze-partial per SM64 course."""
+    """Render an inline SVG comparing r0-unchanged vs the expert reference per SM64 course."""
     by_slug = {slug: s for slug, *_r, s in sm64_rows if s["status"] == "valid"}
     base = by_slug.get("r0-unchanged")
-    ceil = by_slug.get("r9-kaze-partial") or by_slug.get("r8-kaze-collision-objects") or by_slug.get("r7-kaze-icache-trig")
+    ceil = by_slug.get(EXPERT_REF) or by_slug.get("r9-kaze-partial")
     if not base or not ceil:
         return ""
 
@@ -465,6 +471,8 @@ def trajectory_svg(sm64_rows, agent_runs):
         ("r7-kaze-icache-trig", "R7: I$ + 1-ULP Trig"),
         ("r8-kaze-collision-objects", "R8: 3-Line Surf + Sub"),
         ("r9-kaze-partial", "R9: partial Kaze"),
+        ("r10-kaze-master", "R10: Kaze master"),
+        ("r11-beyond-kaze", "R11: beyond Kaze"),
     ]
     pts = []
     for slug, label in rungs:
@@ -498,7 +506,7 @@ def trajectory_svg(sm64_rows, agent_runs):
             x, _ = xy(hr, 1.0)
             parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{h - bot}" stroke="currentColor" opacity="0.15"/>')
             parts.append(f'<text x="{x:.1f}" y="{h - bot + 18}" text-anchor="middle" opacity="0.75">{hr}h</text>')
-        for ref_slug, ref_lbl, col in [("r1-gcc-o2", "GCC -O2", "#d4a017"), ("r9-kaze-partial", "Partial Kaze", "#1f7a3a")]:
+        for ref_slug, ref_lbl, col in [("r1-gcc-o2", "GCC -O2", "#d4a017"), (EXPERT_REF, "Kaze master", "#1f7a3a")]:
             if ref_slug in by_slug:
                 rsp = primary_profile(by_slug[ref_slug][1]).get("speedup", 1.0)
                 _, ry = xy(0, rsp)
@@ -530,7 +538,7 @@ def trajectory_svg(sm64_rows, agent_runs):
     parts = [
         f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Super Mario 64 hardware optimization ladder">',
         '<g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">',
-        f'<text x="{left}" y="20" font-weight="600">Super Mario 64 hardware optimization ladder &mdash; console speedup across 12 courses</text>',
+        f'<text x="{left}" y="20" font-weight="600">Super Mario 64 hardware optimization ladder &mdash; console speedup across 6 courses</text>',
     ]
     n_ticks = 5
     for t in range(n_ticks + 1):
@@ -547,7 +555,7 @@ def trajectory_svg(sm64_rows, agent_runs):
 
     for i, (slug, label, sp, fps) in enumerate(pts):
         x, y = coords[i]
-        is_ceil = slug == "r9-kaze-partial"
+        is_ceil = slug == EXPERT_REF
         is_o2 = slug == "r1-gcc-o2"
         col = "#1f7a3a" if is_ceil else ("#d4a017" if is_o2 else "#1f5fbf")
         parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{5 if is_ceil else 4}" fill="{col}"/>')
@@ -597,20 +605,20 @@ def build_index(out, rows, sm64_rows, agent_runs, post_items, exported_frames):
 
     sm64_by_slug = {slug: s for slug, *_r, s in sm64_rows if s["status"] == "valid"}
     ceil_kpi = ""
-    if "r9-kaze-partial" in sm64_by_slug and "r0-unchanged" in sm64_by_slug:
+    if EXPERT_REF in sm64_by_slug and "r0-unchanged" in sm64_by_slug:
         r0 = sm64_by_slug["r0-unchanged"]
         r1 = sm64_by_slug.get("r1-gcc-o2", r0)
-        r9 = sm64_by_slug["r9-kaze-partial"]
+        r9 = sm64_by_slug[EXPERT_REF]
         r0_fps = mean_fps(r0) or 0.0
         r9_fps = mean_fps(r9) or 0.0
         r9_sp = primary_profile(r9).get("speedup", 1.0)
         r1_sp = primary_profile(r1).get("speedup", 1.0)
         ceil_kpi = f"""
 <div class="kpis">
-  <div class="kpi"><div class="val">12 courses</div><div class="lbl">6 public + 6 private held-out SM64 routes</div></div>
-  <div class="kpi"><div class="val">{r0_fps:.1f} &rarr; {r9_fps:.1f} FPS</div><div class="lbl">1996 IDO -O0 vs partial Kaze reference</div></div>
+  <div class="kpi"><div class="val">6 courses</div><div class="lbl">public SM64 routes (held-out SM64 routes not yet recorded)</div></div>
+  <div class="kpi"><div class="val">{r0_fps:.1f} &rarr; {r9_fps:.1f} FPS</div><div class="lbl">uncapped frame rate the console could sustain (1000 / est. console ms): 1996 build vs Kaze master</div></div>
   <div class="kpi"><div class="val">{r1_sp:.2f}&times;</div><div class="lbl">GCC -O2 compiler-only speedup</div></div>
-  <div class="kpi"><div class="val accent">{r9_sp:.2f}&times;</div><div class="lbl">partial Kaze reference (<a href="{BASE}/leaderboard/">Leaderboard</a>)</div></div>
+  <div class="kpi"><div class="val accent">{r9_sp:.2f}&times;</div><div class="lbl">Kaze master reference (<a href="{BASE}/leaderboard/">Leaderboard</a>)</div></div>
 </div>
 """
 
@@ -619,11 +627,11 @@ def build_index(out, rows, sm64_rows, agent_runs, post_items, exported_frames):
         chart = sm64_bottleneck_svg(sm64_rows)
         chart_html = f'<div class="chart-box">{chart}</div>' if chart else ""
         sm64_sec = f"""
-<h2>Super Mario 64 calibration &amp; partial Kaze reference</h2>
-<p>Calibrated on the US decompilation across <b>12 courses</b> (6 public: Bob-omb Battlefield, Whomp's Fortress,
-Jolly Roger Bay, Dire Dire Docks Area 2 / Bowser's Sub, Bowser in the Fire Sea, and Rainbow Ride; plus 6 held-out
-courses and alternate trajectories), from the untouched 1996 IDO <code>-O0</code> ROM up to a 3-rung
-<a href="{BASE}/blog/kaze-techniques-on-super-mario-64/">partial Kaze Emanuar reference</a>:</p>
+<h2>Super Mario 64 calibration &amp; Kaze master reference</h2>
+<p>Calibrated on the US decompilation across <b>6 public courses</b> (Bob-omb Battlefield, Whomp's Fortress,
+Jolly Roger Bay, Dire Dire Docks Area 2 / Bowser's Sub, Bowser in the Fire Sea, and Rainbow Ride), from the untouched
+1996 IDO <code>-O0</code> ROM up to the <a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a>
+and one rung beyond it:</p>
 {chart_html}
 {cal_table(sm64_rows, compact=True, anchor_prefix="sm64-")}
 <h3>Super Mario 64 baseline (1996 IDO <code>-O0</code>)</h3>
@@ -641,9 +649,9 @@ emulator and a profiler, and must speed up real 4 MB console execution while kee
 faithful.</p>
 </div>{PIP_SVG}</div>
 
-<div class="status"><b>v2.0 Ready:</b> 12-course <b>Super Mario 64</b> suite + 8-route <b>Pip's Garden</b> suite,
-headline <b>console</b> frame-time profile (<code>max(CPU, RSP, RDP)</code>), Player Equivalence + Hyrum's Law gates,
-24-hour trajectory telemetry, and verified <b>partial Kaze Emanuar reference</b> rungs.</div>
+<div class="status"><b>v2.0 Ready:</b> 6-course <b>Super Mario 64</b> suite + 8-route <b>Pip's Garden</b> suite,
+headline <b>console</b> frame-cost profile (busiest of CPU with bus contention, RSP, RDP and RDRAM), Player Equivalence +
+Hyrum's Law gates, log-scaled reward, and the <b>Kaze master</b> human-expert reference.</div>
 
 {ceil_kpi}
 
@@ -681,7 +689,11 @@ def build_leaderboard(out, rows, sm64_rows, agent_runs):
     by_slug = {slug: (title, purpose, s) for slug, title, purpose, s in sm64_valid}
 
     ref_order = [
-        ("r9-kaze-partial", "partial Kaze reference (R9)", "ceiling",
+        ("r11-beyond-kaze", "Beyond Kaze (R11)", "ref",
+         "Kaze-style build plus our own D-cache layout work: shows the reward keeps rising past the human reference"),
+        ("r10-kaze-master", "Kaze master reference (R10)", "ceiling",
+         "Every technique from Kaze Emanuar's videos and code releases that keeps the game the same, nothing else"),
+        ("r9-kaze-partial", "partial Kaze reference (R9)", "ref",
          "Partial expert reference (I-cache + 1-ULP trig + 3-line Surface + Sub cache + lazy Mtx + RA_ZB_OPA + coin batch + -304 KB)"),
         ("r8-kaze-collision-objects", "Kaze Rung 2: Collision & Objects (R8)", "ref",
          "R7 + 3-cache-line struct Surface + Bowser's Sub stationary surface cache + single-floor shadows + watermark pool"),
@@ -799,10 +811,10 @@ def build_leaderboard(out, rows, sm64_rows, agent_runs):
     body = f"""
 <div class="prose">
 <h1>Leaderboard</h1>
-<p>Every submission is graded on <b>12 Super Mario 64 courses</b> (6 public + 6 private held-out, 240 frames each) on
-an instrumented <code>ares</code> N64 console model (93.75 MHz VR4300 + 16 KB I$ / 8 KB D$, 62.5 MHz RSP &amp; RDP,
-4 MB RDRAM). To calibrate how much headroom exists above a naive <code>-O2</code> recompile, we engineered a 3-rung
-<a href="{BASE}/blog/kaze-techniques-on-super-mario-64/">partial Kaze Emanuar reference</a> under the exact same gates and
+<p>Every submission is graded on <b>6 Super Mario 64 courses</b> (240 frames each) on an instrumented
+<code>ares</code> N64 console model (93.75 MHz VR4300 + 16 KB I$ / 8 KB D$, 62.5 MHz RSP &amp; RDP, 4 MB RDRAM).
+The human-expert yardstick is the <a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a>: every
+optimization from Kaze Emanuar's videos and code that keeps the game the same, built under the exact same gates and
 toolchain given to 24-hour agents.</p>
 </div>
 
@@ -896,14 +908,14 @@ def build_calibration(out, rows, sm64_rows):
     sm64_part = ""
     if sm64_rows:
         sm64_part = (
-            '<h2>Super Mario 64 (US, 12 courses)</h2>'
+            '<h2>Super Mario 64 (US, 6 courses)</h2>'
             + cal_table(sm64_rows, anchor_prefix="sm64-")
             + render_sections(sm64_rows, "sm64/calibration", anchor_prefix="sm64-")
             + "<hr>"
         )
     body = f"""<div class="prose"><h1>Calibration</h1>
 <p>Each patch is applied to a clean copy of the baseline source and graded across public + private held-out routes
-(12 courses on Super Mario 64; 8 routes on Pip's Garden, 240 frames each) across all six N64 hardware profiles
+(6 public courses on Super Mario 64; 8 routes on Pip's Garden, 240 frames each) across all six N64 hardware profiles
 (headline <code>console</code> plus diagnostic <code>speed</code>, <code>rdp</code>, <code>rsp</code>,
 <code>traffic</code>, and <code>memory</code>).</p></div>
 {sm64_part}

@@ -91,7 +91,9 @@ Grading replays recorded controller inputs across courses and checks six gates:
   (`full-detail`: always high-polygon Mario instead of medium/low LODs;
   `ra-zb-opa`: SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing
   opaque modes without `IM_RD`; `f3dex2`: Nintendo's later F3DEX2 microcode;
-  or any combination of these): at most
+  `no-lod`: always the near full-detail branch of every level-of-detail node;
+  `rr-statics`: Rainbow Ride's 14 static decoration pieces drawn as part of the
+  level instead of as objects; or any combination of these): at most
   0.2% of pixels may differ by more than ±2/31 per channel from their best 3×3
   neighbor.
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every

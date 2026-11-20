@@ -40,13 +40,14 @@ directly (`cache op, offset(base)`):
 | aspect | modelled | notes |
 |--------|----------|-------|
 | VR4300 instruction timing & pipeline | yes | 1 cycle/insn + FPU/mul/div + cache/bus stalls |
-| 16 KB I-cache & 8 KB D-cache (direct-mapped) | yes | exact line tags, fills, write-backs |
+| 16 KB I-cache & 8 KB D-cache (direct-mapped) | yes | exact line tags; I-cache fill 48 cycles, D-cache fill or write-back 40 cycles |
 | `CACHE` ops incl. `Create Dirty Exclusive` (`0x0d`) | yes | eliminates RDRAM read-for-ownership on cold writes |
+| Uncached CPU access to RDRAM (KSEG1, `0xA0xxxxxx`) | yes | read 40 cycles, write 10 cycles (write buffer); each also counts as a bus transaction |
 | RSP scalar + VU vector instruction cycles | yes | exact non-halted 62.5 MHz RSP cycles |
-| **RDP 62.5 MHz hardware cost (`rdp_busy`)** | **yes** | exact scissor-clipped 4-subpixel scanline rasterizer + TMEM + sync cost model |
+| **RDP 62.5 MHz hardware cost (`rdp_busy`)** | **yes** | exact scissor-clipped 4-subpixel scanline rasterizer + TMEM + sync cost model (approximate; see below) |
 | **RDRAM traffic per bus device (`rdram_bytes`)** | **yes** | CPU I/D/Uncached + SP DMA + PI DMA + SI DMA + **DP DMA** + **DP Draw** |
 | **4 MB RDRAM footprint (`footprint_bytes`)** | **yes** | distinct 16-byte lines touched by CPU, DMA, or RDP |
-| Cycle-by-cycle RDRAM bus arbitration contention | no | CPU/RSP/RDP stalls do not jitter one another's determinism; `est_console_ms = max(frame_ms, rdp_ms, rsp_ms)` is also reported |
+| RDRAM bus contention | modelled, not simulated | the units run deterministically one after another; the CPU is charged 24 cycles per bus transaction for waiting on the shared bus (see `est_console_ms`) |
 
 ### RDP cycle & RDRAM cost breakdown (`rdp_busy`, `DP DMA`, `DP Draw`)
 
@@ -68,15 +69,43 @@ Every RDP command emitted to the command buffer is profiled deterministically:
 
 ## Measurement definitions
 
-Each workload runs 240 logical frames **unthrottled**; warmup frames (boot /
-initial transition) are excluded from per-frame means:
+Each workload runs 240 logical frames **unthrottled**; frame 0 (boot and setup)
+is excluded from per-frame means. The CPU's idle thread (waiting for the RCP)
+is not counted as CPU work.
 
-- **`est_console_ms` (`console`)** — per-frame `max(frame_ms, rsp_ms, rdp_ms)`
-  averaged across frames (`est_fps = 1000 / est_console_ms`), capturing the true
-  pipelined N64 frame bottleneck across CPU+caches, RSP, and RDP simultaneously.
-- **`frame_ticks` (`speed`)** — CP0 `Count` ticks per frame (46.875 MHz; 1 NTSC
-  60 Hz field = 781,250 ticks; 30 FPS = 1,562,500 ticks).
-- **`rdp_busy` (`rdp`)** — RDP 62.5 MHz `gclk` cycles per frame (`rdp_ms = rdp_busy / 62,500`).
-- **`rsp_busy` (`rsp`)** — RSP 62.5 MHz non-halted cycles per frame (`rsp_ms = rsp_busy / 62,500`).
+- **`est_console_ms` (`console`)** — estimated cost of the frame on a real
+  console. SM64 overlaps its units: the CPU builds frame N+1 while the RSP and
+  RDP draw frame N, all sharing RDRAM. So a frame costs as much as its busiest
+  unit: `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)`, where
+  - `cpu_ms` = (busy VR4300 cycles + 24 × (I-cache misses + D-cache misses +
+    D-cache write-backs + uncached accesses)) / 93,750. The 24-cycle bus
+    contention term was fitted to Kaze Emanuar's measurements of vanilla SM64 on
+    real hardware (JRB ≈ 20 FPS, DDD ≈ 24, RR ≈ 26; youtu.be/Ca1hHC2EctY at
+    3:55); the model gives 20.0, 25.7 and 26.5;
+  - `rsp_ms` = non-halted RSP cycles / 62,500; `rdp_ms` = RDP cycles / 62,500;
+  - `mem_ms` = RDRAM bytes / 500,000 (500 MB/s peak, a floor).
+
+  `est_fps` = 1000 / `est_console_ms` (uncapped). `est_fps_30hz` is what the
+  player sees with SM64's 30 Hz game logic: each frame shows for at least two
+  60 Hz fields, so it is at most 30. `frames_under_16ms` is the share of frames
+  that would fit a 60 FPS budget. Known limitation: the RDP model is probably
+  optimistic (Kaze attributes JRB's frame rate to drawing; the model has JRB
+  CPU-bound).
+- **`cpu_effective_cycles` (`speed`)** — the CPU term above in VR4300 cycles
+  (93.75 MHz; one 60 Hz NTSC field = 1,562,500 cycles).
+- **`rdp_busy` (`rdp`)** — RDP 62.5 MHz `gclk` cycles per frame.
+- **`rsp_busy` (`rsp`)** — RSP non-halted cycles per frame.
 - **`rdram_bytes` (`traffic`)** — total RDRAM bytes read + written per frame across all bus masters.
 - **`footprint_bytes` (`memory`)** — distinct 16-byte RDRAM cachelines touched by any bus master after entry point.
+
+## Reward
+
+Per profile, the speedup is the geometric mean over workloads of
+baseline / candidate. The reward is `log2(speedup) / 4` (2× scores 0.25, 16×
+scores 1.0, no upper cap; a failed gate scores −1), so each doubling is worth
+the same.
+
+Reference points on SM64's public routes (console profile): GCC `-O2` alone
+1.40×; `r10-kaze-master`, every optimization from Kaze Emanuar's public videos
+and code that keeps the game the same, 1.68×; `r11-beyond-kaze`, adding our own
+D-cache layout work, 1.62× (earlier, smaller build).

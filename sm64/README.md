@@ -32,15 +32,26 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/private-heldout-sm64
 ./scripts/calibrate.sh  --game sm64 --heldout /path/to/private-heldout-sm64
 ```
 
-The SM64 calibration ladder (`sm64/calibration/`) spans 10 valid optimization
-rungs (`r0-unchanged` through **`r9-kaze-partial`**, implementing Kaze Emanuar's
-hardware techniques across direct-mapped I-cache layout, 1-ULP table-free
-minimax trig, 3-cache-line `struct Surface` packing, stationary Bowser's Sub
-collision caching, scene-graph pre-matrix frustum culling, lazy fixed-point
-`Mtx` materialization, coin TMEM batching, `CACHE 0x0d` Create Dirty Exclusive,
-`G_RM_RA_ZB_OPA_SURF`, full-detail Mario, skybox tile culling, and double-buffer
-RDRAM compaction) plus 5 invalid shortcut traps (`i0-gcc-fastmath` through
-`i4-tamper`).
+The SM64 calibration ladder (`sm64/calibration/`) spans 12 valid rungs plus 5
+invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
+
+- `r0-unchanged` to `r9-kaze-partial`: compiler flags and a growing subset of
+  Kaze Emanuar's techniques.
+- **`r10-kaze-master`, the human-expert reference (1.68x console speedup)**:
+  every optimization from Kaze's public videos and code releases that keeps the
+  game the same for the player, and nothing else. It was reconstructed from all
+  of his video transcripts, the source code he shows on screen, and his two code
+  downloads (the "How Optimizations made Mario 64 SLOWER" repository and the
+  audio code from "Revolutionizing N64 programming!"). It is not Kaze's own
+  engine, which also rewrites physics and assets in ways that change the game.
+  Techniques that change gameplay or audio (one-raycast walls, his rewritten
+  trig and sound engine) are left out; visual changes he ships are accepted as
+  precomputed variants (full-detail Mario, no LOD, F3DEX2, reduced-aliasing
+  opaque modes, Rainbow Ride decoration baked into the level).
+- `r11-beyond-kaze` (1.62x, an earlier and smaller build): adds techniques Kaze
+  never described (object fields ordered for the 16-byte D-cache lines, skipped
+  unchanged stores, audio struct reorder, double buffering), to check that the
+  reward keeps rising past the human reference.
 
 ## 3. Smoke test & run a 24-hour SM64 optimization agent
 
@@ -83,8 +94,8 @@ container.
   uninitialized locals, out-of-bounds reads) and hibernating distant off-screen
   objects is rewarded; altering 1996 SM64 gameplay/physics quirks (quarter-step
   counts, wall-kick timing, BLJs) fails the gameplay gate.
-- **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, and every
-  combination)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
+- **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
+  `rr-statics`, and every combination)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
   switching to Nintendo's F3DEX2 microcode, and/or using
   SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing opaque
   modes (preserving `AA_EN` VI coverage while dropping `IM_RD` framebuffer

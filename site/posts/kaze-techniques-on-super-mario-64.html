@@ -1,4 +1,6 @@
 <!--{"title": "Kaze Emanuar techniques on Super Mario 64 (partial reference)", "date": "2026-11-18", "summary": "Auditing 26 Kaze Emanuar optimization deep-dives to engineer a 3-rung N64 hardware reference ceiling — and catching Hyrum's Law in the wild."}-->
+<p class="small muted"><b>Update 2026-11-20:</b> numbers in this post predate the corrected console model (clock units, overlapped units, bus contention) and the log-scaled reward. Current figures: GCC <code>-O2</code> 1.40&times;, <code>r9-kaze-partial</code> 1.47&times;. The full human reference is now <a href="{BASE}/blog/kaze-master-reference/"><code>r10-kaze-master</code></a> (1.68&times;).</p>
+
 <p>Before running 24-hour autonomous agents on Super Mario 64, we wanted to answer a basic benchmark question:
 <b>how much real-hardware speedup is actually achievable under strict gameplay, video, audio, and 4 MB RDRAM gates by an
 engineer who knows the Nintendo 64 inside out?</b></p>
