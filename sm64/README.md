@@ -33,7 +33,7 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/private-heldout-sm64
 ```
 
 The SM64 calibration ladder (`sm64/calibration/`) spans 10 valid optimization
-rungs (`r0-unchanged` through **`r9-kaze-ceiling`**, implementing Kaze Emanuar's
+rungs (`r0-unchanged` through **`r9-kaze-partial`**, implementing Kaze Emanuar's
 hardware techniques across direct-mapped I-cache layout, 1-ULP table-free
 minimax trig, 3-cache-line `struct Surface` packing, stationary Bowser's Sub
 collision caching, scene-graph pre-matrix frustum culling, lazy fixed-point

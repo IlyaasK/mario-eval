@@ -1,4 +1,4 @@
-<!--{"title": "The Kaze Emanuar ceiling on Super Mario 64", "date": "2026-11-18", "summary": "Auditing 26 Kaze Emanuar optimization deep-dives to engineer a 3-rung N64 hardware reference ceiling — and catching Hyrum's Law in the wild."}-->
+<!--{"title": "Kaze Emanuar techniques on Super Mario 64 (partial reference)", "date": "2026-11-18", "summary": "Auditing 26 Kaze Emanuar optimization deep-dives to engineer a 3-rung N64 hardware reference ceiling — and catching Hyrum's Law in the wild."}-->
 <p>Before running 24-hour autonomous agents on Super Mario 64, we wanted to answer a basic benchmark question:
 <b>how much real-hardware speedup is actually achievable under strict gameplay, video, audio, and 4 MB RDRAM gates by an
 engineer who knows the Nintendo 64 inside out?</b></p>
@@ -13,7 +13,7 @@ its direct-mapped caches, Fast3D RSP microcode, and the 62.5 MHz Reality Display
 We audited 26 of his N64 optimization videos and engineered a progressive 3-rung hardware reference ladder
 (<a href="{BASE}/calibration/#sm64-r7-kaze-icache-trig"><code>r7</code></a>,
 <a href="{BASE}/calibration/#sm64-r8-kaze-collision-objects"><code>r8</code></a>, and
-<a href="{BASE}/calibration/#sm64-r9-kaze-ceiling"><code>r9</code></a>) using the exact same compiler, profiler, and
+<a href="{BASE}/calibration/#sm64-r9-kaze-partial"><code>r9</code></a>) using the exact same compiler, profiler, and
 12-course grading harness given to agents.</p>
 
 <h2>Rung 1 (<code>r7-kaze-icache-trig</code>): the <code>0xFC000</code> I-cache collision &amp; 1-ULP math</h2>
@@ -93,7 +93,7 @@ the pool had spare capacity. Because the bump allocator hadn't recycled an objec
 was full and suppressed every water splash sprite and bubble sound effect. Updating those three checks to
 <code>object_pool_has_free_slot()</code> restored bit-exact RNG and <code>Infinity</code> dB audio across all 12 courses.</p>
 
-<h2>Rung 3 (<code>r9-kaze-ceiling</code>): lazy <code>Mtx</code>, <code>CACHE 0x0d</code>, RDP batching &amp; the fillrate wall</h2>
+<h2>Rung 3 (<code>r9-kaze-partial</code>): lazy <code>Mtx</code>, <code>CACHE 0x0d</code>, RDP batching &amp; the fillrate wall</h2>
 <p>Vanilla <code>geo_process_object</code> computes a full 3&times;3 rotation matrix, multiplies it by the camera matrix,
 allocates a 64-byte fixed-point <code>Mtx</code> on the display-list pool, and converts 16 floats to Q16.16 fixed-point
 <i>before</i> calling <code>obj_is_in_view()</code> &mdash; throwing all of that work away for every off-screen actor,
@@ -115,7 +115,7 @@ and allocating dead <code>Mtx</code> structs for invisible parent nodes that nev
   RDRAM</b> (leaving 153.6 KB of contiguous headroom below the 4 MB ceiling).</li>
 </ul>
 
-<p>Across the 12-course suite, <a href="{BASE}/leaderboard/"><code>r9-kaze-ceiling</code></a> wins on <b>all six hardware
+<p>Across the 12-course suite, <a href="{BASE}/leaderboard/"><code>r9-kaze-partial</code></a> wins on <b>all six hardware
 profiles simultaneously</b> &mdash; cutting console frame time to <b>1.23&times;</b> over the 1996 retail ROM, cutting
 62.5 MHz RDP busy cycles by <b>13.3%</b> (<code>1.15&times;</code>), cutting total RDRAM bus traffic by <b>15.5%</b>
 (<code>1.18&times;</code>), and shrinking live RDRAM footprint by <b>8.8%</b>.</p>

@@ -1,5 +1,5 @@
 diff --git i/ares/n64/cpu/cpu.cpp w/ares/n64/cpu/cpu.cpp
-index 41964d4..79f950a 100644
+index 41964d4..1f234b4 100644
 --- i/ares/n64/cpu/cpu.cpp
 +++ w/ares/n64/cpu/cpu.cpp
 @@ -83,6 +83,7 @@ auto CPU::flushCount() -> void {
@@ -10,7 +10,7 @@ index 41964d4..79f950a 100644
    Thread::clock = 0;
    countClock = 0;
    jitClockTarget = 0;
-@@ -156,6 +157,21 @@ auto CPU::instruction() -> bool {
+@@ -156,6 +157,32 @@ auto CPU::instruction() -> bool {
  
    auto access = devirtualize<Read, Word>(ipu.pc);
    if(!access) return true;
@@ -18,31 +18,45 @@ index 41964d4..79f950a 100644
 +    rdram.footprint.reset();
 +    rdram.footprint.armed = false;
 +  }
-+  if(unlikely(sampler.enabled)) {
++  if(unlikely(sampler.enabled || sampler.idleRanges)) {
 +    s64 now = sampler.base + Thread::clock;
 +    s64 elapsed = now - sampler.lastClock;
 +    sampler.lastClock = now;
-+    if(sampler.lastPC) sampler.accumulated += elapsed;
-+    while(sampler.accumulated >= sampler.interval) {
-+      sampler.accumulated -= sampler.interval;
-+      sampler.histogram[sampler.lastPC]++;
++    if(sampler.lastPC) {
++      if(sampler.lastIdle) sampler.idleClocks += elapsed;
++      if(sampler.enabled) {
++        sampler.accumulated += elapsed;
++        while(sampler.accumulated >= sampler.interval) {
++          sampler.accumulated -= sampler.interval;
++          sampler.histogram[sampler.lastPC]++;
++        }
++      }
 +    }
-+    sampler.lastPC = (u32)ipu.pc;
++    u32 pc = (u32)ipu.pc;
++    bool idle = false;
++    for(u32 n = 0; n < sampler.idleRanges; n++) {
++      if(pc >= sampler.idleLo[n] && pc < sampler.idleHi[n]) { idle = true; break; }
++    }
++    sampler.lastIdle = idle;
++    sampler.lastPC = pc;
 +  }
  
    if(Accuracy::CPU::Recompiler && recompiler.enabled && access.cache) {
      if(vaddrAlignedError<Word>(access.vaddr, false)) return true;
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..74ee548 100644
+index b51000d..410319b 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
-@@ -1302,6 +1302,19 @@ struct CPU : Thread {
+@@ -1302,6 +1302,28 @@ struct CPU : Thread {
      Profile() : data{0} {}
    } profile;
  
 +  //mario-eval: clock-weighted PC sampler. Elapsed CPU clocks between two
 +  //instruction starts are charged to the earlier instruction, so cache-miss
 +  //and uncached-access stalls land on the instruction that caused them.
++  //The same accounting charges clocks spent inside configured idle ranges
++  //(e.g. libultra's idle thread) to idleClocks, so CPU busy time can exclude
++  //time the CPU only spent waiting for the RCP.
 +  struct Sampler {
 +    bool enabled = false;
 +    s64 interval = 4096;
@@ -50,12 +64,38 @@ index b51000d..74ee548 100644
 +    s64 base = 0;
 +    s64 lastClock = 0;
 +    u32 lastPC = 0;
++    bool lastIdle = false;
++    u32 idleRanges = 0;
++    u32 idleLo[8] = {};
++    u32 idleHi[8] = {};
++    s64 idleClocks = 0;  //master-clock units (2 per CPU cycle)
 +    std::unordered_map<u32, u64> histogram;
++    std::unordered_map<u32, u64> dmissPC;  //data-cache misses by faulting PC
 +  } sampler;
 +
    struct ProfileSlot {
      Profile cpu;
      struct {
+diff --git i/ares/n64/cpu/dcache.cpp w/ares/n64/cpu/dcache.cpp
+index 4de28e0..17aa844 100644
+--- i/ares/n64/cpu/dcache.cpp
++++ w/ares/n64/cpu/dcache.cpp
+@@ -57,6 +57,7 @@ auto CPU::DataCache::read(u64 vaddr, u32 paddr) -> u64 {
+     }
+     line.fill(paddr);
+     self.profile.dcacheMisses++;
++    if(unlikely(self.sampler.enabled)) self.sampler.dmissPC[(u32)self.ipu.pc]++;
+   } else {
+     cpu.step(1 * 2);
+     self.profile.dcacheHits++;
+@@ -86,6 +87,7 @@ auto CPU::DataCache::write(u64 vaddr, u32 paddr, u64 data) -> void {
+     }
+     line.fill(paddr);
+     self.profile.dcacheMisses++;
++    if(unlikely(self.sampler.enabled)) self.sampler.dmissPC[(u32)self.ipu.pc]++;
+   } else {
+     cpu.step(1 * 2);
+     self.profile.dcacheHits++;
 diff --git i/ares/n64/rdp/rdp.cpp w/ares/n64/rdp/rdp.cpp
 index b71c407..e0ade1c 100644
 --- i/ares/n64/rdp/rdp.cpp

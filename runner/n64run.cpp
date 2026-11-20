@@ -214,6 +214,7 @@ struct Runner : ares::Platform {
       << ",\"dcache_hits\":" << cp.dcacheHits << ",\"dcache_misses\":" << cp.dcacheMisses
       << ",\"dcache_writebacks\":" << cp.dcacheWritebacks
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
+      << ",\"cpu_idle_cycles\":" << N64::cpu.sampler.idleClocks / 2
       << ",\"rdp_cycles\":" << dp.cycles
       << ",\"rdp_fill_cycles\":" << dp.fillCycles
       << ",\"rdp_tmem_cycles\":" << dp.tmemCycles
@@ -268,8 +269,19 @@ auto nall::main(Arguments arguments) -> void {
   if(arguments.take("--frames", value)) opt.frames = value.natural();
   if(arguments.take("--max-fields", value)) opt.maxFields = value.natural();
   if(arguments.take("--profile", value)) opt.profile = value;
+  // --idle-range LO:HI (hex virtual addresses, repeatable): CPU time spent
+  // executing inside these ranges is reported as cpu_idle_cycles.
+  while(arguments.take("--idle-range", value)) {
+    auto& s = N64::cpu.sampler;
+    auto text = std::string(value);
+    auto colon = text.find(':');
+    if(colon == std::string::npos || s.idleRanges >= 8) { fprintf(stderr, "bad --idle-range %s\n", text.c_str()); exit(2); }
+    s.idleLo[s.idleRanges] = (u32)std::stoul(text.substr(0, colon), nullptr, 16);
+    s.idleHi[s.idleRanges] = (u32)std::stoul(text.substr(colon + 1), nullptr, 16);
+    s.idleRanges++;
+  }
   if(opt.rom.empty() || opt.out.empty() || !opt.frames) {
-    fprintf(stderr, "usage: n64run --rom ROM --out DIR --frames N [--replay FILE] [--max-fields N] [--profile FILE]\n");
+    fprintf(stderr, "usage: n64run --rom ROM --out DIR --frames N [--replay FILE] [--max-fields N] [--profile FILE] [--idle-range LO:HI ...]\n");
     exit(2);
   }
   if(!opt.maxFields) opt.maxFields = opt.frames * 60 + 600;
@@ -339,6 +351,9 @@ auto nall::main(Arguments arguments) -> void {
     std::ofstream p(opt.profile);
     p << "# pc samples (1 sample = " << N64::cpu.sampler.interval / 2 << " COUNT ticks)\n";
     for(auto& [pc, n] : N64::cpu.sampler.histogram) p << std::hex << pc << std::dec << " " << n << "\n";
+    std::ofstream m(opt.profile + ".dmiss");
+    m << "# data-cache misses by faulting PC\n";
+    for(auto& [pc, n] : N64::cpu.sampler.dmissPC) m << std::hex << pc << std::dec << " " << n << "\n";
   }
   runner.root->unload();
   exit(status == "completed" ? 0 : 1);

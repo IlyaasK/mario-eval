@@ -34,7 +34,7 @@
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
-    "speed":   { "metric": "frame_ticks",     "max_workload_regression": 0.05, "rdp_budget": 0.05 },
+    "speed":   { "metric": "cpu_effective_cycles", "max_workload_regression": 0.05, "rdp_budget": 0.05 },
     "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "traffic": { "metric": "rdram_bytes",     "max_workload_regression": 0.05, "speed_budget": 0.05 },

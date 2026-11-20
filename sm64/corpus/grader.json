@@ -8,20 +8,23 @@
   "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "check-play"],
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
   "protected_files": ["src/game/mev.c", "src/game/mev.h"],
+  "idle_symbols": ["thread1_idle"],
+  "reward_log2_scale": 4.0,
   "frames": 240,
   "build_timeout_s": 900,
   "max_fields_factor": 4.0,
   "run_timeout_s": 1800,
   "gameplay": {
     "mode": "player_equivalence",
-    "exact_fields": ["frame", "level_area"],
-    "window_exact_fields": ["mario_stats", "mario_action"],
-    "window_frames": 1,
+    "exact_fields": ["frame", "level_area", "mario_stats", "mario_action"],
+    "window_exact_fields": [],
+    "window_frames": 0,
     "float_tolerances": {
-      "mario_pos": 2.0,
-      "mario_floor_height": 2.0,
-      "cam_pos": 4.0,
-      "cam_focus": 4.0
+      "mario_pos": 0.01,
+      "mario_vel": 0.01,
+      "mario_floor_height": 0.01,
+      "cam_pos": 0.02,
+      "cam_focus": 0.02
     }
   },
   "video": {
@@ -56,7 +59,7 @@
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
-    "speed":   { "metric": "frame_ticks",     "max_workload_regression": 0.05, "rdp_budget": 0.05 },
+    "speed":   { "metric": "cpu_effective_cycles", "max_workload_regression": 0.05, "rdp_budget": 0.05 },
     "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "traffic": { "metric": "rdram_bytes",     "max_workload_regression": 0.05, "speed_budget": 0.05 },

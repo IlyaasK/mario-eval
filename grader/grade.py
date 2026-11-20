@@ -13,9 +13,9 @@ A submission is a source tree (e.g. Pip's Garden or Super Mario 64). The grader:
   3. runs every workload under n64run (ares, CPU interpreter, unthrottled),
   4. gates on gameplay (bit-exact), video and audio (tolerances), hardware
      limits and execution, then
-  5. measures resource cost against the baseline and emits bounded reward
-     (1 - ratio), unbounded speedup (base / cand), log2 speedup, and speedup
-     relative to GCC -O2 (when calibrated) per optimization profile.
+  5. measures resource cost against the baseline and emits, per optimization
+     profile, a log-scaled reward (log2 speedup / reward_log2_scale), the
+     speedup (base / cand) and the speedup relative to GCC -O2 (when calibrated).
 
 summary.json "status" is "valid", "invalid" (the submission failed a gate:
 reward -1 for every profile) or "grader_error" (infrastructure failure: no
@@ -41,7 +41,8 @@ from grader import contract
 
 HW_DEVICES = ["VR4300 ICache", "VR4300 DCache", "VR4300 Uncached", "SP DMA",
               "PI DMA", "SI DMA", "VI DMA", "AI DMA", "DP DMA", "DP Draw"]
-RATIO_KEYS = ("est_console_ms", "frame_ticks", "frame_ticks_p99", "rdp_busy", "rsp_busy", "rdram_bytes", "footprint_bytes")
+RATIO_KEYS = ("est_console_ms", "cpu_effective_cycles", "cpu_busy_cycles", "frame_ticks", "frame_ticks_p99", "rdp_busy", "rsp_busy",
+              "rdram_bytes", "footprint_bytes")
 
 
 class GraderError(Exception):
@@ -91,6 +92,8 @@ def build(src, cfg, log_path):
             return None, "build failed; see build.log"
 
         shutil.copy2(rom, out_rom)
+        idle = idle_ranges(work / "src" / cfg["elf"], cfg.get("idle_symbols", [])) if cfg.get("elf") else []
+        (work / "built.idle.json").write_text(json.dumps(idle))
 
         play_cmd = cfg.get("play_build_cmd")
         if play_cmd:
@@ -118,6 +121,27 @@ def build(src, cfg, log_path):
         raise
 
 
+def idle_ranges(elf, symbols):
+    """Address ranges ("lo:hi", hex) of the named idle functions in the ELF.
+
+    CPU time spent executing inside them is time the CPU only waited (for the
+    RCP, or for the next frame), and is excluded from CPU busy time.
+    """
+    if not symbols:
+        return []
+    proc = subprocess.run(["mips64-elf-nm", "-S", "--defined-only", str(elf)], capture_output=True, text=True)
+    found = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 4 and parts[3] in symbols and parts[2] in "tT":
+            lo = int(parts[0], 16) & 0xFFFFFFFF
+            found[parts[3]] = f"{lo:x}:{lo + int(parts[1], 16):x}"
+    missing = [s for s in symbols if s not in found]
+    if missing:
+        raise GraderError(f"idle symbols not found in {elf}: {missing}")
+    return [found[s] for s in symbols]
+
+
 # ----------------------------------------------------------------------- run
 
 def run_workload(rom, replay, frames, out_dir, max_fields, timeout):
@@ -126,6 +150,9 @@ def run_workload(rom, replay, frames, out_dir, max_fields, timeout):
         shutil.rmtree(out_dir)
     cmd = ["n64run", "--rom", str(rom), "--replay", str(replay), "--out", str(out_dir),
            "--frames", str(frames), "--max-fields", str(max_fields)]
+    idle_file = pathlib.Path(rom).with_suffix(".idle.json")
+    for r in (json.loads(idle_file.read_text()) if idle_file.exists() else []):
+        cmd += ["--idle-range", r]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -166,31 +193,71 @@ def _delta_mean(rows, key):
     return float((rows[-1][key] - rows[0][key]) / (len(rows) - 1))
 
 
+# Clock domains (verified against ares: master clock 187.5 MHz, CPU instruction
+# = 2 master clocks, RSP cycle = 3 master clocks).
+CPU_CYCLES_PER_MS = 93_750.0      # count_ticks / cpu_idle_cycles: VR4300 cycles (93.75 MHz)
+RSP_UNITS_PER_MS = 187_500.0      # rsp_cycles: master clocks (RSP runs at 62.5 MHz)
+RDP_CYCLES_PER_MS = 62_500.0      # rdp_cycles: modelled RDP cycles (62.5 MHz)
+RDRAM_BYTES_PER_MS = 500_000.0    # RDRAM peak, 500 MB/s: a floor on any frame's bus time
+FIELD_MS = 1000.0 / 60.0
+# Extra CPU cycles charged per cache miss or write-back for waiting on the
+# shared RDRAM bus while the RSP/RDP use it. ares charges an uncontended
+# 40-48 cycles; Kaze Emanuar measures ~40-60 on a quiet bus and "hundreds" on
+# a busy one. Fitted (one constant, displayed FPS) to his console measurements
+# of vanilla SM64: JRB 19.9-20.5, DDD 23.7-24.1, RR 25.9-26.8 FPS
+# (youtu.be/Ca1hHC2EctY @3:55); the model gives 20.0, 25.7, 26.5.
+BUS_CONTENTION_CYCLES = 24.0
+
+
 def metrics(run):
-    """Per-frame costs over frames 1..N-1 (frame 0 includes boot and setup)."""
+    """Per-frame costs over frames 1..N-1 (frame 0 includes boot and setup).
+
+    The benchmark build runs each frame's stages one after another. On a
+    console, SM64 overlaps them: the CPU builds frame N+1 while the RSP and RDP
+    draw frame N, all sharing RDRAM. So a frame's console cost is estimated as
+    the busiest unit: max(CPU, RSP busy, RDP busy, RDRAM time at peak
+    bandwidth). CPU time excludes the idle thread (waiting for the RCP) and
+    adds BUS_CONTENTION_CYCLES per cache miss/write-back. The RDP model is
+    approximate (see docs/n64-cost-model.md).
+    """
     rows = run["rows"]
-    ticks = np.array([b["count_ticks"] - a["count_ticks"] for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    d = lambda key: np.array([b.get(key, 0) - a.get(key, 0) for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    ticks = d("count_ticks")
+    idle = d("cpu_idle_cycles")
+    cpu_busy = ticks - idle
+    bus_events = d("icache_misses") + d("dcache_misses") + d("dcache_writebacks")
+    cpu_eff = cpu_busy + BUS_CONTENTION_CYCLES * bus_events
     rsp = np.array([busy_rsp(b) - busy_rsp(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
-    rdp = np.array([b.get("rdp_cycles", 0) - a.get("rdp_cycles", 0) for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    rdp = d("rdp_cycles")
     traffic = np.array([rdram_bytes(b) - rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     last, first = rows[-1], rows[0]
-    per_device = {d: (sum(last["rdram"].get(d, (0, 0))) - sum(first["rdram"].get(d, (0, 0)))) / (len(rows) - 1)
-                  for d in HW_DEVICES}
-    frame_ms = float(ticks.mean() / 46875.0)
-    rsp_ms = float(rsp.mean() / 62500.0)
-    rdp_ms = float(rdp.mean() / 62500.0)
-    console_ms = np.maximum(np.maximum(ticks / 46875.0, rsp / 62500.0), rdp / 62500.0)
+    per_device = {dev: (sum(last["rdram"].get(dev, (0, 0))) - sum(first["rdram"].get(dev, (0, 0)))) / (len(rows) - 1)
+                  for dev in HW_DEVICES}
+    cpu_ms_f = cpu_eff / CPU_CYCLES_PER_MS
+    rsp_ms_f = rsp / RSP_UNITS_PER_MS
+    rdp_ms_f = rdp / RDP_CYCLES_PER_MS
+    mem_ms_f = traffic / RDRAM_BYTES_PER_MS
+    console_ms = np.maximum.reduce([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f])
+    bottleneck = np.argmax(np.stack([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f]), axis=0)
+    # Displayed rate with SM64's 30 Hz game logic: a frame is shown on the first
+    # video field after it completes, and never sooner than two fields.
+    fields = np.maximum(2, np.ceil(console_ms / FIELD_MS - 1e-9))
     est_console_ms = float(console_ms.mean())
     return {
         "frame_ticks": float(ticks.mean()),
         "frame_ticks_p99": float(np.percentile(ticks, 99)),
-        "frame_ms": frame_ms,
-        "vi_fields_per_frame": float(ticks.mean() / 781250.0),
-        "cpu_cycles": float(ticks.mean() * 2),
+        "cpu_busy_cycles": float(cpu_busy.mean()),
+        "cpu_effective_cycles": float(cpu_eff.mean()),
+        "cpu_idle_cycles": float(idle.mean()),
+        "frame_ms": float(ticks.mean() / CPU_CYCLES_PER_MS),
+        "cpu_ms": float(cpu_ms_f.mean()),
+        "cpu_cycles": float(cpu_eff.mean()),
         "rsp_busy": float(rsp.mean()),
-        "rsp_ms": rsp_ms,
+        "rsp_ms": float(rsp_ms_f.mean()),
         "rdp_busy": float(rdp.mean()),
-        "rdp_ms": rdp_ms,
+        "rdp_ms": float(rdp_ms_f.mean()),
+        "mem_ms": float(mem_ms_f.mean()),
+        "bottleneck_share": {name: float((bottleneck == i).mean()) for i, name in enumerate(("cpu", "rsp", "rdp", "rdram"))},
         "rdp_fill_cycles": _delta_mean(rows, "rdp_fill_cycles"),
         "rdp_tmem_cycles": _delta_mean(rows, "rdp_tmem_cycles"),
         "rdp_sync_cycles": _delta_mean(rows, "rdp_sync_cycles"),
@@ -202,6 +269,9 @@ def metrics(run):
         "est_console_ms": est_console_ms,
         "est_console_p99_ms": float(np.percentile(console_ms, 99)),
         "est_fps": float(1000.0 / max(est_console_ms, 1e-9)),
+        "est_fps_30hz": float(60.0 * len(fields) / fields.sum()),
+        "frames_over_33ms": float((console_ms > 2 * FIELD_MS).mean()),
+        "frames_under_16ms": float((console_ms <= FIELD_MS).mean()),
         "rdram_bytes": float(traffic.mean()),
         "rdram_bytes_by_device": per_device,
         "dcache_misses": _delta_mean(rows, "dcache_misses"),
@@ -496,7 +566,7 @@ def precompute(args):
                 shutil.rmtree(owork, ignore_errors=True)
 
     (cache / "index.json").write_text(json.dumps(index, indent=1))
-    print(json.dumps({k: v["metrics"]["vi_fields_per_frame"] for k, v in index["workloads"].items()}, indent=1))
+    print(json.dumps({k: round(v["metrics"]["est_console_ms"], 2) for k, v in index["workloads"].items()}, indent=1))
     print("accepted visual variants:", index["variants"])
     if "o2_reference" in index:
         print("recorded GCC -O2 reference metrics")
@@ -624,7 +694,7 @@ def grade(args):
         return finish("invalid", f"failed gates: {failed}")
 
     # 4. rewards and unbounded/log speedups, one per profile
-    speed_ratios = [summary["workloads"][w["id"]]["ratios"]["frame_ticks"] for w in items]
+    speed_ratios = [summary["workloads"][w["id"]]["ratios"]["cpu_effective_cycles"] for w in items]
     rdp_ratios = [summary["workloads"][w["id"]]["ratios"]["rdp_busy"] for w in items]
     footprint_ratios = [summary["workloads"][w["id"]]["ratios"]["footprint_bytes"] for w in items]
     o2_ref = index.get("o2_reference", {})
@@ -654,9 +724,13 @@ def grade(args):
         else:
             entry.update(valid=True)
 
-        entry["reward"] = max(-1.0, min(1.0, 1.0 - geo)) if entry["valid"] else -1.0
+        # Reward is log-scaled so that 2x, 4x and 8x stay clearly apart:
+        # log2(speedup) / reward_log2_scale (default 4, so 16x scores 1.0).
+        # Not capped above; any failed gate or budget scores -1.
+        scale = cfg.get("reward_log2_scale", 4.0)
         entry["speedup"] = round(1.0 / geo, 6) if entry["valid"] and geo > 0 else 0.0
         entry["log2_speedup"] = round(-math.log2(geo), 6) if entry["valid"] and geo > 0 else None
+        entry["reward"] = max(-1.0, entry["log2_speedup"] / scale) if entry["valid"] else -1.0
 
         if o2_ref and all(w["id"] in o2_ref for w in items):
             o2_ratios = [
