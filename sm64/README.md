@@ -37,16 +37,22 @@ invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
 
 - `r0-unchanged` to `r9-kaze-partial`: compiler flags and a growing subset of
   Kaze Emanuar's techniques.
-- **`r10-kaze-master`, the human-expert reference (1.69x console speedup)**:
+- **`r10-kaze-master`, the human-expert reference (1.65x console speedup)**:
   a reconstruction of applicable optimizations from Kaze's public videos,
   on-screen code, and two code downloads (the "How Optimizations made Mario 64
   SLOWER" repository and the audio code from "Revolutionizing N64 programming!").
   It is not Kaze's own engine, which rewrites physics and assets in ways that
   change the game.
-  Techniques that change gameplay or audio (one-raycast walls, his rewritten
-  trig and sound engine) are left out; visual changes he ships are accepted as
-  precomputed variants (full-detail Mario, no LOD, F3DEX2, reduced-aliasing
-  opaque modes, Rainbow Ride decoration baked into the level).
+  Techniques that change gameplay or audio (one-raycast walls, his sound engine)
+  are left out. His table-free trig is kept, with a 512-byte correction map so
+  every sine and cosine equals the vanilla table bit for bit, and his vertical
+  object culling skips objects whose drawing moves other objects (held Spiny,
+  collision children). With both, gameplay and audio are bit-identical to
+  vanilla on the public routes and on seeded button mashing, except that the
+  accepted Rainbow Ride decoration variant itself changes 54 PCM samples on the
+  public RR route (99 dB SNR). Visual changes he
+  ships are accepted as precomputed variants (full-detail Mario, no LOD, F3DEX2,
+  reduced-aliasing opaque modes, Rainbow Ride decoration baked into the level).
 - `r11-beyond-kaze` (1.62x, an earlier and smaller build): adds techniques Kaze
   never described (object fields ordered for the 16-byte D-cache lines, skipped
   unchanged stores, audio struct reorder, double buffering), to check that the
@@ -88,11 +94,12 @@ container.
   60 Hz VBlank pacing and asynchronous `thread4_sound` console execution.
 - **Player Equivalence + Hyrum's Law**: Gates on what the player sees, hears,
   and controls (`level_area`, `mario_stats`, `mario_action`, sub-pixel
-  `mario_pos`, `mario_floor_height`, `cam_pos`, `cam_focus`, whole-frame video,
-  and audio SNR). Fixing engine C/memory undefined behavior (`AVOID_UB`,
-  uninitialized locals, out-of-bounds reads) and hibernating distant off-screen
-  objects is rewarded; altering 1996 SM64 gameplay/physics quirks (quarter-step
-  counts, wall-kick timing, BLJs) fails the gameplay gate.
+  `mario_pos`, `mario_floor_height`, `cam_pos`, `cam_focus`, every actor within
+  2000 units of Mario, whole-frame video, and audio SNR). Fixing engine C/memory
+  undefined behavior (`AVOID_UB`, uninitialized locals, out-of-bounds reads) and
+  hibernating distant off-screen objects is rewarded; altering 1996 SM64
+  gameplay/physics quirks (quarter-step counts, wall-kick timing, BLJs) fails
+  the gameplay gate.
 - **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
   `rr-statics`, and every combination)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
   switching to Nintendo's F3DEX2 microcode, and/or using

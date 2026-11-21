@@ -874,29 +874,64 @@ index 66b49b2..3ce51f5 100644
  }
  
 diff --git a/src/engine/math_util.c b/src/engine/math_util.c
-index 72fa625..775c411 100644
+index 72fa625..52b5d14 100644
 --- a/src/engine/math_util.c
 +++ b/src/engine/math_util.c
-@@ -5,7 +5,43 @@
+@@ -5,7 +5,79 @@
  #include "math_util.h"
  #include "surface_collision.h"
  
 -#include "trig_tables.inc.c"
-+/* Table-free octant minimax polynomial trig (0 bytes of sin/cos D-cache LUTs, <=1 ULP error). */
++/* Table-free octant minimax polynomial trig (Kaze Emanuar: no 20 KB sin/cos
++ * D-cache LUT). The polynomials are within 1 ULP of vanilla gSineTable; the
++ * two bitmaps below (512 bytes, generated from include/trig_tables.inc.c by
++ * evaluating these exact float32 expressions) correct the 901 entries that
++ * differ, so every result is bit-identical to the vanilla table. Index [0] is
++ * the odd (sin) polynomial, [1] the even (cos) one, bit k the octant offset.
++ * Negation is 0.0f - v so sin(0x8000) stays +0.0f like the table. */
++static const u32 sTrigUlpDown[2][32] = {
++    { 0x1260EBA3U, 0x00949482U, 0x98C36081U, 0x908DC1B9U, 0x8D24D078U, 0xBCC67806U, 0x88BFFEBEU, 0x192E8BABU,
++      0x4426D42BU, 0xB04000AAU, 0xE794C101U, 0x6190268DU, 0x80B50CBCU, 0x55B3D927U, 0x086085F2U, 0x84686044U,
++      0x440C2C42U, 0x9F420C20U, 0xC9379B54U, 0x7A615A03U, 0x62C8130CU, 0x010653CFU, 0xAA00041BU, 0xA856C844U,
++      0xABA2E931U, 0xFAFFFA23U, 0xC03CC67AU, 0x3C164962U, 0x3B076212U, 0x020D8633U, 0x82525201U, 0x8BAE0C90U },
++    { 0xDF76A840U, 0xFF53ABDDU, 0x5237D3C1U, 0x400019C2U, 0x00000000U, 0x00030000U, 0xD8500000U, 0x7A20A4CEU,
++      0xFF64B75FU, 0xFFFDFF7FU, 0x9FFFFFBDU, 0xC5FFFFEFU, 0xC1DA73F3U, 0x483A64D4U, 0x1031B400U, 0x00000100U,
++      0x01000000U, 0x005B1810U, 0x564CB824U, 0x9F9CB706U, 0xEFFFFF47U, 0x7BFFFFF3U, 0xFDFF7FFFU, 0xF5DA4DFFU,
++      0xE64A08BDU, 0x00001436U, 0x00018000U, 0x00000000U, 0x87300004U, 0x0797D894U, 0x77AB95FFU, 0x042ADDF7U },
++};
++static const u32 sTrigUlpUp[2][32] = {
++    { 0 },
++    { 0x00000100U, 0x00000000U, 0x00000000U, 0x90400000U, 0x00010010U, 0x00000810U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x10200000U, 0x10010000U, 0x00000412U, 0x00000000U, 0x00000000U, 0x01000000U },
++};
++
++static f32 trig_fix(f32 v, u32 kind, u32 k) {
++    union { f32 f; u32 u; } bits;
++    u32 w = k >> 5;
++    u32 b = k & 31U;
++
++    bits.f = v;
++    bits.u += ((sTrigUlpUp[kind][w] >> b) & 1U) - ((sTrigUlpDown[kind][w] >> b) & 1U);
++    return bits.f;
++}
++
 +f32 sins_fast(s16 x) {
 +    u32 idx = ((u32) (u16) x) >> 4;
 +    u32 sidx = (idx + 0x200U) & 0xFFFU;
 +    u32 quad = sidx >> 10;
-+    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    u32 k = sidx & 0x3FFU;
++    f32 ft = (f32) (((s32) k) - 0x200) * (1.0f / 512.0f);
 +    f32 fu = ft * ft;
 +    f32 v;
 +
 +    if (quad & 1U) {
-+        v = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++        v = trig_fix(1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f)), 1, k);
 +    } else {
-+        v = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
++        v = trig_fix(ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f))), 0, k);
 +    }
-+    return (quad >= 2U) ? -v : v;
++    return (quad >= 2U) ? 0.0f - v : v;
 +}
 +
 +f32 coss_fast(s16 x) {
@@ -907,22 +942,23 @@ index 72fa625..775c411 100644
 +    u32 idx = ((u32) (u16) x) >> 4;
 +    u32 sidx = (idx + 0x200U) & 0xFFFU;
 +    u32 quad = sidx >> 10;
-+    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    u32 k = sidx & 0x3FFU;
++    f32 ft = (f32) (((s32) k) - 0x200) * (1.0f / 512.0f);
 +    f32 fu = ft * ft;
-+    f32 sn = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
-+    f32 co = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++    f32 sn = trig_fix(ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f))), 0, k);
++    f32 co = trig_fix(1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f)), 1, k);
 +
 +    switch (quad) {
-+        case 0:  *outSin =  sn; *outCos =  co; break;
-+        case 1:  *outSin =  co; *outCos = -sn; break;
-+        case 2:  *outSin = -sn; *outCos = -co; break;
-+        default: *outSin = -co; *outCos =  sn; break;
++        case 0:  *outSin = sn;        *outCos = co;        break;
++        case 1:  *outSin = co;        *outCos = 0.0f - sn; break;
++        case 2:  *outSin = 0.0f - sn; *outCos = 0.0f - co; break;
++        default: *outSin = 0.0f - co; *outCos = sn;        break;
 +    }
 +}
  
  // Variables for a spline curve animation (used for the flight path in the grand star cutscene)
  Vec4s *gSplineKeyframe;
-@@ -26,10 +62,11 @@ int gSplineState;
+@@ -26,10 +98,11 @@ int gSplineState;
  
  /// Copy vector 'src' to 'dest'
  void *vec3f_copy(Vec3f dest, Vec3f src) {
@@ -938,7 +974,7 @@ index 72fa625..775c411 100644
  }
  
  /// Set vector 'dest' to (x, y, z)
-@@ -37,31 +74,34 @@ void *vec3f_set(Vec3f dest, f32 x, f32 y, f32 z) {
+@@ -37,31 +110,34 @@ void *vec3f_set(Vec3f dest, f32 x, f32 y, f32 z) {
      dest[0] = x;
      dest[1] = y;
      dest[2] = z;
@@ -986,7 +1022,7 @@ index 72fa625..775c411 100644
  }
  
  /// Set vector 'dest' to (x, y, z)
-@@ -69,7 +109,7 @@ void *vec3s_set(Vec3s dest, s16 x, s16 y, s16 z) {
+@@ -69,7 +145,7 @@ void *vec3s_set(Vec3s dest, s16 x, s16 y, s16 z) {
      dest[0] = x;
      dest[1] = y;
      dest[2] = z;
@@ -995,7 +1031,7 @@ index 72fa625..775c411 100644
  }
  
  /// Add vector a to 'dest'
-@@ -164,15 +204,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
+@@ -164,15 +240,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
   * Set mtx to the identity matrix
   */
  void mtxf_identity(Mat4 mtx) {
@@ -1016,7 +1052,7 @@ index 72fa625..775c411 100644
  }
  
  /**
-@@ -208,19 +244,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -208,19 +280,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      dx = to[0] - from[0];
      dz = to[2] - from[2];
  
@@ -1041,7 +1077,7 @@ index 72fa625..775c411 100644
      xColZ *= invLength;
      yColZ *= invLength;
      zColZ *= invLength;
-@@ -229,7 +265,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -229,7 +301,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColX = zColY * xColZ - xColY * zColZ;
      zColX = xColY * yColZ - yColY * xColZ;
  
@@ -1050,7 +1086,7 @@ index 72fa625..775c411 100644
  
      xColX *= invLength;
      yColX *= invLength;
-@@ -239,7 +275,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -239,7 +311,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColY = zColZ * xColX - xColZ * zColX;
      zColY = xColZ * yColX - yColZ * xColX;
  
@@ -1059,7 +1095,7 @@ index 72fa625..775c411 100644
      xColY *= invLength;
      yColY *= invLength;
      zColY *= invLength;
-@@ -270,14 +306,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -270,14 +342,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
   * axis, and then translates.
   */
  void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
@@ -1078,7 +1114,7 @@ index 72fa625..775c411 100644
  
      dest[0][0] = cy * cz + sx * sy * sz;
      dest[1][0] = -cy * sz + sx * sy * cz;
-@@ -303,14 +336,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+@@ -303,14 +372,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
   * axis, and then translates.
   */
  void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
@@ -1097,7 +1133,7 @@ index 72fa625..775c411 100644
  
      dest[0][0] = cy * cz;
      dest[0][1] = cy * sz;
-@@ -339,9 +369,11 @@ void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
+@@ -339,9 +405,11 @@ void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
   * 'position' is the position of the object in the world
   * 'angle' rotates the object while still facing the camera.
   */
@@ -1112,7 +1148,7 @@ index 72fa625..775c411 100644
      dest[0][2] = 0;
      dest[0][3] = 0;
  
-@@ -489,47 +521,29 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
+@@ -489,47 +557,29 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
   * then a.
   */
  void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b) {
@@ -1180,7 +1216,7 @@ index 72fa625..775c411 100644
  }
  
  /**
-@@ -571,37 +585,56 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
+@@ -571,37 +621,56 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
   * and no crashes occur.
   */
  void mtxf_to_mtx(Mtx *dest, Mat4 src) {
@@ -1258,7 +1294,7 @@ index 72fa625..775c411 100644
  }
  
  /**
-@@ -695,15 +728,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
+@@ -695,15 +764,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
   * Helper function for atan2s. Does a look up of the arctangent of y/x assuming
   * the resulting angle is in range [0, 0x2000] (1/8 of a circle).
   */
@@ -2294,10 +2330,18 @@ index 08706d9..5a9756f 100644
              gRipplingPainting = NULL;
          }
 diff --git a/src/game/rendering_graph_node.c b/src/game/rendering_graph_node.c
-index 2343068..8c12895 100644
+index 2343068..c9fd5aa 100644
 --- a/src/game/rendering_graph_node.c
 +++ b/src/game/rendering_graph_node.c
-@@ -37,8 +37,9 @@
+@@ -6,6 +6,7 @@
+ #include "gfx_dimensions.h"
+ #include "main.h"
+ #include "memory.h"
++#include "object_list_processor.h"
+ #include "print.h"
+ #include "rendering_graph_node.h"
+ #include "shadow.h"
+@@ -37,8 +38,9 @@
   */
  
  s16 gMatStackIndex;
@@ -2308,7 +2352,7 @@ index 2343068..8c12895 100644
  
  /**
   * Animation nodes have state in global variables, so this struct captures
-@@ -129,19 +130,29 @@ u16 gAreaUpdateCounter = 0;
+@@ -129,19 +131,29 @@ u16 gAreaUpdateCounter = 0;
  LookAt lookAt;
  #endif
  
@@ -2341,7 +2385,7 @@ index 2343068..8c12895 100644
  #ifdef F3DEX_GBI_2
      Mtx lMtx;
      guLookAtReflect(&lMtx, &lookAt, 0, 0, 0, /* eye */ 0, 0, 1, /* at */ 1, 0, 0 /* up */);
-@@ -154,10 +165,70 @@ static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
+@@ -154,10 +166,70 @@ static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
  
      for (i = 0; i < GFX_NUM_MASTER_LISTS; i++) {
          if ((currList = node->listHeads[i]) != NULL) {
@@ -2414,7 +2458,7 @@ index 2343068..8c12895 100644
                  gSPDisplayList(gDisplayListHead++, currList->displayList);
                  currList = currList->next;
              }
-@@ -180,10 +251,16 @@ static void geo_append_display_list(void *displayList, s16 layer) {
+@@ -180,10 +252,16 @@ static void geo_append_display_list(void *displayList, s16 layer) {
      gSPLookAt(gDisplayListHead++, &lookAt);
  #endif
      if (gCurGraphNodeMasterList != 0) {
@@ -2432,7 +2476,7 @@ index 2343068..8c12895 100644
          listNode->displayList = displayList;
          listNode->next = 0;
          if (gCurGraphNodeMasterList->listHeads[layer] == 0) {
-@@ -241,6 +318,8 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -241,6 +319,8 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
      }
      if (node->fnNode.node.children != NULL) {
          u16 perspNorm;
@@ -2441,7 +2485,7 @@ index 2343068..8c12895 100644
          Mtx *mtx = alloc_display_list(sizeof(*mtx));
  
  #ifdef VERSION_EU
-@@ -254,6 +333,10 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -254,6 +334,10 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
  
          gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
  
@@ -2452,7 +2496,7 @@ index 2343068..8c12895 100644
          gCurGraphNodeCamFrustum = node;
          geo_process_node_and_siblings(node->fnNode.node.children);
          gCurGraphNodeCamFrustum = NULL;
-@@ -267,17 +350,9 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -267,17 +351,9 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
   * range of this node.
   */
  static void geo_process_level_of_detail(struct GraphNodeLevelOfDetail *node) {
@@ -2473,7 +2517,7 @@ index 2343068..8c12895 100644
          if (node->node.children != 0) {
              geo_process_node_and_siblings(node->node.children);
          }
-@@ -307,10 +382,12 @@ static void geo_process_switch(struct GraphNodeSwitchCase *node) {
+@@ -307,10 +383,12 @@ static void geo_process_switch(struct GraphNodeSwitchCase *node) {
  /**
   * Process a camera node.
   */
@@ -2487,7 +2531,7 @@ index 2343068..8c12895 100644
  
      if (node->fnNode.func != NULL) {
          node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
-@@ -322,10 +399,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -322,10 +400,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
      mtxf_lookat(cameraTransform, node->pos, node->focus, node->roll);
      mtxf_mul(gMatStack[gMatStackIndex + 1], cameraTransform, gMatStack[gMatStackIndex]);
      gMatStackIndex++;
@@ -2501,7 +2545,7 @@ index 2343068..8c12895 100644
          node->matrixPtr = &gMatStack[gMatStackIndex];
          geo_process_node_and_siblings(node->fnNode.node.children);
          gCurGraphNodeCamera = NULL;
-@@ -333,6 +411,24 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -333,6 +412,24 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
      gMatStackIndex--;
  }
  
@@ -2526,7 +2570,7 @@ index 2343068..8c12895 100644
  /**
   * Process a translation / rotation node. A transformation matrix based
   * on the node's translation and rotation is created and pushed on both
-@@ -342,21 +438,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -342,21 +439,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
  static void geo_process_translation_rotation(struct GraphNodeTranslationRotation *node) {
      Mat4 mtxf;
      Vec3f translation;
@@ -2549,7 +2593,7 @@ index 2343068..8c12895 100644
  }
  
  /**
-@@ -365,23 +451,25 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
+@@ -365,23 +452,25 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_translation(struct GraphNodeTranslation *node) {
@@ -2590,7 +2634,7 @@ index 2343068..8c12895 100644
  }
  
  /**
-@@ -391,20 +479,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
+@@ -391,20 +480,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
   */
  static void geo_process_rotation(struct GraphNodeRotation *node) {
      Mat4 mtxf;
@@ -2612,7 +2656,7 @@ index 2343068..8c12895 100644
  }
  
  /**
-@@ -413,22 +491,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
+@@ -413,22 +492,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_scale(struct GraphNodeScale *node) {
@@ -2636,7 +2680,7 @@ index 2343068..8c12895 100644
  }
  
  /**
-@@ -439,12 +506,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
+@@ -439,12 +507,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
   */
  static void geo_process_billboard(struct GraphNodeBillboard *node) {
      Vec3f translation;
@@ -2650,7 +2694,7 @@ index 2343068..8c12895 100644
      if (gCurGraphNodeHeldObject != NULL) {
          mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                           gCurGraphNodeHeldObject->objNode->header.gfx.scale);
-@@ -453,8 +519,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
+@@ -453,8 +520,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
                           gCurGraphNodeObject->scale);
      }
  
@@ -2660,7 +2704,7 @@ index 2343068..8c12895 100644
  
      if (node->displayList != NULL) {
          geo_append_display_list(node->displayList, node->node.flags >> 8);
-@@ -541,13 +606,57 @@ static void geo_process_background(struct GraphNodeBackground *node) {
+@@ -541,13 +607,57 @@ static void geo_process_background(struct GraphNodeBackground *node) {
   * Render an animated part. The current animation state is not part of the node
   * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
   */
@@ -2721,7 +2765,7 @@ index 2343068..8c12895 100644
      vec3f_set(translation, node->translation[0], node->translation[1], node->translation[2]);
      if (gCurrAnimType == ANIM_TYPE_TRANSLATION) {
          translation[0] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
-@@ -587,18 +696,35 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
+@@ -587,18 +697,35 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
          rotation[1] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
          rotation[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
      }
@@ -2768,7 +2812,7 @@ index 2343068..8c12895 100644
  }
  
  /**
-@@ -641,7 +767,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
+@@ -641,7 +768,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
   */
  static void geo_process_shadow(struct GraphNodeShadow *node) {
      Gfx *shadowList;
@@ -2776,7 +2820,7 @@ index 2343068..8c12895 100644
      Vec3f shadowPos;
      Vec3f animOffset;
      f32 objScale;
-@@ -649,7 +774,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -649,7 +775,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
      f32 sinAng;
      f32 cosAng;
      struct GraphNode *geo;
@@ -2784,7 +2828,7 @@ index 2343068..8c12895 100644
  
      if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
          if (gCurGraphNodeHeldObject != NULL) {
-@@ -680,8 +804,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -680,8 +805,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
                  gCurrAnimAttribute -= 6;
  
                  // simple matrix rotation so the shadow offset rotates along with the object
@@ -2794,7 +2838,7 @@ index 2343068..8c12895 100644
  
                  shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
                  shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
-@@ -691,12 +814,21 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -691,12 +815,21 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
          shadowList = create_shadow_below_xyz(shadowPos[0], shadowPos[1], shadowPos[2], shadowScale,
                                               node->shadowSolidity, node->shadowType);
          if (shadowList != NULL) {
@@ -2821,7 +2865,7 @@ index 2343068..8c12895 100644
              if (gShadowAboveWaterOrLava == TRUE) {
                  geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 4);
              } else if (gMarioOnIceOrCarpet == 1) {
-@@ -746,7 +878,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -746,7 +879,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
   */
  static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      s16 cullingRadius;
@@ -2829,7 +2873,7 @@ index 2343068..8c12895 100644
      struct GraphNode *geo;
      f32 hScreenEdge;
  
-@@ -755,26 +886,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -755,26 +887,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      }
  
      geo = node->sharedChild;
@@ -2858,7 +2902,7 @@ index 2343068..8c12895 100644
      } else {
          cullingRadius = 300;
      }
-@@ -784,10 +903,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -784,10 +904,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
          return FALSE;
      }
  
@@ -2869,23 +2913,31 @@ index 2343068..8c12895 100644
      if (matrix[3][2] < -20000.0f - cullingRadius) {
          return FALSE;
      }
-@@ -799,6 +914,15 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -799,6 +915,23 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      if (matrix[3][0] < -hScreenEdge - cullingRadius) {
          return FALSE;
      }
 +
 +    // Vertical test too (Kaze Emanuar, "How Optimizations made Mario 64
 +    // SLOWER"): sFovTan is tan(fovy / 2 + 1 degree), the vertical half-extent.
-+    if (matrix[3][1] > hScreenEdge + cullingRadius) {
-+        return FALSE;
-+    }
-+    if (matrix[3][1] < -hScreenEdge - cullingRadius) {
-+        return FALSE;
++    // Some geo callbacks write game state while the object is drawn: Mario's
++    // (punch state, held-object hand position) and those that place an
++    // object's prevObj (sushi/Bowser collision children, Lakitu's Spiny,
++    // Monty Mole's rock, Mr. Blizzard's snowball, Mario held by Chuckya or
++    // King Bob-omb). Vanilla draws them whenever they are horizontally in
++    // view, so they keep the vanilla test.
++    if ((struct Object *) node != gMarioObject && ((struct Object *) node)->prevObj == NULL) {
++        if (matrix[3][1] > hScreenEdge + cullingRadius) {
++            return FALSE;
++        }
++        if (matrix[3][1] < -hScreenEdge - cullingRadius) {
++            return FALSE;
++        }
 +    }
      return TRUE;
  }
  
-@@ -810,33 +934,58 @@ static void geo_process_object(struct Object *node) {
+@@ -810,33 +943,58 @@ static void geo_process_object(struct Object *node) {
      s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
  
      if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
@@ -2963,7 +3015,7 @@ index 2343068..8c12895 100644
              if (node->header.gfx.sharedChild != NULL) {
                  gCurGraphNodeObject = (struct GraphNodeObject *) node;
                  node->header.gfx.sharedChild->parent = &node->header.gfx.node;
-@@ -877,7 +1026,6 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
+@@ -877,7 +1035,6 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
  void geo_process_held_object(struct GraphNodeHeldObject *node) {
      Mat4 mat;
      Vec3f translation;
@@ -2971,7 +3023,7 @@ index 2343068..8c12895 100644
  
  #ifdef F3DEX_GBI_2
      gSPLookAt(gDisplayListHead++, &lookAt);
-@@ -906,8 +1054,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
+@@ -906,8 +1063,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
                                (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
          }
          gMatStackIndex++;
