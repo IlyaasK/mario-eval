@@ -107,5 +107,5 @@ the same.
 
 Reference points on SM64's public routes (console profile): GCC `-O2` alone
 1.39×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's
-public work, 1.65×; `r11-beyond-kaze`, adding our own
+public work, 1.67×; `r11-beyond-kaze`, adding our own
 D-cache layout work, 1.62× (earlier, smaller build).

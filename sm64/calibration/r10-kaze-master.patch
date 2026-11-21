@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 7a6eab1..56d6dce 100644
+index 7a6eab1..1315ee1 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -23,7 +23,7 @@ TARGET_N64 ?= 1
@@ -49,14 +49,20 @@ index 7a6eab1..56d6dce 100644
  S_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
  ULTRA_C_FILES     := $(foreach dir,$(ULTRA_SRC_DIRS),$(wildcard $(dir)/*.c))
  GODDARD_C_FILES   := $(foreach dir,$(GODDARD_SRC_DIRS),$(wildcard $(dir)/*.c))
-@@ -876,8 +882,39 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
+@@ -876,8 +882,45 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
  	$(COPT) -signed -I=$< -CMP=$@ -cp=i -scalaroptimize=1 $(COPTFLAGS)
  $(BUILD_DIR)/src/audio/seqplayer.copt: COPTFLAGS := -inline_manual
  
 +else ifeq ($(COMPILER),gcc)
 +  HOT_GCC_OPT  := -O3 -fno-fast-math -fno-math-errno -fno-unroll-loops -fno-peel-loops -fno-bit-tests --param=case-values-threshold=15
-+  COLD_GCC_OPT := -Os -fno-fast-math -fno-math-errno -fno-bit-tests --param=case-values-threshold=15 $(KAZE_GCC_FLAGS)
-+  KAZE_GCC_FLAGS := -falign-functions=0 -fmerge-all-constants -fmodulo-sched -fmodulo-sched-allow-regmoves -fira-hoist-pressure -fipa-pta -floop-interchange -fsplit-paths -fallow-store-data-races -mframe-header-opt -mno-check-zero-division
++  COLD_GCC_OPT := -Os -fno-fast-math -fno-math-errno -fno-bit-tests --param=case-values-threshold=15
++  # ultrasm64 (FazanaJ) 8a20ba05 "Os libultra" (NL) / 0ab727b8 "Os": the fork compiles the
++  # whole libultra from source at -Os. r10's per-file libultra flags (-O3 for gu*/al*, -O2,
++  # -mno-abicalls -mips2 ...) sit in the ifeq ($(COMPILER),ido) branch (Makefile:748-853) and
++  # are therefore dead in the gcc build, so r10's libultra actually compiles with the game
++  # default OPT_FLAGS. This applies the cold flag string to libultra only (ULTRA_C_FILES =
++  # lib/src/*.c + lib/src/math/*.c, which excludes lib/src/libgcc).
++  $(patsubst %.c,$(BUILD_DIR)/%.o,$(ULTRA_C_FILES)): OPT_FLAGS := $(COLD_GCC_OPT)
 +  $(BUILD_DIR)/src/engine/math_util.o:          OPT_FLAGS := $(COLD_GCC_OPT)
 +  $(BUILD_DIR)/src/engine/surface_collision.o:  OPT_FLAGS := $(COLD_GCC_OPT)
 +  $(BUILD_DIR)/src/game/rendering_graph_node.o: OPT_FLAGS := $(COLD_GCC_OPT)
@@ -89,6 +95,19 @@ index 7a6eab1..56d6dce 100644
  # Assemble assembly code
  $(BUILD_DIR)/%.o: %.s
  	$(call print,Assembling:,$<,$@)
+@@ -889,9 +932,11 @@ $(BUILD_DIR)/rsp/%.bin $(BUILD_DIR)/rsp/%_data.bin: rsp/%.s
+ 	$(V)$(RSPASM) -sym $@.sym $(RSPASMFLAGS) -strequ CODE_FILE $(BUILD_DIR)/rsp/$*.bin -strequ DATA_FILE $(BUILD_DIR)/rsp/$*_data.bin $<
+ 
+ # Run linker script through the C preprocessor
++# (the script must see the same target configuration as the code: config.h's
++# BORDER_HEIGHT is 8 on the N64 and 0 elsewhere)
+ $(BUILD_DIR)/$(LD_SCRIPT): $(LD_SCRIPT)
+ 	$(call print,Preprocessing linker script:,$<,$@)
+-	$(V)$(CPP) $(CPPFLAGS) -DBUILD_DIR=$(BUILD_DIR) -MMD -MP -MT $@ -MF $@.d -o $@ $<
++	$(V)$(CPP) $(CPPFLAGS) $(if $(filter 1,$(TARGET_N64)),-DTARGET_N64,) -DBUILD_DIR=$(BUILD_DIR) -MMD -MP -MT $@ -MF $@.d -o $@ $<
+ 
+ # Link libultra
+ $(BUILD_DIR)/libultra.a: $(ULTRA_O_FILES)
 diff --git a/actors/coin/model.inc.c b/actors/coin/model.inc.c
 index dcb637d..745eccc 100644
 --- a/actors/coin/model.inc.c
@@ -245,6 +264,22 @@ index ebfab07..dfe735b 100644
  #define	G_RM_AA_XLU_SURF	RM_AA_XLU_SURF(1)
  #define	G_RM_AA_XLU_SURF2	RM_AA_XLU_SURF(2)
  #define	G_RM_AA_XLU_LINE	RM_AA_XLU_LINE(1)
+diff --git a/include/segments.h b/include/segments.h
+index 65f1fc4..423eae4 100644
+--- a/include/segments.h
++++ b/include/segments.h
+@@ -15,7 +15,10 @@
+ 
+ #define SEG_START         0x8005C000
+ 
+-#define SEG_FRAMEBUFFERS_SIZE (2 * SCREEN_WIDTH * SCREEN_HEIGHT * 3)
++/* Three 320x240 16-bit framebuffers whose BORDER_HEIGHT-line black bars are
++ * shared between neighbours (see src/buffers/framebuffers.h), so the region
++ * spans 3 * SCREEN_HEIGHT - 2 * BORDER_HEIGHT lines. */
++#define SEG_FRAMEBUFFERS_SIZE ((3 * SCREEN_HEIGHT - 2 * BORDER_HEIGHT) * SCREEN_WIDTH * 2)
+ #define SEG_GODDARD_POOL_OFFSET 0x52000 // Offset from right side of pool
+ #define SEG_GODDARD       (SEG_POOL_END - SEG_GODDARD_POOL_OFFSET)
+ 
 diff --git a/include/types.h b/include/types.h
 index e53fb7d..1fc9131 100644
 --- a/include/types.h
@@ -690,6 +725,72 @@ index 0000000..dc235f8
 +#include "seqplayer.c"
 +#include "effects.c"
 +#include "playback.c"
+diff --git a/src/buffers/framebuffers.c b/src/buffers/framebuffers.c
+index 09a8478..3b5aaea 100644
+--- a/src/buffers/framebuffers.c
++++ b/src/buffers/framebuffers.c
+@@ -1,12 +1,8 @@
+ #include <ultra64.h>
+ 
+ #include "config.h"
++#include "segments.h"
+ 
+-// 0x70800 bytes
+-#ifdef AVOID_UB
+-u16 gFramebuffers[3][SCREEN_WIDTH * SCREEN_HEIGHT];
+-#else
+-u16 gFramebuffer0[SCREEN_WIDTH * SCREEN_HEIGHT];
+-u16 gFramebuffer1[SCREEN_WIDTH * SCREEN_HEIGHT];
+-u16 gFramebuffer2[SCREEN_WIDTH * SCREEN_HEIGHT];
+-#endif
++// SEG_FRAMEBUFFERS_SIZE bytes, aliasing the always-black bars of adjacent
++// buffers (see framebuffers.h).
++u16 gFramebuffers[SEG_FRAMEBUFFERS_SIZE / sizeof(u16)];
+diff --git a/src/buffers/framebuffers.h b/src/buffers/framebuffers.h
+index 70cee04..d34fa52 100644
+--- a/src/buffers/framebuffers.h
++++ b/src/buffers/framebuffers.h
+@@ -4,19 +4,27 @@
+ #include <PR/ultratypes.h>
+ 
+ #include "config.h"
++#include "segments.h"
+ 
+-// level_script.c assumes that the frame buffers are adjacent, while game.c's
+-// -g codegen implies that they are separate variables. This is impossible to
+-// reconcile without undefined behavior. Avoid that when possible.
+-#ifdef AVOID_UB
+-extern u16 gFramebuffers[3][SCREEN_WIDTH * SCREEN_HEIGHT];
+-#define gFramebuffer0 gFramebuffers[0]
+-#define gFramebuffer1 gFramebuffers[1]
+-#define gFramebuffer2 gFramebuffers[2]
+-#else
+-extern u16 gFramebuffer0[SCREEN_WIDTH * SCREEN_HEIGHT];
+-extern u16 gFramebuffer1[SCREEN_WIDTH * SCREEN_HEIGHT];
+-extern u16 gFramebuffer2[SCREEN_WIDTH * SCREEN_HEIGHT];
+-#endif
++/*
++ * The three 320x240 framebuffers share the BORDER_HEIGHT-line black bars with
++ * their neighbour: each buffer after the first starts BORDER_HEIGHT lines
++ * before the end of the previous one, so fb1's top bar and fb0's bottom bar
++ * are the same RDRAM, and likewise for fb2/fb1 (Kaze Emanuar, "Mario 64 wastes
++ * SO MUCH MEMORY", 3:31-4:17).
++ *
++ * Those lines are only ever written by draw_screen_borders(), which fills the
++ * top and bottom bar of every buffer with opaque black under a full-screen
++ * scissor, so the shared lines hold exactly the pixels they would hold
++ * unaliased. The buffers are still each 320x240 with a 320-word linestride, so
++ * the RDP/VI see an ordinary framebuffer.
++ */
++#define FRAMEBUFFER_STRIDE_WORDS ((SCREEN_HEIGHT - BORDER_HEIGHT) * SCREEN_WIDTH)
++
++extern u16 gFramebuffers[SEG_FRAMEBUFFERS_SIZE / sizeof(u16)];
++
++#define gFramebuffer0 (gFramebuffers)
++#define gFramebuffer1 (gFramebuffers + FRAMEBUFFER_STRIDE_WORDS)
++#define gFramebuffer2 (gFramebuffers + 2 * FRAMEBUFFER_STRIDE_WORDS)
+ 
+ #endif // FRAMEBUFFERS_H
 diff --git a/src/engine/behavior_script.c b/src/engine/behavior_script.c
 index 3d2fea1..bc5df49 100644
 --- a/src/engine/behavior_script.c
@@ -873,8 +974,21 @@ index 66b49b2..3ce51f5 100644
      graphNode->node.flags &= ~GRAPH_RENDER_ACTIVE;
  }
  
+diff --git a/src/engine/level_script.c b/src/engine/level_script.c
+index 0ec4341..d7c7179 100644
+--- a/src/engine/level_script.c
++++ b/src/engine/level_script.c
+@@ -286,7 +286,7 @@ static void level_cmd_load_mario_head(void) {
+     if (addr != NULL) {
+         gdm_init(addr, DOUBLE_SIZE_ON_64_BIT(0xE1000));
+         gd_add_to_heap(gZBuffer, sizeof(gZBuffer)); // 0x25800
+-        gd_add_to_heap(gFramebuffer0, 3 * sizeof(gFramebuffer0)); // 0x70800
++        gd_add_to_heap(gFramebuffer0, SEG_FRAMEBUFFERS_SIZE); // 0x6E000 (overlapped bars)
+         gdm_setup();
+         gdm_maketestdl(CMD_GET(s16, 2));
+     } else {
 diff --git a/src/engine/math_util.c b/src/engine/math_util.c
-index 72fa625..52b5d14 100644
+index 72fa625..8342bdf 100644
 --- a/src/engine/math_util.c
 +++ b/src/engine/math_util.c
 @@ -5,7 +5,79 @@
@@ -1031,7 +1145,7 @@ index 72fa625..52b5d14 100644
  }
  
  /// Add vector a to 'dest'
-@@ -164,15 +240,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
+@@ -164,15 +240,16 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
   * Set mtx to the identity matrix
   */
  void mtxf_identity(Mat4 mtx) {
@@ -1044,15 +1158,20 @@ index 72fa625..52b5d14 100644
 -
 -    // initialize the diagonal cells to 1
 -    for (dest = (f32 *) mtx, i = 0; i < 4; dest += 5, i++) *dest = 1;
++    // 4x3 (Kaze Emanuar, DUbR8C6svHs [6:41-7:08] and 9QZlQMpNk-M [0:37-1:09]):
++    // the fourth column of an affine matrix is the constant (0, 0, 0, 1), every
++    // reader of a Mat4 reads only the 3x3 and the translation row, and
++    // mtxf_to_mtx writes that column into the fixed-point Mtx, so no float
++    // matrix ever has to store it.
 +    u32 *p = (u32 *) mtx;
-+    p[0]  = 0x3F800000U; p[1]  = 0; p[2]  = 0; p[3]  = 0;
-+    p[4]  = 0; p[5]  = 0x3F800000U; p[6]  = 0; p[7]  = 0;
-+    p[8]  = 0; p[9]  = 0; p[10] = 0x3F800000U; p[11] = 0;
-+    p[12] = 0; p[13] = 0; p[14] = 0; p[15] = 0x3F800000U;
++    p[0]  = 0x3F800000U; p[1]  = 0; p[2]  = 0;
++    p[4]  = 0; p[5]  = 0x3F800000U; p[6]  = 0;
++    p[8]  = 0; p[9]  = 0; p[10] = 0x3F800000U;
++    p[12] = 0; p[13] = 0; p[14] = 0;
  }
  
  /**
-@@ -208,19 +280,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -208,19 +285,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      dx = to[0] - from[0];
      dz = to[2] - from[2];
  
@@ -1077,7 +1196,7 @@ index 72fa625..52b5d14 100644
      xColZ *= invLength;
      yColZ *= invLength;
      zColZ *= invLength;
-@@ -229,7 +301,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -229,7 +306,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColX = zColY * xColZ - xColY * zColZ;
      zColX = xColY * yColZ - yColY * xColZ;
  
@@ -1086,7 +1205,7 @@ index 72fa625..52b5d14 100644
  
      xColX *= invLength;
      yColX *= invLength;
-@@ -239,7 +311,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -239,7 +316,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColY = zColZ * xColX - xColZ * zColX;
      zColY = xColZ * yColX - yColZ * xColX;
  
@@ -1095,26 +1214,67 @@ index 72fa625..52b5d14 100644
      xColY *= invLength;
      yColY *= invLength;
      zColY *= invLength;
-@@ -270,14 +342,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -258,11 +335,6 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+     mtx[1][2] = yColZ;
+     mtx[2][2] = zColZ;
+     mtx[3][2] = -(from[0] * xColZ + from[1] * yColZ + from[2] * zColZ);
+-
+-    mtx[0][3] = 0;
+-    mtx[1][3] = 0;
+-    mtx[2][3] = 0;
+-    mtx[3][3] = 1;
+ }
+ 
+ /**
+@@ -270,17 +342,23 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
   * axis, and then translates.
   */
  void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
 -    register f32 sx = sins(rotate[0]);
 -    register f32 cx = coss(rotate[0]);
 +    f32 sx, cx, sy, cy, sz, cz;
++    f32 a, b, c, d;
  
 -    register f32 sy = sins(rotate[1]);
 -    register f32 cy = coss(rotate[1]);
--
--    register f32 sz = sins(rotate[2]);
--    register f32 cz = coss(rotate[2]);
 +    sincoss_fast(rotate[0], &sx, &cx);
 +    sincoss_fast(rotate[1], &sy, &cy);
 +    sincoss_fast(rotate[2], &sz, &cz);
  
-     dest[0][0] = cy * cz + sx * sy * sz;
-     dest[1][0] = -cy * sz + sx * sy * cz;
-@@ -303,14 +372,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+-    register f32 sz = sins(rotate[2]);
+-    register f32 cz = coss(rotate[2]);
++    // Kaze Emanuar's on-screen form (r-2iIBmXULI [5:46-5:52]): write only rows
++    // 0-2 x columns 0-2 plus the translation row, and share the products
++    // cy*cz, cy*sz, sy*cz, sy*sz (16 multiplies become 12).
++    a = cy * cz;
++    b = cy * sz;
++    c = sy * cz;
++    d = sy * sz;
+ 
+-    dest[0][0] = cy * cz + sx * sy * sz;
+-    dest[1][0] = -cy * sz + sx * sy * cz;
++    dest[0][0] = a + sx * d;
++    dest[1][0] = -b + sx * c;
+     dest[2][0] = cx * sy;
+     dest[3][0] = translate[0];
+ 
+@@ -289,13 +367,10 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+     dest[2][1] = -sx;
+     dest[3][1] = translate[1];
+ 
+-    dest[0][2] = -sy * cz + sx * cy * sz;
+-    dest[1][2] = sy * sz + sx * cy * cz;
++    dest[0][2] = -c + sx * b;
++    dest[1][2] = d + sx * a;
+     dest[2][2] = cx * cy;
+     dest[3][2] = translate[2];
+-
+-    dest[0][3] = dest[1][3] = dest[2][3] = 0.0f;
+-    dest[3][3] = 1.0f;
+ }
+ 
+ /**
+@@ -303,34 +378,27 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
   * axis, and then translates.
   */
  void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
@@ -1133,7 +1293,27 @@ index 72fa625..52b5d14 100644
  
      dest[0][0] = cy * cz;
      dest[0][1] = cy * sz;
-@@ -339,9 +405,11 @@ void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
+     dest[0][2] = -sy;
+-    dest[0][3] = 0;
+ 
+     dest[1][0] = sx * sy * cz - cx * sz;
+     dest[1][1] = sx * sy * sz + cx * cz;
+     dest[1][2] = sx * cy;
+-    dest[1][3] = 0;
+ 
+     dest[2][0] = cx * sy * cz + sx * sz;
+     dest[2][1] = cx * sy * sz - sx * cz;
+     dest[2][2] = cx * cy;
+-    dest[2][3] = 0;
+ 
+     dest[3][0] = b[0];
+     dest[3][1] = b[1];
+     dest[3][2] = b[2];
+-    dest[3][3] = 1;
+ }
+ 
+ /**
+@@ -339,21 +407,20 @@ void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
   * 'position' is the position of the object in the world
   * 'angle' rotates the object while still facing the camera.
   */
@@ -1146,9 +1326,53 @@ index 72fa625..52b5d14 100644
 +    dest[0][0] = rollCos;
 +    dest[0][1] = rollSin;
      dest[0][2] = 0;
-     dest[0][3] = 0;
+-    dest[0][3] = 0;
  
-@@ -489,47 +557,29 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
+     dest[1][0] = -dest[0][1];
+     dest[1][1] = dest[0][0];
+     dest[1][2] = 0;
+-    dest[1][3] = 0;
+ 
+     dest[2][0] = 0;
+     dest[2][1] = 0;
+     dest[2][2] = 1;
+-    dest[2][3] = 0;
+ 
+     dest[3][0] =
+         mtx[0][0] * position[0] + mtx[1][0] * position[1] + mtx[2][0] * position[2] + mtx[3][0];
+@@ -361,7 +428,6 @@ void mtxf_billboard(Mat4 dest, Mat4 mtx, Vec3f position, s16 angle) {
+         mtx[0][1] * position[0] + mtx[1][1] * position[1] + mtx[2][1] * position[2] + mtx[3][1];
+     dest[3][2] =
+         mtx[0][2] * position[0] + mtx[1][2] * position[1] + mtx[2][2] * position[2] + mtx[3][2];
+-    dest[3][3] = 1;
+ }
+ 
+ /**
+@@ -399,11 +465,6 @@ void mtxf_align_terrain_normal(Mat4 dest, Vec3f upDir, Vec3f pos, s16 yaw) {
+     dest[2][1] = forwardDir[1];
+     dest[2][2] = forwardDir[2];
+     dest[3][2] = pos[2];
+-
+-    dest[0][3] = 0.0f;
+-    dest[1][3] = 0.0f;
+-    dest[2][3] = 0.0f;
+-    dest[3][3] = 1.0f;
+ }
+ 
+ /**
+@@ -473,11 +534,6 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
+     mtx[2][1] = zColumn[1];
+     mtx[2][2] = zColumn[2];
+     mtx[3][2] = pos[2];
+-
+-    mtx[0][3] = 0;
+-    mtx[1][3] = 0;
+-    mtx[2][3] = 0;
+-    mtx[3][3] = 1;
+ }
+ 
+ /**
+@@ -489,47 +545,27 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
   * then a.
   */
  void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b) {
@@ -1175,12 +1399,10 @@ index 72fa625..52b5d14 100644
 +        for (j = 0; j < 3; j++) {
 +            out[i][j] = e0 * b[0][j] + e1 * b[1][j] + e2 * b[2][j];
 +        }
-+        out[i][3] = 0.0f;
 +    }
 +    out[3][0] += b[3][0];
 +    out[3][1] += b[3][1];
 +    out[3][2] += b[3][2];
-+    out[3][3] = 1.0f;
  
 -    // column 1
 -    entry0 = a[1][0];
@@ -1216,7 +1438,16 @@ index 72fa625..52b5d14 100644
  }
  
  /**
-@@ -571,37 +621,56 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
+@@ -538,7 +574,7 @@ void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b) {
+ void mtxf_scale_vec3f(Mat4 dest, Mat4 mtx, Vec3f s) {
+     register s32 i;
+ 
+-    for (i = 0; i < 4; i++) {
++    for (i = 0; i < 3; i++) {
+         dest[0][i] = mtx[0][i] * s[0];
+         dest[1][i] = mtx[1][i] * s[1];
+         dest[2][i] = mtx[2][i] * s[2];
+@@ -571,37 +607,75 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
   * and no crashes occur.
   */
  void mtxf_to_mtx(Mtx *dest, Mat4 src) {
@@ -1250,12 +1481,31 @@ index 72fa625..52b5d14 100644
 +        );
      }
  #endif
-+    for (i = 0; i < 8; i++) {
++    // 4x3 (Kaze Emanuar, DUbR8C6svHs [6:41-7:08]): the fourth column of every
++    // affine matrix is the constant (0, 0, 0, 1) and is written here rather than
++    // converted from a float matrix that no longer stores it. Only the 12 live
++    // floats are read and converted.
++    for (i = 0; i < 3; i++) {
 +        s32 v0 = (s32) (t1[0] * 65536.0f);
 +        s32 v1 = (s32) (t1[1] * 65536.0f);
-+        t1 += 2;
-+        intPart[i] = (((u32) v0) & 0xFFFF0000U) | ((((u32) v1) >> 16) & 0x0000FFFFU);
-+        fracPart[i] = (((u32) v0) << 16) | (((u32) v1) & 0x0000FFFFU);
++        s32 v2 = (s32) (t1[2] * 65536.0f);
++        t1 += 4;
++        intPart[0] = (((u32) v0) & 0xFFFF0000U) | ((((u32) v1) >> 16) & 0x0000FFFFU);
++        intPart[1] = (((u32) v2) & 0xFFFF0000U);
++        fracPart[0] = (((u32) v0) << 16) | (((u32) v1) & 0x0000FFFFU);
++        fracPart[1] = (((u32) v2) << 16);
++        intPart += 2;
++        fracPart += 2;
++    }
++    {
++        s32 v0 = (s32) (t1[0] * 65536.0f);
++        s32 v1 = (s32) (t1[1] * 65536.0f);
++        s32 v2 = (s32) (t1[2] * 65536.0f);
++
++        intPart[0] = (((u32) v0) & 0xFFFF0000U) | ((((u32) v1) >> 16) & 0x0000FFFFU);
++        intPart[1] = (((u32) v2) & 0xFFFF0000U) | 1U;
++        fracPart[0] = (((u32) v0) << 16) | (((u32) v1) & 0x0000FFFFU);
++        fracPart[1] = (((u32) v2) << 16);
 +    }
  }
  
@@ -1294,7 +1544,7 @@ index 72fa625..52b5d14 100644
  }
  
  /**
-@@ -695,15 +764,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
+@@ -695,15 +769,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
   * Helper function for atan2s. Does a look up of the arctangent of y/x assuming
   * the resulting angle is in range [0, 0x2000] (1/8 of a circle).
   */
@@ -1376,7 +1626,7 @@ index cb37d52..fdb72f0 100644
  void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius);
  void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b);
 diff --git a/src/engine/surface_collision.c b/src/engine/surface_collision.c
-index 741307b..4f09cbf 100644
+index 741307b..a1b7065 100644
 --- a/src/engine/surface_collision.c
 +++ b/src/engine/surface_collision.c
 @@ -57,8 +57,8 @@ static s32 find_wall_collisions_from_list(struct SurfaceNode *surfaceNode,
@@ -1449,7 +1699,23 @@ index 741307b..4f09cbf 100644
          if ((z2 - z) * (x3 - x2) - (x2 - x) * (z3 - z2) > 0) {
              continue;
          }
-@@ -334,11 +342,11 @@ f32 find_ceil(f32 posX, f32 posY, f32 posZ, struct Surface **pceil) {
+@@ -278,8 +286,13 @@ static struct Surface *find_ceil_from_list(struct SurfaceNode *surfaceNode, s32
+                 continue;
+             }
+ 
+-            // Find the ceil height at the specific point.
+-            height = -(x * nx + nz * z + oo) / ny;
++            if (nx == 0.0f && nz == 0.0f) {
++                // Flat surface: the plane height is exactly that of the first vertex.
++                height = surf->v1y;
++            } else {
++                // Find the ceil height at the specific point.
++                height = -(x * nx + nz * z + oo) / ny;
++            }
+ 
+             // Checks for ceiling interaction with a 78 unit buffer.
+             //! (Exposed Ceilings) Because any point above a ceiling counts
+@@ -334,11 +347,11 @@ f32 find_ceil(f32 posX, f32 posY, f32 posZ, struct Surface **pceil) {
  
      // Check for surfaces belonging to objects.
      surfaceList = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_CEILS].next;
@@ -1463,7 +1729,7 @@ index 741307b..4f09cbf 100644
  
      if (dynamicHeight < height) {
          ceil = dynamicCeil;
-@@ -411,10 +419,14 @@ static struct Surface *find_floor_from_list(struct SurfaceNode *surfaceNode, s32
+@@ -411,10 +424,14 @@ static struct Surface *find_floor_from_list(struct SurfaceNode *surfaceNode, s32
          surf = surfaceNode->surface;
          surfaceNode = surfaceNode->next;
  
@@ -1482,7 +1748,7 @@ index 741307b..4f09cbf 100644
  
          // Check that the point is within the triangle bounds.
          if ((z1 - z) * (x2 - x1) - (x1 - x) * (z2 - z1) < 0) {
-@@ -422,8 +434,8 @@ static struct Surface *find_floor_from_list(struct SurfaceNode *surfaceNode, s32
+@@ -422,8 +439,8 @@ static struct Surface *find_floor_from_list(struct SurfaceNode *surfaceNode, s32
          }
  
          // To slightly save on computation time, set this later.
@@ -1493,7 +1759,23 @@ index 741307b..4f09cbf 100644
  
          if ((z2 - z) * (x3 - x2) - (x2 - x) * (z3 - z2) < 0) {
              continue;
-@@ -541,11 +553,11 @@ f32 find_floor(f32 xPos, f32 yPos, f32 zPos, struct Surface **pfloor) {
+@@ -453,8 +470,13 @@ static struct Surface *find_floor_from_list(struct SurfaceNode *surfaceNode, s32
+             continue;
+         }
+ 
+-        // Find the height of the floor at a given location.
+-        height = -(x * nx + nz * z + oo) / ny;
++        if (nx == 0.0f && nz == 0.0f) {
++            // Flat surface: the plane height is exactly that of the first vertex.
++            height = surf->v1y;
++        } else {
++            // Find the height of the floor at a given location.
++            height = -(x * nx + nz * z + oo) / ny;
++        }
+         // Checks for floor interaction with a 78 unit buffer.
+         if (y - (height + -78.0f) < 0.0f) {
+             continue;
+@@ -541,11 +563,11 @@ f32 find_floor(f32 xPos, f32 yPos, f32 zPos, struct Surface **pfloor) {
  
      // Check for surfaces belonging to objects.
      surfaceList = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_FLOORS].next;
@@ -2189,10 +2471,34 @@ index 59ae99b..8e568ba 100644
          f32 sp1C = b->hurtboxHeight + sp38;
  
 diff --git a/src/game/object_helpers.c b/src/game/object_helpers.c
-index 54cf24f..c599578 100644
+index 54cf24f..a6ea1ec 100644
 --- a/src/game/object_helpers.c
 +++ b/src/game/object_helpers.c
-@@ -349,23 +349,14 @@ f32 approach_f32_symmetric(f32 value, f32 target, f32 increment) {
+@@ -228,11 +228,6 @@ void obj_apply_scale_to_matrix(struct Object *obj, Mat4 dst, Mat4 src) {
+     dst[1][2] = src[1][2] * obj->header.gfx.scale[1];
+     dst[2][2] = src[2][2] * obj->header.gfx.scale[2];
+     dst[3][2] = src[3][2];
+-
+-    dst[0][3] = src[0][3];
+-    dst[1][3] = src[1][3];
+-    dst[2][3] = src[2][3];
+-    dst[3][3] = src[3][3];
+ }
+ 
+ void create_transformation_from_matrices(Mat4 a0, Mat4 a1, Mat4 a2) {
+@@ -257,11 +252,6 @@ void create_transformation_from_matrices(Mat4 a0, Mat4 a1, Mat4 a2) {
+     a0[3][0] = a1[3][0] * a2[0][0] + a1[3][1] * a2[0][1] + a1[3][2] * a2[0][2] - spC;
+     a0[3][1] = a1[3][0] * a2[1][0] + a1[3][1] * a2[1][1] + a1[3][2] * a2[1][2] - sp8;
+     a0[3][2] = a1[3][0] * a2[2][0] + a1[3][1] * a2[2][1] + a1[3][2] * a2[2][2] - sp4;
+-
+-    a0[0][3] = 0.0f;
+-    a0[1][3] = 0.0f;
+-    a0[2][3] = 0.0f;
+-    a0[3][3] = 1.0f;
+ }
+ 
+ void obj_set_held_state(struct Object *obj, const BehaviorScript *heldBehavior) {
+@@ -349,23 +339,14 @@ f32 approach_f32_symmetric(f32 value, f32 target, f32 increment) {
  }
  
  s16 approach_s16_symmetric(s16 value, s16 target, s16 increment) {
@@ -2222,7 +2528,7 @@ index 54cf24f..c599578 100644
  }
  
  s32 cur_obj_rotate_yaw_toward(s16 target, s16 increment) {
-@@ -552,7 +543,7 @@ struct Object *try_to_spawn_object(s16 offsetY, f32 scale, struct Object *parent
+@@ -552,7 +533,7 @@ struct Object *try_to_spawn_object(s16 offsetY, f32 scale, struct Object *parent
                                     const BehaviorScript *behavior) {
      struct Object *obj;
  
@@ -2231,7 +2537,7 @@ index 54cf24f..c599578 100644
          obj = spawn_object(parent, model, behavior);
          obj->oPosY += offsetY;
          obj_scale(obj, scale);
-@@ -1824,29 +1815,13 @@ void cur_obj_move_standard(s16 steepSlopeAngleDegrees) {
+@@ -1824,29 +1805,13 @@ void cur_obj_move_standard(s16 steepSlopeAngleDegrees) {
      }
  }
  
@@ -2330,7 +2636,7 @@ index 08706d9..5a9756f 100644
              gRipplingPainting = NULL;
          }
 diff --git a/src/game/rendering_graph_node.c b/src/game/rendering_graph_node.c
-index 2343068..c9fd5aa 100644
+index 2343068..a10198e 100644
 --- a/src/game/rendering_graph_node.c
 +++ b/src/game/rendering_graph_node.c
 @@ -6,6 +6,7 @@
@@ -2593,7 +2899,7 @@ index 2343068..c9fd5aa 100644
  }
  
  /**
-@@ -365,23 +452,25 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
+@@ -365,23 +452,23 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_translation(struct GraphNodeTranslation *node) {
@@ -2619,7 +2925,6 @@ index 2343068..c9fd5aa 100644
 +        dst[r][0] = src[r][0];
 +        dst[r][1] = src[r][1];
 +        dst[r][2] = src[r][2];
-+        dst[r][3] = 0.0f;
      }
 -    if (node->node.children != NULL) {
 -        geo_process_node_and_siblings(node->node.children);
@@ -2628,13 +2933,12 @@ index 2343068..c9fd5aa 100644
 +    dst[3][0] = tx * src[0][0] + ty * src[1][0] + tz * src[2][0] + src[3][0];
 +    dst[3][1] = tx * src[0][1] + ty * src[1][1] + tz * src[2][1] + src[3][1];
 +    dst[3][2] = tx * src[0][2] + ty * src[1][2] + tz * src[2][2] + src[3][2];
-+    dst[3][3] = 1.0f;
 +
 +    geo_push_and_process((struct GraphNodeDisplayList *) node);
  }
  
  /**
-@@ -391,20 +480,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
+@@ -391,20 +478,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
   */
  static void geo_process_rotation(struct GraphNodeRotation *node) {
      Mat4 mtxf;
@@ -2656,7 +2960,7 @@ index 2343068..c9fd5aa 100644
  }
  
  /**
-@@ -413,22 +492,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
+@@ -413,22 +490,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_scale(struct GraphNodeScale *node) {
@@ -2680,7 +2984,7 @@ index 2343068..c9fd5aa 100644
  }
  
  /**
-@@ -439,12 +507,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
+@@ -439,12 +505,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
   */
  static void geo_process_billboard(struct GraphNodeBillboard *node) {
      Vec3f translation;
@@ -2694,7 +2998,7 @@ index 2343068..c9fd5aa 100644
      if (gCurGraphNodeHeldObject != NULL) {
          mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                           gCurGraphNodeHeldObject->objNode->header.gfx.scale);
-@@ -453,8 +520,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
+@@ -453,8 +518,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
                           gCurGraphNodeObject->scale);
      }
  
@@ -2704,7 +3008,7 @@ index 2343068..c9fd5aa 100644
  
      if (node->displayList != NULL) {
          geo_append_display_list(node->displayList, node->node.flags >> 8);
-@@ -541,13 +607,57 @@ static void geo_process_background(struct GraphNodeBackground *node) {
+@@ -541,13 +605,53 @@ static void geo_process_background(struct GraphNodeBackground *node) {
   * Render an animated part. The current animation state is not part of the node
   * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
   */
@@ -2746,10 +3050,6 @@ index 2343068..c9fd5aa 100644
 +        dest[3][j] = trans[0] * src[0][j] + trans[1] * src[1][j] + trans[2] * src[2][j];
 +        dest[3][j] += src[3][j];
 +    }
-+    dest[0][3] = 0.0f;
-+    dest[1][3] = 0.0f;
-+    dest[2][3] = 0.0f;
-+    dest[3][3] = 1.0f;
 +}
 +
  static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
@@ -2765,7 +3065,7 @@ index 2343068..c9fd5aa 100644
      vec3f_set(translation, node->translation[0], node->translation[1], node->translation[2]);
      if (gCurrAnimType == ANIM_TYPE_TRANSLATION) {
          translation[0] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
-@@ -587,18 +697,35 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
+@@ -587,18 +691,33 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
          rotation[1] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
          rotation[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
      }
@@ -2794,12 +3094,10 @@ index 2343068..c9fd5aa 100644
 +                dst[r][0] = src[r][0];
 +                dst[r][1] = src[r][1];
 +                dst[r][2] = src[r][2];
-+                dst[r][3] = 0.0f;
 +            }
 +            dst[3][0] = translation[0] * src[0][0] + translation[1] * src[1][0] + translation[2] * src[2][0] + src[3][0];
 +            dst[3][1] = translation[0] * src[0][1] + translation[1] * src[1][1] + translation[2] * src[2][1] + src[3][1];
 +            dst[3][2] = translation[0] * src[0][2] + translation[1] * src[1][2] + translation[2] * src[2][2] + src[3][2];
-+            dst[3][3] = 1.0f;
 +        }
 +    } else {
 +        mtxf_rotrans_mul(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex], translation, rotation);
@@ -2812,7 +3110,7 @@ index 2343068..c9fd5aa 100644
  }
  
  /**
-@@ -641,7 +768,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
+@@ -641,7 +760,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
   */
  static void geo_process_shadow(struct GraphNodeShadow *node) {
      Gfx *shadowList;
@@ -2820,7 +3118,7 @@ index 2343068..c9fd5aa 100644
      Vec3f shadowPos;
      Vec3f animOffset;
      f32 objScale;
-@@ -649,7 +775,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -649,7 +767,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
      f32 sinAng;
      f32 cosAng;
      struct GraphNode *geo;
@@ -2828,7 +3126,7 @@ index 2343068..c9fd5aa 100644
  
      if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
          if (gCurGraphNodeHeldObject != NULL) {
-@@ -680,8 +805,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -680,8 +797,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
                  gCurrAnimAttribute -= 6;
  
                  // simple matrix rotation so the shadow offset rotates along with the object
@@ -2838,7 +3136,7 @@ index 2343068..c9fd5aa 100644
  
                  shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
                  shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
-@@ -691,12 +815,21 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -691,12 +807,19 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
          shadowList = create_shadow_below_xyz(shadowPos[0], shadowPos[1], shadowPos[2], shadowScale,
                                               node->shadowSolidity, node->shadowType);
          if (shadowList != NULL) {
@@ -2855,17 +3153,15 @@ index 2343068..c9fd5aa 100644
 +                dst[r][0] = cam[r][0];
 +                dst[r][1] = cam[r][1];
 +                dst[r][2] = cam[r][2];
-+                dst[r][3] = 0.0f;
 +            }
 +            dst[3][0] = shadowPos[0] * cam[0][0] + shadowPos[1] * cam[1][0] + shadowPos[2] * cam[2][0] + cam[3][0];
 +            dst[3][1] = shadowPos[0] * cam[0][1] + shadowPos[1] * cam[1][1] + shadowPos[2] * cam[2][1] + cam[3][1];
 +            dst[3][2] = shadowPos[0] * cam[0][2] + shadowPos[1] * cam[1][2] + shadowPos[2] * cam[2][2] + cam[3][2];
-+            dst[3][3] = 1.0f;
 +            gMatStackFixed[gMatStackIndex] = NULL;
              if (gShadowAboveWaterOrLava == TRUE) {
                  geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 4);
              } else if (gMarioOnIceOrCarpet == 1) {
-@@ -746,7 +879,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -746,7 +869,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
   */
  static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      s16 cullingRadius;
@@ -2873,7 +3169,7 @@ index 2343068..c9fd5aa 100644
      struct GraphNode *geo;
      f32 hScreenEdge;
  
-@@ -755,26 +887,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -755,26 +877,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      }
  
      geo = node->sharedChild;
@@ -2902,7 +3198,7 @@ index 2343068..c9fd5aa 100644
      } else {
          cullingRadius = 300;
      }
-@@ -784,10 +904,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -784,10 +894,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
          return FALSE;
      }
  
@@ -2913,7 +3209,7 @@ index 2343068..c9fd5aa 100644
      if (matrix[3][2] < -20000.0f - cullingRadius) {
          return FALSE;
      }
-@@ -799,6 +915,23 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -799,6 +905,23 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      if (matrix[3][0] < -hScreenEdge - cullingRadius) {
          return FALSE;
      }
@@ -2937,7 +3233,7 @@ index 2343068..c9fd5aa 100644
      return TRUE;
  }
  
-@@ -810,33 +943,58 @@ static void geo_process_object(struct Object *node) {
+@@ -810,33 +933,58 @@ static void geo_process_object(struct Object *node) {
      s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
  
      if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
@@ -3015,7 +3311,7 @@ index 2343068..c9fd5aa 100644
              if (node->header.gfx.sharedChild != NULL) {
                  gCurGraphNodeObject = (struct GraphNodeObject *) node;
                  node->header.gfx.sharedChild->parent = &node->header.gfx.node;
-@@ -877,7 +1035,6 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
+@@ -877,7 +1025,6 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
  void geo_process_held_object(struct GraphNodeHeldObject *node) {
      Mat4 mat;
      Vec3f translation;
@@ -3023,7 +3319,7 @@ index 2343068..c9fd5aa 100644
  
  #ifdef F3DEX_GBI_2
      gSPLookAt(gDisplayListHead++, &lookAt);
-@@ -906,8 +1063,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
+@@ -906,8 +1053,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
                                (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
          }
          gMatStackIndex++;
