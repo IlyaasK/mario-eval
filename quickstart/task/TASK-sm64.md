@@ -23,11 +23,12 @@ pushing further.
 ## Objective
 
 Your submission is scored on **one primary resource profile**, named in
-`/task/PROFILE` (default: `console`). All six profiles are measured and reported:
+`/task/PROFILE` (default: `console`). All seven profiles are measured and reported:
 
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
 | `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` within 4 MB RAM |
+| `stutter` | Worst frames (hitches the player feels)                | 99th-percentile per-frame `max(CPU_ms, RSP_ms, RDP_ms)` |
 | `speed`   | CPU time to simulate and build a frame                 | VR4300 COUNT ticks per frame (46.875 MHz) |
 | `rdp`     | Reality Display Processor hardware busy time           | RDP 62.5 MHz cycles per frame (raster/fill/Z/TMEM/sync) |
 | `rsp`     | Reality Signal Processor microcode busy time           | RSP non-halted cycles per frame (`gspFast3D` + `rspAspMain`) |
@@ -40,6 +41,7 @@ For each profile, `geo = geomean(yours / baseline)` over all courses:
 
 Cross-subsystem budgets enforce honest hardware engineering:
 - In `console`, no course may regress `est_console_ms` or `footprint_bytes` by more than **5%**.
+- In `stutter`, no course may regress `est_console_p99_ms` or `footprint_bytes` by more than **5%**.
 - In `speed`, no course may regress `frame_ticks` or `rdp_busy` by more than **5%**.
 - In `rdp`, `rsp`, and `traffic`, no course may regress the target metric or `frame_ticks` by more than **5%**.
 - In `memory`, no course may regress `footprint_bytes` (`0%`) and `frame_ticks` may not regress by more than **5%**.
@@ -56,7 +58,9 @@ Conversely, internal engine rewrites that deliver the **exact same experience to
 the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled):
 - Fixing C undefined behavior, uninitialized reads, or IDO workarounds;
 - Replacing D-cache-thrashing trig lookup tables (`gSineTable`, `gArctanTable`)
-  with accurate register-only minimax/folded polynomials;
+  with register-only minimax/folded polynomials that return the tables' exact
+  values (one ULP off is not enough: it drifts Mario, the camera and sound
+  panning until unscripted input fails a gate);
 - Rewriting `surface_collision.c` / `surface_load.c` with flat cache-friendly
   structures, Y-bounds/AABB pre-filtering, finer spatial grids, and stationary
   floor caching that return the same winning surfaces;
@@ -78,14 +82,17 @@ Grading replays recorded controller inputs across courses and checks six gates:
   must compile cleanly.
 - **Execution & Hardware** — every course must complete all 240 frames within
   the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak).
-- **Gameplay (Player Equivalence)** — `level_area` must match on every frame;
-  `mario_stats` (health, coins, stars, lives) and `mario_action` must match
-  (allowing ±1 frame boundary jitter during sub-pixel transitions, with exact
-  final stats); `mario_pos` and `mario_floor_height` must stay within **2.0**
-  world units (Mario is 160 units tall — <1 pixel on screen), and `cam_pos` /
-  `cam_focus` within **4.0** world units. Internal PRNG state and off-screen
-  actor lists are not locked bit-for-bit, while all visible actors are verified
-  by the video gate.
+- **Gameplay (Player Equivalence)** — `level_area`, `mario_stats` (health,
+  coins, stars, lives), `mario_action` and the actor count must match on every
+  frame; `mario_pos`, `mario_vel` and `mario_floor_height` must stay within
+  **0.01** world units (Mario is 160 units tall), and `cam_pos` / `cam_focus`
+  within **0.02**. Every actor within **2000** units of Mario must exist with
+  the same action/state and a position within **0.1** units (order in the
+  object lists does not matter). Internal PRNG state and farther actors are
+  not checked, so hibernating distant objects is allowed; visible actors are
+  also verified by the video gate. Drawing code must not change game state:
+  some geo callbacks move objects (e.g. a held Spiny or a collision child), so
+  culling an object vanilla draws can fail this gate.
 - **Video** — every frame as a whole must match either the baseline picture or
   an accepted visual variant in `/opt/mario-eval/corpus/variants/`
   (`full-detail`: always high-polygon Mario instead of medium/low LODs;

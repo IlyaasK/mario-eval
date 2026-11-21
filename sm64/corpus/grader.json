@@ -16,7 +16,7 @@
   "run_timeout_s": 1800,
   "gameplay": {
     "mode": "player_equivalence",
-    "exact_fields": ["frame", "level_area", "mario_stats", "mario_action"],
+    "exact_fields": ["frame", "level_area", "mario_stats", "mario_action", "actor_count"],
     "window_exact_fields": [],
     "window_frames": 0,
     "float_tolerances": {
@@ -25,7 +25,9 @@
       "mario_floor_height": 0.01,
       "cam_pos": 0.02,
       "cam_focus": 0.02
-    }
+    },
+    "actor_tolerance": 0.1,
+    "actor_radius": 2000
   },
   "video": {
     "channel_tolerance": 2,
@@ -70,6 +72,7 @@
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
+    "stutter": { "metric": "est_console_p99_ms", "max_workload_regression": 0.05, "footprint_budget": 0.05 },
     "speed":   { "metric": "cpu_effective_cycles", "max_workload_regression": 0.05, "rdp_budget": 0.05 },
     "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },

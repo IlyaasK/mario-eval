@@ -29,9 +29,12 @@ This repository contains **no Nintendo code or assets** (`sm64/decomp/`,
    decompilation (`n64decomp/sm64`) evaluated across a **12-course suite**:
    6 public courses (`bob` Bob-omb Battlefield, `wf` Whomp's Fortress, `jrb`
    Jolly Roger Bay, `ddd` Dire, Dire Docks Area 2 / Bowser's Sub lag room,
-   `bitfs` Bowser in the Fire Sea, `rr` Rainbow Ride) and 6 private held-out
-   courses (`ccm` Cool, Cool Mountain, `lll` Lethal Lava Land, `ssl` Shifting
-   Sand Land, `bob2`, `jrb2`, `ddd2`), prepared locally from a legally dumped US
+   `bitfs` Bowser in the Fire Sea, `rr` Rainbow Ride) and private held-out
+   routes: 6 scripted courses (`ccm` Cool, Cool Mountain, `lll` Lethal Lava
+   Land, `ssl` Shifting Sand Land, `bob2`, `jrb2`, `ddd2`) plus, with
+   `--mash-seed S`, seeded random button mashing on all 9 courses
+   (`mash-<course>`), which catches route-specific special cases and crashes
+   on unscripted input. Prepared locally from a legally dumped US
    `.z64` ROM via [`sm64/setup.sh`](sm64/setup.sh). See
    [`sm64/README.md`](sm64/README.md).
 2. **Pip's Garden (`--game pips-garden`)** — Self-contained 3D libdragon N64
@@ -50,7 +53,7 @@ Requires Docker.
 
 # 2a. Super Mario 64 (bring your own legally dumped US .z64 ROM)
 ./sm64/setup.sh "/path/to/Super Mario 64 (USA).z64"
-python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64
+python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64 --mash-seed "$PRIVATE_SEED"
 ./scripts/precompute.sh --game sm64 --heldout /path/to/heldout-sm64
 ./scripts/calibrate.sh  --game sm64 --heldout /path/to/heldout-sm64
 ./scripts/build-images.sh --game sm64
@@ -75,13 +78,15 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64
    cycles**, per-device RDRAM bus bytes (CPU, SP DMA, PI DMA, SI DMA, **DP DMA**,
    **DP Draw**), and 4 MB RDRAM cacheline footprint.
 3. **Correctness Gates**:
-   - **Gameplay (Player Equivalence + Hyrum's Law)**: On SM64, `level_area` must
-     match frame-by-frame, `mario_stats` (health, coins, stars, lives) and
-     `mario_action` must match within ±1 frame (and exact at episode end), and
-     `mario_pos`, `mario_floor_height`, `cam_pos`, and `cam_focus` must stay
-     within tight sub-pixel L-infinity tolerances (`2.0`–`4.0` world units).
-     Internal PRNG state and off-screen actor slots are intentionally unconstrained
-     so Kaze-style distant object hibernation and math/cache optimizations pass,
+   - **Gameplay (Player Equivalence + Hyrum's Law)**: On SM64, `level_area`,
+     `mario_stats` (health, coins, stars, lives), `mario_action` and the actor
+     count must match on every frame; `mario_pos`, `mario_vel` and
+     `mario_floor_height` must stay within `0.01` world units and `cam_pos` /
+     `cam_focus` within `0.02` (L-infinity). Every actor within `2000` units of
+     Mario must exist in the candidate with the same action/state and a position
+     within `0.1` units (matched as an unordered set, so object-list order is
+     free). Internal PRNG state and actors farther away are unconstrained, so
+     Kaze-style distant object hibernation and math/cache optimizations pass,
      while any change to 1996 SM64 physics/collision quirks (quarter-steps, wall
      seam geometry, BLJs) fails. On Pip's Garden, `mev_obs_t` is checked bit-exact.
    - **Video**: Every frame as a whole must match either the baseline reference
@@ -97,6 +102,7 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64
 | profile | role | measured hardware cost | cross-budget |
 |---------|------|------------------------|--------------|
 | `console` | **Headline** | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` bottleneck time (`est_fps = 1000 / est_console_ms`) | ≤ 5% per-course regression, ≤ 5% `footprint_bytes` |
+| `stutter` | Worst frames | 99th-percentile per-frame bottleneck time (`est_console_p99_ms`): the hitches a player feels | ≤ 5% per-course regression, ≤ 5% `footprint_bytes` |
 | `speed` | Diagnostic | VR4300 `COUNT` ticks per frame (46.875 MHz, incl. cache stalls) | ≤ 5% `rdp_busy` regression |
 | `rdp` | Diagnostic | RDP 62.5 MHz cycles per frame (1-cycle vs 2-cycle/fill/copy, Z/blend RMW, TMEM, syncs) | ≤ 5% `frame_ticks` regression |
 | `rsp` | Diagnostic | RSP non-halted microcode cycles per frame | ≤ 5% `frame_ticks` regression |

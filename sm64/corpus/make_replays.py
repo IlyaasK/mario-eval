@@ -11,11 +11,17 @@ Frame 0 selects the target course via mev_select_boot_level():
   'l' -> Cool, Cool Mountain    (LEVEL_CCM)
   'r' -> Shifting Sand Land     (LEVEL_SSL)
   '8' -> Lethal Lava Land       (LEVEL_LLL)
+
+With --heldout DIR --mash-seed S, DIR also gets seeded random button mashing
+(mash-<course>.txt) on every public and held-out course. Mashing has no route
+to overfit, so builds that special-case the scripted replays, or crash or
+diverge on unusual input, fail. Keep S private; it is the only state.
 """
 import argparse
 import glob
 import math
 import os
+import random
 
 
 def clamp80(v):
@@ -236,11 +242,38 @@ def gen_lll(frames=240):
     return out
 
 
+COURSE_KEY = {"bob": ".", "wf": "L", "jrb": "R", "rr": "Z", "ddd": "u",
+              "bitfs": "d", "ccm": "l", "ssl": "r", "lll": "8"}
+
+
+def gen_mash(rng, course, frames=240):
+    """Random stick held 3-20 frames, released 15% of the time; A/B pressed
+    on 25% of frames, Z and each C button on 6%."""
+    out = [(COURSE_KEY[course], 0, 0)]
+    x = y = 0
+    hold = 0
+    for _ in range(1, frames):
+        if hold == 0:
+            if rng.random() < 0.15:
+                x = y = 0
+            else:
+                ang = rng.uniform(0, 2 * math.pi)
+                mag = rng.choice((30, 60, 80))
+                x, y = mag * math.sin(ang), mag * math.cos(ang)
+            hold = rng.randint(3, 20)
+        hold -= 1
+        btn = "".join(b for b in "ABZ2468" if rng.random() < (0.25 if b in "AB" else 0.06))
+        out.append((btn, x, y))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", type=int, default=240)
     ap.add_argument("--public", default=os.path.join(os.path.dirname(__file__), "replays", "public"))
     ap.add_argument("--heldout", default=None)
+    ap.add_argument("--mash-seed", type=int, default=None,
+                    help="also write seeded button-mash replays into --heldout")
     args = ap.parse_args()
 
     pub_gens = [
@@ -267,6 +300,12 @@ def main():
         ]
         for name, fn in held_gens:
             write_replay(os.path.join(args.heldout, f"{name}.txt"), fn(args.frames))
+        if args.mash_seed is not None:
+            for course in COURSE_KEY:
+                rng = random.Random(f"{args.mash_seed}:{course}")
+                write_replay(os.path.join(args.heldout, f"mash-{course}.txt"), gen_mash(rng, course, args.frames))
+    elif args.mash_seed is not None:
+        ap.error("--mash-seed needs --heldout")
 
 
 if __name__ == "__main__":

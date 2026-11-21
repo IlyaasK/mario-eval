@@ -42,8 +42,8 @@ from grader import contract
 
 HW_DEVICES = ["VR4300 ICache", "VR4300 DCache", "VR4300 Uncached", "SP DMA",
               "PI DMA", "SI DMA", "VI DMA", "AI DMA", "DP DMA", "DP Draw"]
-RATIO_KEYS = ("est_console_ms", "cpu_effective_cycles", "cpu_busy_cycles", "frame_ticks", "frame_ticks_p99", "rdp_busy", "rsp_busy",
-              "rdram_bytes", "footprint_bytes")
+RATIO_KEYS = ("est_console_ms", "est_console_p99_ms", "cpu_effective_cycles", "cpu_busy_cycles", "frame_ticks",
+              "frame_ticks_p99", "rdp_busy", "rsp_busy", "rdram_bytes", "footprint_bytes")
 
 
 class GraderError(Exception):
@@ -311,6 +311,8 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
     win_fields = gcfg.get("window_exact_fields", ["mario_stats", "mario_action"])
     win = int(gcfg.get("window_frames", 1))
     float_tols = gcfg.get("float_tolerances", {})
+    actor_tol = gcfg.get("actor_tolerance")
+    actor_radius = float(gcfg.get("actor_radius", float("inf")))
     worst_drift = 0.0
 
     for i in range(frames):
@@ -330,11 +332,47 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
             if d > float(tol):
                 return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
                         "diff": round(d, 4), "tolerance": tol}
+        if actor_tol is not None:
+            miss = _unmatched_actor(rf, cf, float(actor_tol), actor_radius)
+            if miss is not None:
+                return {"pass": False, "frame": i, "field": "actors", "ref": miss, "cand": None,
+                        "tolerance": actor_tol, "radius": actor_radius}
     # Final frame stats must match without window slack so coins/health/stars at route end are exact.
     if "mario_stats" in win_fields and cand_frames[-1].get("mario_stats") != ref_frames[-1].get("mario_stats"):
         return {"pass": False, "frame": frames - 1, "field": "mario_stats",
                 "ref": ref_frames[-1].get("mario_stats"), "cand": cand_frames[-1].get("mario_stats")}
     return {"pass": True, "max_pos_drift": round(worst_drift, 4)}
+
+
+def _unmatched_actor(rf, cf, tol, radius):
+    """Every reference actor within `radius` of Mario must have a candidate
+    actor with the same action/state and a position within `tol`. Actors are
+    matched as an unordered set: object-list order is an allocator detail the
+    player never sees. Farther actors are not checked, so hibernating distant
+    objects stays legal. Returns the first unmatched reference actor, or None.
+    The harness records at most len(actor_state) actors in list order; past
+    that the two builds may record different subsets, so such frames are only
+    checked by actor_count."""
+    count = rf.get("actor_count", 0)
+    cap = len(rf.get("actor_state", []))
+    if count != cf.get("actor_count") or count > cap:
+        return None
+    rp = np.asarray(rf["actor_pos"][:3 * count], dtype=np.float64).reshape(count, 3)
+    cp = np.asarray(cf["actor_pos"][:3 * count], dtype=np.float64).reshape(count, 3)
+    rs, cs = rf["actor_state"][:count], cf["actor_state"][:count]
+    if rs == cs and np.abs(rp - cp).max(initial=0.0) <= tol:
+        return None
+    near = np.linalg.norm(rp - np.asarray(rf["mario_pos"], dtype=np.float64), axis=1) <= radius
+    close = np.abs(rp[:, None, :] - cp[None, :, :]).max(axis=2) <= tol
+    used = np.zeros(count, dtype=bool)
+    for a in np.flatnonzero(near):
+        for b in np.flatnonzero(close[a] & ~used):
+            if cs[b] == rs[a]:
+                used[b] = True
+                break
+        else:
+            return {"state": rs[a], "pos": rp[a].tolist()}
+    return None
 
 
 def decode_rgba16(buf, w, h):

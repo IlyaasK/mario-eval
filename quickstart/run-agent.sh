@@ -17,7 +17,7 @@
 #   quickstart/run-agent.sh --hours 0.1 --commit-every 2 --grade-every 0.05   # smoke test
 #
 # Options: --hours H (default 24)  --game pips-garden|sm64 (default sm64)
-#          --name RUN  --profile console|speed|rdp|rsp|traffic|memory (default console)
+#          --name RUN  --profile console|stutter|speed|rdp|rsp|traffic|memory (default console)
 #          --commit-every MIN (30)  --grade-every H (2)  --stall-minutes MIN (15)
 #          --heldout DIR (held-out replays; host reference must include them)
 # AGENT_CMD may also be set in quickstart/.env.
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-case "$PROFILE" in console|speed|rdp|rsp|traffic|memory) ;; *) echo "bad --profile $PROFILE (expected console|speed|rdp|rsp|traffic|memory)" >&2; exit 2 ;; esac
+case "$PROFILE" in console|stutter|speed|rdp|rsp|traffic|memory) ;; *) echo "bad --profile $PROFILE (expected console|stutter|speed|rdp|rsp|traffic|memory)" >&2; exit 2 ;; esac
 case "$GAME" in
   pips-garden) CORPUS="corpus"; CACHE="cache/reference" ;;
   sm64)        CORPUS="sm64/corpus"; CACHE="cache/sm64-reference" ;;
