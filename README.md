@@ -68,7 +68,13 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64 --mash-seed 
 
 1. **Integrity & Playable Console Check**: Harness files (`mev.c`, `mev.h`) must
    be byte-identical, and **both** the unthrottled benchmark build and the
-   real-time VBlank console build (`PLAY=1` / `check-play`) must compile cleanly.
+   real-time VBlank console build (`PLAY=1` / `check-play`) must build and link.
+   To also require a playable-ROM runtime smoke, add `--play-smoke` to
+   `scripts/grade.sh --game sm64 SUBMISSION_DIR OUT_DIR`. It boots the linked
+   `PLAY=1` ROM twice in ares, with idle and scripted controller input, and
+   requires changing VI output and an observable response to input. This
+   does not verify gameplay equivalence or physical FPS; grading runs
+   without the flag are unchanged.
 2. **Run**: Each public and private held-out workload (240 logical frames) runs
    under `n64run`: [ares](https://github.com/ares-emulator/ares) at a pinned
    commit with [`0001-mario-eval-instrumentation.patch`](runner/patches/0001-mario-eval-instrumentation.patch)
@@ -77,6 +83,14 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64 --mash-seed 
    microcode cycles, **deterministic 62.5 MHz RDP raster/combiner/Z/TMEM/sync
    cycles**, per-device RDRAM bus bytes (CPU, SP DMA, PI DMA, SI DMA, **DP DMA**,
    **DP Draw**), and 4 MB RDRAM cacheline footprint.
+
+   Host grading via `scripts/grade.sh` builds the submission in a separate,
+   network-disabled container with no corpus, reference cache or private replay
+   mounts. The build gets a scrubbed environment, scratch `HOME`/`TMPDIR`, and
+   its own process group. Measurement starts only after the build container
+   exits, with a read-only handoff containing the built ROM and its ELF-derived
+   idle ranges. Local `mev check` only uses public data and checks that the
+   in-container build did not modify its measurement inputs.
 3. **Correctness Gates**:
    - **Gameplay (Player Equivalence + Hyrum's Law)**: On SM64, `level_area`,
      `mario_stats` (health, coins, stars, lives), `mario_action` and the actor
@@ -91,26 +105,44 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64 --mash-seed 
      seam geometry, BLJs) fails. On Pip's Garden, `mev_obs_t` is checked bit-exact.
    - **Video**: Every frame as a whole must match either the baseline reference
      or an **accepted visual variant**: any combination of `full-detail`,
-     `ra-zb-opa`, `f3dex2`, `no-lod` and `rr-statics` (precomputed), with ≤ 0.2% pixels exceeding ±2/31 channel
-     difference in a 3×3 neighborhood.
-   - **Audio**: Overall SNR ≥ 40 dB and worst-frame SNR ≥ 20 dB.
+     `ra-zb-opa`, `f3dex2`, `no-lod` and `rr-statics`, with ≤ 0.2% pixels
+     exceeding ±2/31 channel difference in a 3×3 neighborhood. The gate
+     compares against the set of distinct reference frames per frame index
+     (a minimum over duplicates is unchanged, so this is exactly the old
+     whole-frame comparison); combinations whose video is byte-identical to
+     another's are stored once, and `no-lod` subsumes `full-detail` (which only
+     affects Mario's level of detail), so those combinations are not
+     precomputed separately.
+   - **Audio**: Overall SNR ≥ 40 dB and worst-frame SNR ≥ 20 dB; a frame the
+     baseline renders silent (RMS ≤ 64 of 32768) must stay silent (candidate
+     samples there ≤ 256).
    - **Hardware**: Highest RDRAM byte ≤ 4,194,304 (4 MB retail N64 RAM, no
      Expansion Pak).
    Any gate failure yields reward **−1.0** on every profile.
+   Invalid grades also report the observed gate failures by route: gameplay
+   field/frame and tolerance, video mismatch and failed-frame count, audio
+   SNR, or build and execution errors. These diagnostics do not affect rewards.
 4. **Profiles, Rewards & Unbounded Speedups**:
 
-| profile | role | measured hardware cost | cross-budget |
-|---------|------|------------------------|--------------|
-| `console` | **Headline** | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` bottleneck time (`est_fps = 1000 / est_console_ms`) | ≤ 5% per-course regression, ≤ 5% `footprint_bytes` |
-| `stutter` | Worst frames | 99th-percentile per-frame bottleneck time (`est_console_p99_ms`): the hitches a player feels | ≤ 5% per-course regression, ≤ 5% `footprint_bytes` |
-| `speed` | Diagnostic | VR4300 `COUNT` ticks per frame (46.875 MHz, incl. cache stalls) | ≤ 5% `rdp_busy` regression |
-| `rdp` | Diagnostic | RDP 62.5 MHz cycles per frame (1-cycle vs 2-cycle/fill/copy, Z/blend RMW, TMEM, syncs) | ≤ 5% `frame_ticks` regression |
-| `rsp` | Diagnostic | RSP non-halted microcode cycles per frame | ≤ 5% `frame_ticks` regression |
-| `traffic` | Diagnostic | Total RDRAM bytes read+written per frame across all bus masters | ≤ 5% `frame_ticks` regression |
-| `memory` | Diagnostic | Distinct 16-byte RDRAM cachelines touched after boot | 0% footprint regression, ≤ 5% `frame_ticks` |
+| profile | role | measured per frame | profile budget | cross-subsystem budget |
+|---------|------|--------------------|----------------|------------------------|
+| `console` | **Headline** | `est_console_ms` = `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)` (`est_fps = 1000 / est_console_ms`) | ≤ 5% regression | `footprint_bytes` ≤ 5% |
+| `stutter` | Worst frames | `est_console_p99_ms`, the 99th percentile of the same per-frame bottleneck (the hitches a player feels) | ≤ 5% regression | `footprint_bytes` ≤ 5% |
+| `speed` | CPU time to simulate and build a frame | `cpu_effective_cycles` (VR4300 cycles including cache/bus stalls) | ≤ 5% regression | `rdp_busy` ≤ 5% |
+| `rdp` | RDP hardware busy time | `rdp_busy` (62.5 MHz raster/fill/Z/TMEM/sync cycles) | ≤ 5% regression | `cpu_effective_cycles` ≤ 5% |
+| `rsp` | RSP microcode busy time | `rsp_busy` (non-halted 62.5 MHz cycles) | ≤ 5% regression | `cpu_effective_cycles` ≤ 5% |
+| `traffic` | RDRAM bus traffic | `rdram_bytes` read + written by every bus master | ≤ 5% regression | `cpu_effective_cycles` ≤ 5% |
+| `memory` | Console RAM footprint | `footprint_bytes` (distinct 16-byte RDRAM lines touched after boot) | 0% regression | `cpu_effective_cycles` ≤ 5% |
+
+A profile is scored valid only if no course regresses its own metric past the
+profile budget *and* no course regresses the cross-subsystem metric past the
+cross budget (e.g. `speed` refuses a CPU win bought with RDP work, `console`
+refuses one bought with RAM); an over-budget profile scores −1.
 
 Each profile reports:
-- `reward = clip(1 - geomean(cand / base), -1, 1)` (bounded RLVR signal),
+- `reward = max(-1, log2(speedup) / reward_log2_scale)` with
+  `reward_log2_scale = 4.0`: 2× scores 0.25, 16× scores 1.0, no upper cap; any
+  failed gate (or that profile's budget) scores −1,
 - `speedup = 1 / geomean(cand / base)` and `log2_speedup` (unbounded improvement),
 - `vs_o2_speedup` (speedup relative to a pure `-O2 -fno-fast-math` compiler build,
   isolating genuine algorithmic & hardware engineering beyond compiler flags).
@@ -127,7 +159,7 @@ AGENT_CMD='claude -p --dangerously-skip-permissions' \
   ./run-agent.sh --game sm64 --hours 24 --profile console --heldout /path/to/heldout-sm64
 
 # Grade a live or stopped container directly from the host at any time:
-./scripts/grade.sh --from-container mario-eval-task out/live-check --game sm64 --heldout /path/to/heldout-sm64
+../scripts/grade.sh --game sm64 --from-container ../out/live-check --heldout /path/to/heldout-sm64
 ```
 
 `run-agent.sh` snapshots git checkpoints, records every in-container `mev check`

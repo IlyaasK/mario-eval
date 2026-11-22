@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 CAL = ROOT / "results" / "calibration"
 SM64_CAL = ROOT / "results" / "sm64-calibration"
+SM64_TRIAL_CAL = ROOT / "results" / "sm64-trial-calibration"
 AGENTS_DIR = ROOT / "results" / "agents"
 PIPS_REF_RUNS = ROOT / "cache" / "reference" / "runs"
 BASE = "/mario-eval"
@@ -58,7 +59,7 @@ PATCHES = [
 
 SM64_PATCHES = [
     ("r0-unchanged", "Unchanged 1996 IDO rebuild",
-     "Matching US decompilation baseline scores 0 across all six hardware profiles."),
+     "Matching US decompilation baseline scores 0 across the hardware profiles."),
     ("r1-gcc-o2", "Switch to GCC <code>-O2 -fno-fast-math</code>",
      "Compiler-only reference rung for <code>vs_o2_speedup</code>."),
     ("r2-kaze-mtx", "Kaze's in-place <code>mtxf_mul</code> + 32-bit <code>mtxf_to_mtx</code>",
@@ -90,7 +91,7 @@ SM64_PATCHES = [
 
 EXPERT_REF = "r10-kaze-master"  # the human-expert reference rung
 
-PROFILES = ["console", "speed", "rdp", "rsp", "traffic", "memory"]
+PROFILES = ["console", "stutter", "speed", "rdp", "rsp", "traffic", "memory"]
 
 PUBLIC_PIPS_ROUTES = [
     ("meadow", 35, "Meadow", "Terrain heightfield, crystals &amp; shadow decals"),
@@ -282,6 +283,22 @@ def load_agent_runs():
         })
     return runs
 
+def checkpoint_points(run):
+    cohort = run["summary"].get("workload_set")
+    if not cohort:
+        return []
+    samples = []
+    for point in (run["trajectory"] or {}).get("host_checkpoints", []):
+        speedup = point.get("speedups", {}).get("console", 0)
+        if point.get("workload_set") == cohort and point.get("status") == "valid" and speedup > 0:
+            samples.append((point["elapsed_hours"], speedup))
+    best = 1.0
+    points = []
+    for hours, speedup in sorted(samples):
+        best = max(best, speedup)
+        points.append((hours, best))
+    return [(0.0, 1.0), *points] if points else []
+
 
 def mean_fps(s):
     wls = list(s.get("workloads", {}).values())
@@ -418,9 +435,9 @@ def sm64_bottleneck_svg(sm64_rows):
         return left + (ms / max_ms) * plot_w
 
     parts = [
-        f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Super Mario 64 per-course console frame time: 1996 IDO baseline vs partial Kaze reference">',
+        f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Super Mario 64 per-course console frame time: original IDO baseline vs Kaze master reference">',
         '<g font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor">',
-        f'<text x="{left}" y="20" font-weight="600">Console frame time per course (ms, lower is faster) &mdash; 1996 IDO -O0 vs partial Kaze reference</text>',
+        f'<text x="{left}" y="20" font-weight="600">Console frame time per course (ms, lower is faster) &mdash; original IDO vs Kaze master</text>',
     ]
 
     # Grid ticks + 33.3 ms (30 FPS) line
@@ -482,15 +499,21 @@ def trajectory_svg(sm64_rows, agent_runs):
             fps = mean_fps(s) or 0.0
             pts.append((slug, label, float(sp), float(fps)))
 
-    traj_runs = [r for r in agent_runs if r.get("trajectory") and r["trajectory"].get("points")]
+    traj_runs = [(r, points) for r in agent_runs if (points := checkpoint_points(r))]
+    if traj_runs:
+        cohorts = {r["summary"]["workload_set"] for r, _ in traj_runs}
+        assert len(cohorts) == 1, "cannot plot different workload sets on one agent curve"
+        cohort = next(iter(cohorts))
+        by_slug = {slug: data for slug, data in by_slug.items()
+                   if data[1].get("workload_set") == cohort and primary_profile(data[1]).get("valid")}
     w, h, left, right, top, bot = 920, 270, 68, 36, 38, 54
     pw, ph = w - left - right, h - top - bot
 
     if traj_runs:
         max_y = max(
             [1.30]
-            + [p[2] for p in pts]
-            + [float(pt.get("best_speedup", 1.0)) for r in traj_runs for pt in r["trajectory"]["points"]]
+            + [primary_profile(data[1])["speedup"] for data in by_slug.values()]
+            + [speedup for _, points in traj_runs for _, speedup in points]
         ) * 1.04
         min_y = 0.98
 
@@ -501,7 +524,7 @@ def trajectory_svg(sm64_rows, agent_runs):
 
         parts = [f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="24-hour optimization scaling curve">',
                  '<g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">',
-                 f'<text x="{left}" y="20" font-weight="600">24-hour autonomous scaling curve &mdash; best valid console speedup vs wall-clock hours</text>']
+                 f'<text x="{left}" y="20" font-weight="600">Best valid host-graded console speedup vs wall-clock hours</text>']
         for hr in [0, 4, 8, 12, 16, 20, 24]:
             x, _ = xy(hr, 1.0)
             parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{h - bot}" stroke="currentColor" opacity="0.15"/>')
@@ -513,9 +536,9 @@ def trajectory_svg(sm64_rows, agent_runs):
                 parts.append(f'<line x1="{left}" y1="{ry:.1f}" x2="{w - right}" y2="{ry:.1f}" stroke="{col}" stroke-dasharray="5,4" stroke-width="1.5"/>')
                 parts.append(f'<text x="{w - right - 4}" y="{ry - 5:.1f}" text-anchor="end" fill="{col}">{ref_lbl} ({rsp:.2f}&times;)</text>')
         palette = ["#1f5fbf", "#c95b1f", "#8e44ad", "#16a085"]
-        for i, r in enumerate(traj_runs):
+        for i, (r, points) in enumerate(traj_runs):
             col = palette[i % len(palette)]
-            coords = [xy(pt["elapsed_s"] / 3600.0, max(float(pt.get("best_speedup", 1.0)), 1.0)) for pt in r["trajectory"]["points"]]
+            coords = [xy(hr, speedup) for hr, speedup in points]
             poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
             parts.append(f'<polyline fill="none" stroke="{col}" stroke-width="2.5" points="{poly}"/>')
             lx, ly = coords[-1]
@@ -615,7 +638,7 @@ def build_index(out, rows, sm64_rows, agent_runs, post_items, exported_frames):
         r1_sp = primary_profile(r1).get("speedup", 1.0)
         ceil_kpi = f"""
 <div class="kpis">
-  <div class="kpi"><div class="val">6 courses</div><div class="lbl">public SM64 routes (held-out SM64 routes not yet recorded)</div></div>
+  <div class="kpi"><div class="val">6 courses</div><div class="lbl">public SM64 routes; host trials can add private routes and randomized inputs</div></div>
   <div class="kpi"><div class="val">{r0_fps:.1f} &rarr; {r9_fps:.1f} FPS</div><div class="lbl">uncapped frame rate the console could sustain (1000 / est. console ms): 1996 build vs Kaze master</div></div>
   <div class="kpi"><div class="val">{r1_sp:.2f}&times;</div><div class="lbl">GCC -O2 compiler-only speedup</div></div>
   <div class="kpi"><div class="val accent">{r9_sp:.2f}&times;</div><div class="lbl">Kaze master reference (<a href="{BASE}/leaderboard/">Leaderboard</a>)</div></div>
@@ -684,7 +707,7 @@ external ROM:</p>
     write(out, "index.html", page("Mario Eval: super-optimize an N64 game on real hardware", body))
 
 
-def build_leaderboard(out, rows, sm64_rows, agent_runs):
+def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
     sm64_valid = [(slug, title, purpose, s) for slug, title, purpose, s in sm64_rows if s["status"] == "valid"]
     by_slug = {slug: (title, purpose, s) for slug, title, purpose, s in sm64_valid}
 
@@ -744,7 +767,10 @@ def build_leaderboard(out, rows, sm64_rows, agent_runs):
             "valid": s["status"] == "valid" and p.get("valid", True),
         })
 
+    public_set = by_slug.get("r0-unchanged", (None, None, {}))[2].get("workload_set")
     for ar in agent_runs:
+        if not public_set or ar["summary"].get("workload_set") != public_set:
+            continue
         s = ar["summary"]
         p = primary_profile(s)
         valid = s["status"] == "valid" and p.get("valid", True)
@@ -803,19 +829,26 @@ def build_leaderboard(out, rows, sm64_rows, agent_runs):
         )
     rows_html.append("</table></div>")
 
-    t_svg = trajectory_svg(sm64_rows, agent_runs)
+    charts = [trajectory_svg(sm64_rows, [])]
+    cohorts = {}
+    for run in agent_runs:
+        if checkpoint_points(run):
+            cohorts.setdefault(run["summary"]["workload_set"], []).append(run)
+    for cohort, runs in cohorts.items():
+        refs = [row for row in [*sm64_rows, *trial_rows] if row[3].get("workload_set") == cohort]
+        count = max(len(run["summary"].get("workloads", {})) for run in runs)
+        charts.append(f'<h2>Agent checkpoints ({count} routes)</h2>' + trajectory_svg(refs, runs))
     b_svg = sm64_bottleneck_svg(sm64_rows)
-    t_box = f'<div class="chart-box">{t_svg}</div>' if t_svg else ""
+    t_box = "".join(f'<div class="chart-box">{chart}</div>' for chart in charts if chart)
     b_box = f'<div class="chart-box">{b_svg}</div>' if b_svg else ""
 
     body = f"""
 <div class="prose">
 <h1>Leaderboard</h1>
-<p>Every submission is graded on <b>6 Super Mario 64 courses</b> (240 frames each) on an instrumented
+<p>The reference table uses <b>6 public Super Mario 64 courses</b> (240 frames each) on an instrumented
 <code>ares</code> N64 console model (93.75 MHz VR4300 + 16 KB I$ / 8 KB D$, 62.5 MHz RSP &amp; RDP, 4 MB RDRAM).
-The human-expert yardstick is the <a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a>: every
-optimization from Kaze Emanuar's videos and code that keeps the game the same, built under the exact same gates and
-toolchain given to 24-hour agents.</p>
+Agent checkpoint curves include only host grades, and reference lines appear only when graded on the same replay set.
+The human-expert yardstick is the <a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a>.</p>
 </div>
 
 {"".join(rows_html)}
@@ -825,19 +858,24 @@ toolchain given to 24-hour agents.</p>
 
 <div class="prose">
 <h2>Run a 24-hour agent evaluation</h2>
-<p>Agent runs record every inner-loop <code>mev profile</code> milestone to <code>/task/.mev-history.jsonl</code> and
-emit <code>results/&lt;run&gt;/trajectory.json</code> automatically when graded. Copy any finished run directory into
-<code>results/agents/&lt;slug&gt;/</code> and rebuild the site to plot its 24-hour scaling curve above.</p>
-<pre><code># 1. Supply your legally dumped US Super Mario 64 .z64 ROM (never committed or shipped)
+<p><code>mev check</code> records public grades for agent feedback. The supervisor writes
+<code>trajectory.json</code> with separate host checkpoints. To publish a finished run, copy its
+<code>final/grade/summary.json</code> as <code>summary.json</code> alongside <code>trajectory.json</code>
+into <code>results/agents/&lt;slug&gt;/</code> and rebuild the site. Do not publish private replays.</p>
+Put same-split GCC and Kaze calibration summaries under <code>results/sm64-trial-calibration/</code>
+to add their reference lines to the agent chart.
+<pre><code># 1. Prepare the game and private controller inputs (set PRIVATE_SEED)
 ./sm64/setup.sh "/path/to/Super Mario 64 (USA).z64"
+python3 sm64/corpus/make_replays.py --heldout /private/replays --mash-seed "$PRIVATE_SEED"
+./scripts/build-images.sh --game sm64 --no-task
+./scripts/precompute.sh --game sm64 --heldout /private/replays
 ./scripts/build-images.sh --game sm64
-./scripts/precompute.sh --game sm64
-
-# 2. Verify container isolation, build, profiler, and grader end-to-end
 ./quickstart/smoke-test.sh --game sm64
 
-# 3. Launch a 24h isolated agent run + held-out grading + trajectory extraction
-./quickstart/run-agent.sh --game sm64 claude</code></pre>
+# 2. Install your agent CLI into the task environment and configure its endpoint
+docker compose --project-directory quickstart up -d
+AGENT_CMD='your-agent-command' ./quickstart/run-agent.sh --game sm64 \\
+  --hours 24 --profile console --heldout /private/replays</code></pre>
 </div>
 """
     write(out, "leaderboard/index.html",
@@ -914,10 +952,9 @@ def build_calibration(out, rows, sm64_rows):
             + "<hr>"
         )
     body = f"""<div class="prose"><h1>Calibration</h1>
-<p>Each patch is applied to a clean copy of the baseline source and graded across public + private held-out routes
-(6 public courses on Super Mario 64; 8 routes on Pip's Garden, 240 frames each) across all six N64 hardware profiles
-(headline <code>console</code> plus diagnostic <code>speed</code>, <code>rdp</code>, <code>rsp</code>,
-<code>traffic</code>, and <code>memory</code>).</p></div>
+<p>Each patch is applied to a clean baseline. The tables report the six public SM64 routes and
+eight Pip's Garden routes (240 frames each). The headline profile is <code>console</code>;
+<code>stutter</code> reports the p99 frame cost alongside five resource-specific profiles.</p></div>
 {sm64_part}
 <h2>Pip's Garden (8 routes)</h2>
 {cal_table(rows)}
@@ -948,7 +985,7 @@ def main():
     agent_runs = load_agent_runs()
     post_items = posts()
     build_index(out, rows, sm64_rows, agent_runs, post_items, exported_frames)
-    build_leaderboard(out, rows, sm64_rows, agent_runs)
+    build_leaderboard(out, sm64_rows, load_cal(SM64_TRIAL_CAL, SM64_PATCHES), agent_runs)
     build_calibration(out, rows, sm64_rows)
     build_blog(out, post_items)
     print(f"wrote {out}: {len(rows)} pips entries, {len(sm64_rows)} sm64 entries, "

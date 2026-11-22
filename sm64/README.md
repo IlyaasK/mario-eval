@@ -94,19 +94,32 @@ container.
   two deterministic 544-sample `M_AUDTASK` subframes (`1088` stereo samples /
   30 Hz frame) on `rspAspMain`, and emits `@mev` over IS-Viewer. Building with
   `PLAY=1` (`make check-play`, verified on every submission) restores normal
-  60 Hz VBlank pacing and asynchronous `thread4_sound` console execution.
+  60 Hz VBlank pacing and asynchronous `thread4_sound` console execution. The
+  emulator charges CPU time spent in the idle thread's halt loop to idle, not to
+  CPU work, and it recognizes that loop from the instructions themselves (a
+  branch to its own address, plus its `nop` delay slot) rather than from the
+  `thread1_idle` symbol, so moving work there or renaming it cannot buy free
+  frame time.
 - **Player Equivalence + Hyrum's Law**: Gates on what the player sees, hears,
   and controls (`level_area`, `mario_stats`, `mario_action`, sub-pixel
   `mario_pos`, `mario_floor_height`, `cam_pos`, `cam_focus`, every actor within
-  2000 units of Mario, whole-frame video, and audio SNR). Fixing engine C/memory
+  2000 units of Mario, whole-frame video, and audio SNR). All active actors are
+  recorded (up to 256 per frame; the public routes peak at 81 in Bob-omb
+  Battlefield), so the actor gate runs on every frame of every route instead of
+  being skipped past a 64-actor cap. Fixing engine C/memory
   undefined behavior (`AVOID_UB`, uninitialized locals, out-of-bounds reads) and
   hibernating distant off-screen objects is rewarded; altering 1996 SM64
   gameplay/physics quirks (quarter-step counts, wall-kick timing, BLJs) fails
   the gameplay gate.
 - **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
-  `rr-statics`, and every combination)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
+  `rr-statics`)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
   switching to Nintendo's F3DEX2 microcode, and/or using
   SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing opaque
   modes (preserving `AA_EN` VI coverage while dropping `IM_RD` framebuffer
-  reads, as used by Kaze Emanuar and later N64 first-party games) are
-  precomputed (every combination) and accepted as whole frames by the video gate.
+  reads, as used by Kaze Emanuar and later N64 first-party games) are accepted
+  as whole frames by the video gate. The precompute builds each *distinct*
+  combination: it drops combinations that only add `full-detail` on top of
+  `no-lod` (Mario's level of detail is all `full-detail` changes, and `no-lod`
+  already removes every LOD switch), stores one video per byte-identical
+  combination, and the gate compares each frame against the distinct reference
+  frames at that frame index.
