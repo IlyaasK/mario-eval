@@ -23,6 +23,7 @@ reward; rerun).
 """
 import argparse
 import concurrent.futures
+import ctypes
 import hashlib
 import json
 import itertools
@@ -251,14 +252,23 @@ def load_submission_build(directory):
 
 def _digest(paths):
     """sha256 over the (path, content) of every file the measurement trusts."""
-    h = hashlib.sha256()
-    for p in paths:
+    def _one(p):
         p = pathlib.Path(p)
-        h.update(str(p).encode())
         try:
-            h.update(sha256(p).encode())
+            return str(p), sha256(p)
         except (FileNotFoundError, IsADirectoryError, PermissionError):
-            h.update(b"-")
+            return str(p), "-"
+
+    if len(paths) > 4:
+        workers = min(len(paths), os.cpu_count() or 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            entries = list(pool.map(_one, paths))
+    else:
+        entries = [_one(p) for p in paths]
+    h = hashlib.sha256()
+    for path_s, dig in entries:
+        h.update(path_s.encode())
+        h.update(dig.encode())
     return h.hexdigest()
 
 
@@ -272,6 +282,11 @@ def measurement_artifacts(corpus, cache, items):
     if exe:
         paths.append(exe)
     paths += sorted(str(p) for p in pathlib.Path(__file__).parent.rglob("*.py"))
+    so_paths = sorted(str(p) for p in pathlib.Path(__file__).parent.rglob("*.so"))
+    opt_so = pathlib.Path("/opt/mario-eval/grader/_fast_video.so")
+    if opt_so.is_file() and str(opt_so) not in so_paths:
+        so_paths.append(str(opt_so))
+    paths += so_paths
     corpus = pathlib.Path(corpus)
     paths += sorted(str(p) for p in corpus.rglob("*") if p.is_file())
     cache = pathlib.Path(cache)
@@ -310,15 +325,16 @@ def idle_ranges(elf, symbols):
 
 # ----------------------------------------------------------------------- run
 
-def run_workload(rom, replay, frames, out_dir, max_fields, timeout):
+def run_workload(rom, replay, frames, out_dir, max_fields, timeout, clear_stale=True):
     out_dir = pathlib.Path(out_dir)
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    # The submission build runs in this container and shares /tmp, and n64run
-    # keeps its ares settings/saves there; clear them so a planted ares home
-    # cannot influence the emulator.
-    for stale in ("/tmp/n64run-home", "/tmp/n64run-saves"):
-        shutil.rmtree(stale, ignore_errors=True)
+    if clear_stale:
+        # The submission build runs in this container and shares /tmp, and n64run
+        # keeps its ares settings/saves there; clear them so a planted ares home
+        # cannot influence the emulator.
+        for stale in ("/tmp/n64run-home", "/tmp/n64run-saves"):
+            shutil.rmtree(stale, ignore_errors=True)
     cmd = ["n64run", "--rom", str(rom), "--replay", str(replay), "--out", str(out_dir),
            "--frames", str(frames), "--max-fields", str(max_fields)]
     idle_file = pathlib.Path(rom).with_suffix(".idle.json")
@@ -634,7 +650,44 @@ def _reference_frame_sets(ref_dir, variants, frames, w, h, bpp):
     return out
 
 
-def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg):
+_FAST_VIDEO_LIB = None
+_FAST_VIDEO_CHECKED = False
+
+
+def _get_fast_video():
+    global _FAST_VIDEO_LIB, _FAST_VIDEO_CHECKED
+    if not _FAST_VIDEO_CHECKED:
+        _FAST_VIDEO_CHECKED = True
+        candidates = [
+            pathlib.Path(__file__).with_name("_fast_video.so"),
+            pathlib.Path("/opt/mario-eval/grader/_fast_video.so"),
+        ]
+        so = next((p for p in candidates if p.is_file()), None)
+        if so is not None:
+            lib = ctypes.CDLL(str(so))
+            lib.compare_video_fast.argtypes = [
+                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_char_p),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_double,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_double),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_int),
+            ]
+            lib.compare_video_fast.restype = ctypes.c_int
+            _FAST_VIDEO_LIB = lib
+    return _FAST_VIDEO_LIB
+
+
+def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_threads=None):
     """Every frame must match, as a whole frame within tolerance, either the
     original picture or one of the accepted visual variants, at that frame
     index (preventing half-original / half-variant per-pixel mixing within a
@@ -646,17 +699,49 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg):
     if len(ref_rows) != len(cand_rows):
         return {"pass": False, "frame": min(len(ref_rows), len(cand_rows)), "reason": "frame count changed"}
     w, h, bpp = ref_rows[0]["fb"]
-    size = w * h * bpp // 8
+    for i, row in enumerate(cand_rows):
+        if row["fb"] != [w, h, bpp]:
+            return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
     tol = cfg["video"]["channel_tolerance"]
     limit = cfg["video"]["max_bad_fraction"]
+
+    fast = _get_fast_video()
+    if fast is not None and bpp in (16, 32):
+        files = [ref_dir / "video.bin.z"] + [ref_dir / f"video.{v}.bin.z"
+                                             for v in sorted(set(variants.values()) - {""})]
+        encoded = [os.fsencode(str(p)) for p in files]
+        arr = (ctypes.c_char_p * len(encoded))(*encoded)
+        out_pass = ctypes.c_int(0)
+        out_worst_frac = ctypes.c_double(0.0)
+        out_worst_frame = ctypes.c_int(-1)
+        out_failed = ctypes.c_int(0)
+        out_variant = ctypes.c_int(0)
+        threads = max(1, max_threads if max_threads is not None else (os.cpu_count() or 4))
+        rc = fast.compare_video_fast(
+            os.fsencode(str(cand_path)), arr, len(encoded),
+            len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
+            ctypes.byref(out_pass), ctypes.byref(out_worst_frac),
+            ctypes.byref(out_worst_frame), ctypes.byref(out_failed),
+            ctypes.byref(out_variant),
+        )
+        if rc == 0:
+            return {
+                "pass": bool(out_pass.value),
+                "worst_bad_fraction": float(out_worst_frac.value),
+                "worst_frame": int(out_worst_frame.value),
+                "max_bad_fraction": limit,
+                "failed_frames": int(out_failed.value),
+                "variant_frames": int(out_variant.value),
+            }
+        raise GraderError(f"compare_video_fast failed (rc={rc}) on {cand_path}")
+
+    size = w * h * bpp // 8
     refs = _reference_frame_sets(ref_dir, variants, len(ref_rows), w, h, bpp)
     worst = (0.0, -1)
     variant_frames = 0
     failed_frames = 0
     with open(cand_path, "rb") as f:
         for i, row in enumerate(cand_rows):
-            if row["fb"] != [w, h, bpp]:
-                return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
             cand = f.read(size)
             orig = refs[i][0]
             if cand == orig:
@@ -728,9 +813,12 @@ def workloads(corpus, cfg, split, heldout_dir):
 
 
 def run_all(rom, items, frames, out_dir, max_fields, timeout):
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(items))) as pool:
+    for stale in ("/tmp/n64run-home", "/tmp/n64run-saves"):
+        shutil.rmtree(stale, ignore_errors=True)
+    jobs = int(os.environ.get("MEV_JOBS", os.cpu_count() or 4))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(jobs, len(items)))) as pool:
         futures = {w["id"]: pool.submit(run_workload, rom, w["replay"], frames,
-                                        pathlib.Path(out_dir) / w["id"], max_fields(w["id"]), timeout)
+                                        pathlib.Path(out_dir) / w["id"], max_fields(w["id"]), timeout, False)
                    for w in items}
         return {k: f.result() for k, f in futures.items()}
 
@@ -1111,27 +1199,44 @@ def grade(args):
             shutil.rmtree(rom.parent, ignore_errors=True)
 
     execution, gameplay, video, audio, hardware = {}, {}, {}, {}, {}
+    completed = []
     for w in items:
         wid, res = w["id"], results[w["id"]]
         execution[wid] = {"pass": res.get("status") == "completed", **res}
-        if not execution[wid]["pass"]:
-            continue
+        if execution[wid]["pass"]:
+            completed.append(w)
+
+    ncpus = int(os.environ.get("MEV_JOBS", os.cpu_count() or 4))
+    gate_workers = max(1, min(ncpus, len(completed))) if completed else 1
+    vid_threads = max(1, min(ncpus, max(8, (ncpus * 2) // gate_workers)))
+
+    def _verify_one(w):
+        wid = w["id"]
         cand = load_run(out / "runs" / wid)
         ref_dir = cache / "runs" / wid
         ref = load_run(ref_dir)
-        gameplay[wid] = compare_obs(ref["obs"], cand["obs"], cfg["frames"], schema_name, cfg)
-        video[wid] = compare_video(ref_dir, reference_variants(index["workloads"][wid], index.get("variants", [])),
-                                   cand["video_path"], ref["rows"], cand["rows"], cfg)
-        audio[wid] = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
+        gp = compare_obs(ref["obs"], cand["obs"], cfg["frames"], schema_name, cfg)
+        vd = compare_video(ref_dir, reference_variants(index["workloads"][wid], index.get("variants", [])),
+                           cand["video_path"], ref["rows"], cand["rows"], cfg, max_threads=vid_threads)
+        au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
         m = metrics(cand)
-        hardware[wid] = {"pass": m["highest_byte"] <= cfg["hardware"]["rdram_bytes"],
-                         "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"]}
+        hw = {"pass": m["highest_byte"] <= cfg["hardware"]["rdram_bytes"],
+              "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"]}
         base = index["workloads"][wid]["metrics"]
-        summary["workloads"][wid] = {
+        wl_entry = {
             "metrics": m,
             "ratios": {k: (m[k] / base[k] if base.get(k) else 1.0) for k in RATIO_KEYS},
         }
         (out / "runs" / wid / "video.bin").unlink()
+        return wid, gp, vd, au, hw, wl_entry
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=gate_workers) as pool:
+        for wid, gp, vd, au, hw, wl_entry in pool.map(_verify_one, completed):
+            gameplay[wid] = gp
+            video[wid] = vd
+            audio[wid] = au
+            hardware[wid] = hw
+            summary["workloads"][wid] = wl_entry
 
     for name, table in (("execution", execution), ("gameplay", gameplay), ("video", video),
                         ("audio", audio), ("hardware", hardware)):

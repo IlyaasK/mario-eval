@@ -13,11 +13,14 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       mesa-vulkan-drivers libvulkan1 libgtk-3-0t64 libsdl2-2.0-0 libgl1 \
       libasound2t64 libpulse0 libao4 libopenal1 libudev1 \
-      python3-numpy \
+      python3-numpy zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=runner /usr/local/bin/n64run /usr/local/bin/n64run
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 COPY grader /opt/mario-eval/grader
+RUN g++ -O3 -std=c++20 -shared -fPIC -pthread \
+      /opt/mario-eval/grader/fast_video.cpp \
+      -o /opt/mario-eval/grader/_fast_video.so -lz
 COPY tools /opt/mario-eval/tools
 ENV PYTHONPATH=/opt/mario-eval
 WORKDIR /work
