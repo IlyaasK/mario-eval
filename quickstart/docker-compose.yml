@@ -24,7 +24,7 @@ services:
     container_name: mario-eval-task
     networks: [sandbox]
     user: "1000:1000"
-    working_dir: /task
+    working_dir: /task/game
     environment:
       HTTPS_PROXY: "http://proxy:8888"
       HTTP_PROXY: "http://proxy:8888"

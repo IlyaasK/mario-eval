@@ -5,7 +5,8 @@
 # Build the two component images first:
 #   docker build -t mario-eval-toolchain toolchain/
 #   docker build -t mario-eval-runner runner/
-FROM mario-eval-runner AS runner
+ARG RUNNER_IMAGE=mario-eval-runner
+FROM ${RUNNER_IMAGE} AS runner
 
 FROM mario-eval-toolchain
 ARG DEBIAN_FRONTEND=noninteractive

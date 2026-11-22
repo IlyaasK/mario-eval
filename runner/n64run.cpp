@@ -232,6 +232,8 @@ struct Runner : ares::Platform {
       << ",\"cpu_idle_cycles\":" << N64::cpu.sampler.idleClocks / 2
       << ",\"rdp_cycles\":" << dp.cycles
       << ",\"rdp_fill_cycles\":" << dp.fillCycles
+      << ",\"rdp_page_miss_cycles\":" << dp.pageMissCycles
+      << ",\"rdp_rdram_page_misses\":" << dp.rdramPageMisses
       << ",\"rdp_tmem_cycles\":" << dp.tmemCycles
       << ",\"rdp_sync_cycles\":" << dp.syncCycles
       << ",\"rdp_commands\":" << dp.commands

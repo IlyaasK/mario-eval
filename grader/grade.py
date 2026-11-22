@@ -369,15 +369,23 @@ def _delta_mean(rows, key):
 CPU_CYCLES_PER_MS = 93_750.0      # count_ticks / cpu_idle_cycles: VR4300 cycles (93.75 MHz)
 RSP_UNITS_PER_MS = 187_500.0      # rsp_cycles: master clocks (RSP runs at 62.5 MHz)
 RDP_CYCLES_PER_MS = 62_500.0      # rdp_cycles: modelled RDP cycles (62.5 MHz)
-RDRAM_BYTES_PER_MS = 500_000.0    # RDRAM peak, 500 MB/s: a floor on any frame's bus time
+# Effective sustained mixed-master N64 RDRAM throughput (peak burst is 500 MB/s,
+# but mixed CPU cachelines + 2D triangle spans + R/W turnarounds sustain ~250 MB/s).
+RDRAM_BYTES_PER_MS = 250_000.0
 FIELD_MS = 1000.0 / 60.0
-# Extra CPU cycles charged per cache miss or write-back for waiting on the
-# shared RDRAM bus while the RSP/RDP use it. ares charges an uncontended
-# 40-48 cycles; Kaze Emanuar measures ~40-60 on a quiet bus and "hundreds" on
-# a busy one. Fitted (one constant, displayed FPS) to his console measurements
-# of vanilla SM64: JRB 19.9-20.5, DDD 23.7-24.1, RR 25.9-26.8 FPS
-# (youtu.be/Ca1hHC2EctY @3:55); the model gives 20.0, 25.7, 26.5.
-BUS_CONTENTION_CYCLES = 24.0
+# Bus-coupled CPU contention: ares already charges uncontended cache fills (40/48
+# cycles). On real hardware, extra wait cycles per CPU bus transaction rise with
+# concurrent RCP RDRAM traffic (SP DMA + DP DMA + DP Draw + PI/SI DMA) plus
+# continuous 60 Hz VI scanout. Coupling contention to RCP traffic ensures that
+# real bandwidth/fillrate wins (ra-zb-opa, F3DEX2, TMEM batching) reduce CPU
+# bus stalls just as on console.
+BUS_CONTENTION_BASE_CYCLES = 4.0
+BUS_CONTENTION_PER_MB_RCP = 6.0
+RCP_BUS_DEVICES = ("SP DMA", "PI DMA", "SI DMA", "DP DMA", "DP Draw")
+
+
+def rcp_rdram_bytes(row):
+    return sum(sum(row["rdram"].get(d, (0, 0))) for d in RCP_BUS_DEVICES)
 
 
 def metrics(run):
@@ -385,12 +393,12 @@ def metrics(run):
 
     The benchmark build runs each frame's stages one after another. On a
     console, SM64 overlaps them: the CPU builds frame N+1 while the RSP and RDP
-    draw frame N, all sharing RDRAM. So a frame's console cost is estimated as
-    the busiest unit: max(CPU, RSP busy, RDP busy, RDRAM time at peak
-    bandwidth). CPU time excludes the idle thread (waiting for the RCP) and
-    adds BUS_CONTENTION_CYCLES per bus transaction (cache miss/write-back, or
-    an uncached RDRAM access, whose own latency the runner charges). The RDP model is
-    approximate (see docs/n64-cost-model.md).
+    draw frame N, all sharing RDRAM alongside continuous 60 Hz VI scanout. So a
+    frame's console cost is estimated as the busiest unit: max(CPU, RSP busy,
+    RDP busy, RDRAM time at sustained bandwidth). CPU time excludes the idle
+    thread (waiting for the RCP) and adds bus-coupled contention per CPU bus
+    transaction proportional to concurrent RCP RDRAM traffic. The RDP model
+    includes 4-bank x 2 KB RDRAM page-miss cycles (see docs/n64-cost-model.md).
     """
     rows = run["rows"]
     d = lambda key: np.array([b.get(key, 0) - a.get(key, 0) for a, b in zip(rows, rows[1:])], dtype=np.float64)
@@ -399,17 +407,23 @@ def metrics(run):
     cpu_busy = ticks - idle
     bus_events = (d("icache_misses") + d("dcache_misses") + d("dcache_writebacks")
                   + d("uncached_reads") + d("uncached_writes"))
-    cpu_eff = cpu_busy + BUS_CONTENTION_CYCLES * bus_events
     rsp = np.array([busy_rsp(b) - busy_rsp(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     rdp = d("rdp_cycles")
     traffic = np.array([rdram_bytes(b) - rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    rcp_traffic = np.array([rcp_rdram_bytes(b) - rcp_rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    # Continuous 60 Hz VI scanout (two fields per 30 Hz logical frame) is not
+    # charged during unthrottled n64run; add its framebuffer read bandwidth here.
+    fb_w, fb_h, fb_bpp = rows[0]["fb"]
+    vi_bytes_per_frame = float(2 * fb_w * fb_h * (fb_bpp // 8))
+    contention_cycles = BUS_CONTENTION_BASE_CYCLES + BUS_CONTENTION_PER_MB_RCP * (rcp_traffic / 1_000_000.0)
+    cpu_eff = cpu_busy + contention_cycles * bus_events
     last, first = rows[-1], rows[0]
     per_device = {dev: (sum(last["rdram"].get(dev, (0, 0))) - sum(first["rdram"].get(dev, (0, 0)))) / (len(rows) - 1)
                   for dev in HW_DEVICES}
     cpu_ms_f = cpu_eff / CPU_CYCLES_PER_MS
     rsp_ms_f = rsp / RSP_UNITS_PER_MS
     rdp_ms_f = rdp / RDP_CYCLES_PER_MS
-    mem_ms_f = traffic / RDRAM_BYTES_PER_MS
+    mem_ms_f = (traffic + vi_bytes_per_frame) / RDRAM_BYTES_PER_MS
     console_ms = np.maximum.reduce([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f])
     bottleneck = np.argmax(np.stack([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f]), axis=0)
     # Displayed rate with SM64's 30 Hz game logic: a frame is shown on the first
@@ -432,6 +446,8 @@ def metrics(run):
         "mem_ms": float(mem_ms_f.mean()),
         "bottleneck_share": {name: float((bottleneck == i).mean()) for i, name in enumerate(("cpu", "rsp", "rdp", "rdram"))},
         "rdp_fill_cycles": _delta_mean(rows, "rdp_fill_cycles"),
+        "rdp_page_miss_cycles": _delta_mean(rows, "rdp_page_miss_cycles"),
+        "rdp_rdram_page_misses": _delta_mean(rows, "rdp_rdram_page_misses"),
         "rdp_tmem_cycles": _delta_mean(rows, "rdp_tmem_cycles"),
         "rdp_sync_cycles": _delta_mean(rows, "rdp_sync_cycles"),
         "rdp_triangles": _delta_mean(rows, "rdp_triangles"),

@@ -14,11 +14,13 @@ original 4 MB Nintendo 64 hardware — the kind of deep hardware-aware engineeri
 pioneered by Kaze Emanuar and cracked N64 systems programmers — **without
 changing the game the player experiences**.
 
-The GCC `-O2 -fno-fast-math` reference is about **1.39×** vanilla on the six
-public routes. In the current cost model, vanilla is CPU-bound on those
-routes. Start with CPU and cache profiling; remeasure after each milestone
-and optimize whichever subsystem limits the resulting frame time. This
-model is not a hardware measurement.
+The GCC `-O2 -fno-fast-math` reference is about **1.38×** vanilla on the six
+public routes. Vanilla starts CPU-bound, but once CPU time drops (even at
+`-O2` or after early CPU wins), Fast3D RSP (`bob`, `rr`) and RDP fillrate
+(`jrb`) become active bottlenecks, and RCP RDRAM traffic directly contends
+with CPU cache refills. Start with CPU and cache profiling; remeasure after
+each milestone and optimize whichever subsystem limits the resulting frame
+time. This model is not a hardware measurement.
 
 ## Objective
 
@@ -121,20 +123,23 @@ support (such as snow, desert, or lava effects) used in other courses.
 
 ## Tools
 
+Your working directory is `/task/game` (the SM64 git repository).
+
 ```
 mev build                 build /task/game
 mev run jrb               run a public course; prints est_console_ms / est_console_p99_ms
                           (console & stutter), cpu/rsp/rdp/rdram ms and vs-baseline speedups
 mev profile bob           per-function CPU profile plus D-cache misses, I-cache misses
                           and D-cache writebacks by function (stalls included)
-mev check                 run the full grader on all 6 public courses
+mev check                 run the full grader on all 6 public courses; prints per-course
+                          timings and updates /tmp/mev-last-check/summary.json
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
 mev restore-assets        restore missing extracted SM64 assets offline without overwriting edits
 ```
 
-Use `make clean` for ordinary rebuilds. If `make distclean` removes the
-extracted assets, run `mev restore-assets` before rebuilding. The task image
-does not contain the original ROM.
+Use `make clean` for ordinary rebuilds. `make distclean` keeps extracted assets
+when `baserom.us.z64` is absent; if extracted assets are ever removed, run
+`mev restore-assets` before rebuilding. The task image does not contain the original ROM.
 
 `mev run` and `mev check` measure CPU busy time the same way: the idle thread's
 halt loop is excluded from CPU time and nothing else is, so an optimization
@@ -148,4 +153,6 @@ installed locally; there is no internet access.
 
 - Do not attempt to detect the grader, replays, or emulator.
 - Commit working milestones to the git repository in `/task/game` regularly so
-  no progress is lost across checkpoints.
+  no progress is lost across checkpoints, and check `$MEV_DEADLINE_EPOCH`
+  (seconds since epoch) so you leave a clean, `mev check`-passing tree before
+  time runs out.

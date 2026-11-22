@@ -21,6 +21,8 @@ RUN chmod 755 /usr/local/bin/mev \
     && mkdir -p /usr/share/mario-eval/empty-hooks \
     && chmod 0555 /usr/share/mario-eval/empty-hooks \
     && git config --system core.hooksPath /usr/share/mario-eval/empty-hooks \
+    && git config --system user.name "agent" \
+    && git config --system user.email "agent@mario-eval" \
     && mkdir -p /home/agent/.claude /home/agent/.codex /home/agent/.gemini \
                 /home/agent/.config /home/agent/.cache /home/agent/.local/bin \
     && chown -R 1000:1000 /home/agent
@@ -71,4 +73,4 @@ RUN cd /task/game && rm -rf .git build build_* *.z64 \
     && git init -q -b main \
     && git -c user.name=baseline -c user.email=baseline@mario-eval add -A \
     && git -c user.name=baseline -c user.email=baseline@mario-eval commit -qm "${GAME_TITLE}"
-WORKDIR /task
+WORKDIR /task/game

@@ -44,10 +44,10 @@ directly (`cache op, offset(base)`):
 | `CACHE` ops incl. `Create Dirty Exclusive` (`0x0d`) | yes | eliminates RDRAM read-for-ownership on cold writes |
 | Uncached CPU access to RDRAM (KSEG1, `0xA0xxxxxx`) | yes | read 40 cycles, write 10 cycles (write buffer); each also counts as a bus transaction |
 | RSP scalar + VU vector instruction cycles | yes | exact non-halted 62.5 MHz RSP cycles |
-| **RDP 62.5 MHz hardware cost (`rdp_busy`)** | **yes** | exact scissor-clipped 4-subpixel scanline rasterizer + TMEM + sync cost model (approximate; see below) |
-| **RDRAM traffic per bus device (`rdram_bytes`)** | **yes** | CPU I/D/Uncached + SP DMA + PI DMA + SI DMA + **DP DMA** + **DP Draw** |
+| **RDP 62.5 MHz hardware cost (`rdp_busy`)** | **yes** | exact scissor-clipped 4-subpixel scanline rasterizer + **4-bank × 2 KB RDRAM page-miss model (24 gclk/miss)** + TMEM + sync cost model |
+| **RDRAM traffic per bus device (`rdram_bytes`)** | **yes** | CPU I/D/Uncached + SP DMA + PI DMA + SI DMA + **DP DMA** + **DP Draw** (+ continuous 60 Hz VI scanout in `mem_ms`) |
 | **4 MB RDRAM footprint (`footprint_bytes`)** | **yes** | distinct 16-byte lines touched by CPU, DMA, or RDP |
-| RDRAM bus contention | modelled, not simulated | the units run deterministically one after another; the CPU is charged 24 cycles per bus transaction for waiting on the shared bus (see `est_console_ms`) |
+| RDRAM bus contention | bus-coupled | the units run deterministically one after another; each CPU bus transaction pays `4 + 6 × (RCP_MB)` extra contention cycles so reducing `DP Draw`, `DP DMA`, or `SP DMA` lowers CPU bus stalls too |
 
 ### RDP cycle & RDRAM cost breakdown (`rdp_busy`, `DP DMA`, `DP Draw`)
 
@@ -79,15 +79,18 @@ free CPU time: nothing else is ever credited as idle.
 
 - **`est_console_ms` (`console`)** — estimated cost of the frame on a real
   console. SM64 overlaps its units: the CPU builds frame N+1 while the RSP and
-  RDP draw frame N, all sharing RDRAM. So a frame costs as much as its busiest
-  unit: `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)`, where
-  - `cpu_ms` = (busy VR4300 cycles + 24 × (I-cache misses + D-cache misses +
-    D-cache write-backs + uncached accesses)) / 93,750. The 24-cycle bus
-    contention term was fitted to Kaze Emanuar's measurements of vanilla SM64 on
-    real hardware (JRB ≈ 20 FPS, DDD ≈ 24, RR ≈ 26; youtu.be/Ca1hHC2EctY at
-    3:55); the model gives 20.0, 25.7 and 26.5;
-  - `rsp_ms` = non-halted RSP cycles / 62,500; `rdp_ms` = RDP cycles / 62,500;
-  - `mem_ms` = RDRAM bytes / 500,000 (500 MB/s peak, a floor).
+  RDP draw frame N, all sharing RDRAM alongside continuous 60 Hz VI scanout. So
+  a frame costs as much as its busiest unit: `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)`, where
+  - `cpu_ms` = (busy VR4300 cycles + `(4 + 6 × rcp_mb)` × (I-cache misses +
+    D-cache misses + D-cache write-backs + uncached accesses)) / 93,750, where
+    `rcp_mb` is non-CPU RDRAM traffic in the frame (`SP DMA + DP DMA + DP Draw
+    + PI DMA + SI DMA`, in MB);
+  - `rsp_ms` = non-halted RSP cycles / 62,500;
+  - `rdp_ms` = RDP cycles / 62,500, including **24 gclk per 2 KB RDRAM row miss**
+    across the four 1 MB banks (`rdp_page_miss_cycles`; keeping color and Z
+    buffers in distinct 1 MB banks avoids per-span bank thrashing);
+  - `mem_ms` = (RDRAM bytes + 60 Hz VI scanout bytes) / 250,000 (250 MB/s
+    sustained mixed-master RDRAM throughput).
 
   `est_fps` = 1000 / `est_console_ms` (uncapped). `est_fps_30hz` is what the
   player sees with SM64's 30 Hz game logic: each frame shows for at least two

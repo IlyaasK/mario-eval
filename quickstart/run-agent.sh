@@ -71,10 +71,27 @@ dc ps --services --filter status=running | grep -qx task || { echo "error: task 
 
 in_task bash -c "echo $PROFILE > /task/PROFILE"
 PROMPT="$(in_task cat /task/TASK.md)"$'\n\n'"Your primary profile for this run: $PROFILE (also in /task/PROFILE). You have ${HOURS} hours."
-CONTINUE_PROMPT="Continue working on the 24h optimization task in /task/TASK.md (profile: $PROFILE). Run 'mev check' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further."
+CONTINUE_PROMPT="Continue working on the 24h optimization task in /task/TASK.md (profile: $PROFILE). Run 'mev check' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further. Check \$MEV_DEADLINE_EPOCH (seconds since epoch) and leave a clean, mev-check-passing tree before the deadline."
 
+# Snapshot /task/game onto refs/mev/checkpoints using a temporary index so we
+# preserve full 30-minute history in game.bundle without ever mutating the
+# agent's HEAD, main branch, staging index, or git diff.
 commit() {
-  in_task bash -c 'cd /task/game && git add -A && git -c user.name=agent -c user.email=agent@mario-eval commit -qm "checkpoint $(date -u +%FT%TZ)" 2>/dev/null || true'
+  in_task bash -c '
+    cd /task/game || exit 0
+    idx=$(mktemp /tmp/mev-idx.XXXXXX)
+    rm -f "$idx"
+    trap "rm -f \"$idx\"" EXIT
+    parent=$(git rev-parse --verify refs/mev/checkpoints 2>/dev/null || git rev-parse HEAD 2>/dev/null || true)
+    [ -n "$parent" ] || exit 0
+    GIT_INDEX_FILE="$idx" git read-tree HEAD 2>/dev/null || exit 0
+    GIT_INDEX_FILE="$idx" git add -A 2>/dev/null || exit 0
+    tree=$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null) || exit 0
+    parent_tree=$(git rev-parse "${parent}^{tree}" 2>/dev/null || true)
+    [ "$tree" = "$parent_tree" ] && exit 0
+    c=$(git -c user.name=agent -c user.email=agent@mario-eval commit-tree "$tree" -p "$parent" -m "checkpoint $(date -u +%FT%TZ)" 2>/dev/null) || exit 0
+    git update-ref refs/mev/checkpoints "$c" 2>/dev/null || true
+  ' || true
 }
 
 grade_checkpoint() {
@@ -90,6 +107,37 @@ grade_checkpoint() {
   "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
   dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true
+  # If the wall-clock snapshot landed mid-experiment on a broken working tree,
+  # also grade the agent's latest mev-check-verified commit so real progress is
+  # visible separately from snapshot timing luck (without altering the primary
+  # working-tree status).
+  local status last_valid_commit=""
+  status=$(python3 -c "import json; print(json.load(open('$dir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
+  if [ "$status" != "valid" ] && [ -f "$RUN_DIR/mev-history.jsonl" ]; then
+    last_valid_commit=$(python3 - "$RUN_DIR/mev-history.jsonl" <<'PY' 2>/dev/null || true
+import json, sys
+last = ""
+for line in open(sys.argv[1]):
+    try:
+        d = json.loads(line)
+        if d.get("status") == "valid" and d.get("git_head"):
+            last = d["git_head"]
+    except Exception:
+        pass
+print(last)
+PY
+)
+  fi
+  if [ -n "$last_valid_commit" ]; then
+    rm -rf "$dir/last-valid-src"
+    mkdir -p "$dir/last-valid-src"
+    if in_task git -C /task/game archive "$last_valid_commit" 2>/dev/null | tar -x -C "$dir/last-valid-src" 2>/dev/null; then
+      "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$dir/last-valid-grade" "${args[@]}" \
+        > "$dir/last-valid-grade.txt" 2>&1 || true
+      printf '%s\n' "$last_valid_commit" > "$dir/last-valid-commit"
+    fi
+    rm -rf "$dir/last-valid-src"
+  fi
   python3 - "$RUN_DIR" "$START" "$GAME" "$PROFILE" <<'PY' || true
 import json, pathlib, sys
 run_dir, t0, game, profile = pathlib.Path(sys.argv[1]), float(sys.argv[2]), sys.argv[3], sys.argv[4]
@@ -106,10 +154,11 @@ if hist.exists():
             checks.append(d)
 checkpoints = []
 for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_dir.glob("final/grade/summary.json")):
-    name = p.parent.parent.name
+    cp_dir = p.parent.parent
+    name = cp_dir.name
     s = json.loads(p.read_text())
-    captured = int((p.parent.parent / "snapshot-epoch").read_text())
-    checkpoints.append({
+    captured = int((cp_dir / "snapshot-epoch").read_text())
+    entry = {
         "name": name,
         "elapsed_hours": round(max(0.0, (captured - t0) / 3600.0), 4),
         "workload_set": s.get("workload_set"),
@@ -117,13 +166,28 @@ for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_di
         "rewards": s.get("rewards", {}),
         "speedups": s.get("speedups", {}),
         "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
-    })
+    }
+    lv_sum = cp_dir / "last-valid-grade" / "summary.json"
+    lv_sha = cp_dir / "last-valid-commit"
+    if lv_sum.exists():
+        ls = json.loads(lv_sum.read_text())
+        entry["last_valid"] = {
+            "git_head": lv_sha.read_text().strip() if lv_sha.exists() else None,
+            "status": ls.get("status"),
+            "rewards": ls.get("rewards", {}),
+            "speedups": ls.get("speedups", {}),
+            "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in ls.get("profiles", {}).items()},
+        }
+    checkpoints.append(entry)
 (run_dir / "trajectory.json").write_text(json.dumps({
     "run": run_dir.name, "game": game, "primary_profile": profile,
     "mev_checks": checks, "host_checkpoints": checkpoints,
 }, indent=1))
 PY
   log "checkpoint $name: $(python3 -c "import json;s=json.load(open('$dir/grade/summary.json'));p=s.get('profiles',{}).get('$PROFILE',{});print(s['status'],'reward=',p.get('reward'),'speedup=',p.get('speedup'),'vs_o2=',p.get('vs_o2_speedup'))" 2>/dev/null || echo 'no summary')"
+  if [ -f "$dir/last-valid-grade/summary.json" ]; then
+    log "checkpoint $name (last valid commit $last_valid_commit): $(python3 -c "import json;s=json.load(open('$dir/last-valid-grade/summary.json'));p=s.get('profiles',{}).get('$PROFILE',{});print(s['status'],'reward=',p.get('reward'),'speedup=',p.get('speedup'),'vs_o2=',p.get('vs_o2_speedup'))" 2>/dev/null || echo 'no summary')"
+  fi
 }
 
 AGENT_PID=""; AGENT_LOG=""; AGENT_STARTED=0; N=0
@@ -131,8 +195,12 @@ start_agent() {
   N=$((N + 1)); AGENT_LOG="$RUN_DIR/agent-$(printf %03d $N).log"; AGENT_STARTED=$(now)
   local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$CONTINUE_PROMPT"
   log "starting agent invocation $N"
+  # Drop omp's quadratic streaming `tool_execution_update` lines (they repeat
+  # full accumulated stdout on every chunk and balloon logs to ~800 MB) while
+  # preserving every message, tool_execution_end, and final tool result.
   dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" task setsid --wait bash -lc \
-    "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" > "$AGENT_LOG" 2>&1 &
+    "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
+    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
 }
 stop_agent() {

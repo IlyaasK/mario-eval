@@ -52,7 +52,20 @@ index b267233..7a6eab1 100644
  ifeq ($(COMPILER),gcc)
    CFLAGS += -mno-shared -march=vr4300 -mfix4300 -mabi=32 -mhard-float -mdivide-breaks -fno-stack-protector -fno-common -fno-zero-initialized-in-bss -fno-PIC -mno-abicalls -fno-strict-aliasing -fno-inline-functions -ffreestanding -fwrapv -Wall -Wextra
  else
-@@ -930,7 +938,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
+@@ -489,7 +494,11 @@ clean:
+ 	$(RM) -r $(BUILD_DIR_BASE)
+ 
+ distclean: clean
+-	$(PYTHON) extract_assets.py --clean
++	@if [ -f baserom.$(VERSION).z64 ]; then \
++		$(PYTHON) extract_assets.py --clean; \
++	else \
++		echo "note: baserom.$(VERSION).z64 absent; keeping extracted assets (use 'make clean' to clear builds)"; \
++	fi
+ 	$(MAKE) -C $(TOOLS_DIR) clean
+ 	$(MAKE) -C $(TOOLS_DIR)/sm64tools clean
+ 
+@@ -930,7 +939,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
  
  
  

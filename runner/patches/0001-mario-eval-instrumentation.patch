@@ -282,7 +282,7 @@ index b71c407..e0ade1c 100644
  
  namespace ares::Nintendo64 {
  
-@@ -60,7 +61,238 @@ auto RDP::power(bool reset) -> void {
+@@ -60,7 +61,253 @@ auto RDP::power(bool reset) -> void {
    fillRectangle_ = {};
    io.bist = {};
    io.test = {};
@@ -295,13 +295,28 @@ index b71c407..e0ade1c 100644
 +  commands++;
 +  cycles += length;
 +
-+  auto markRdram = [](u32 addr, u32 bytes, RBusDevice dev, bool write) {
++  // Retail 4 MB N64 RDRAM has four 1 MB banks, each with one 2 KB open row.
++  // A row switch in a bank incurs precharge + RAS activate (~24 gclk = 384 ns
++  // at 62.5 MHz). Keeping color and Z buffers in distinct 1 MB banks avoids
++  // per-span bank thrashing; crossing 2 KB page boundaries still pays a miss.
++  auto markRdram = [&](u32 addr, u32 bytes, RBusDevice dev, bool write) {
 +    if(!bytes || addr >= rdram.ram.size) return;
 +    u32 avail = rdram.ram.size - addr;
 +    if(bytes > avail) bytes = avail;
 +    if(write) rdram.profile.metrics[(u32)dev].writes += bytes;
 +    else      rdram.profile.metrics[(u32)dev].reads  += bytes;
 +    rdram.footprint.mark(addr, bytes);
++    u32 firstPage = addr >> 11;
++    u32 lastPage = (addr + bytes - 1) >> 11;
++    for(u32 page = firstPage; page <= lastPage; page++) {
++      u32 bank = (page >> 9) & 3;
++      if(openRow[bank] != page) {
++        openRow[bank] = page;
++        rdramPageMisses++;
++        pageMissCycles += 24;
++        cycles += 24;
++      }
++    }
 +  };
 +
 +  auto sext14 = [](u32 v) -> s32 {
@@ -525,24 +540,27 @@ diff --git i/ares/n64/rdp/rdp.hpp w/ares/n64/rdp/rdp.hpp
 index d0b5773..34661fa 100644
 --- i/ares/n64/rdp/rdp.hpp
 +++ w/ares/n64/rdp/rdp.hpp
-@@ -354,6 +354,41 @@ struct RDP : Thread, Memory::RCP<RDP> {
+@@ -354,6 +354,44 @@ struct RDP : Thread, Memory::RCP<RDP> {
  
    } io{*this};
  
 +  //mario-eval: deterministic SGI Reality Display Processor (62.5 MHz gclk)
 +  //hardware cost & RDRAM DP_DMA / DP_DRAW bus-traffic model.
 +  struct Profile {
-+    u64 cycles = 0;       // Total modelled RDP gclk cycles
-+    u64 fillCycles = 0;   // Span/pixel combiner, Z-buffer & blender cycles
-+    u64 tmemCycles = 0;   // TMEM texture/TLUT load cycles
-+    u64 syncCycles = 0;   // SyncLoad/SyncPipe/SyncTile/SyncFull drain cycles
-+    u64 commands = 0;     // Total RDP commands executed
-+    u64 triangles = 0;    // Triangle primitives (0x08..0x0f)
-+    u64 rectangles = 0;   // Fill/Texture rectangle primitives (0x24, 0x25, 0x36)
-+    u64 pixels = 0;       // Scissor-clipped covered pixels across all spans
-+    u64 tmemLoads = 0;    // LoadBlock + LoadTile + LoadTLUT count
-+    u64 tmemBytes = 0;    // RDRAM bytes loaded into TMEM
-+    u64 syncs = 0;        // Sync commands executed
++    u64 cycles = 0;          // Total modelled RDP gclk cycles
++    u64 fillCycles = 0;      // Span/pixel combiner, Z-buffer & blender cycles
++    u64 pageMissCycles = 0;  // 4-bank x 2 KB RDRAM row-miss cycles (24 gclk/miss)
++    u64 tmemCycles = 0;      // TMEM texture/TLUT load cycles
++    u64 syncCycles = 0;      // SyncLoad/SyncPipe/SyncTile/SyncFull drain cycles
++    u64 commands = 0;        // Total RDP commands executed
++    u64 triangles = 0;       // Triangle primitives (0x08..0x0f)
++    u64 rectangles = 0;      // Fill/Texture rectangle primitives (0x24, 0x25, 0x36)
++    u64 pixels = 0;          // Scissor-clipped covered pixels across all spans
++    u64 rdramPageMisses = 0; // 2 KB RDRAM row misses across the four 1 MB banks
++    u64 tmemLoads = 0;       // LoadBlock + LoadTile + LoadTLUT count
++    u64 tmemBytes = 0;       // RDRAM bytes loaded into TMEM
++    u64 syncs = 0;           // Sync commands executed
++    u32 openRow[4] = {~0u, ~0u, ~0u, ~0u};
 +
 +    struct State {
 +      u32 colorSize = 2;

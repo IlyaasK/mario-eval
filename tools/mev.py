@@ -111,6 +111,8 @@ def summarize(out_dir, workload):
         ("CPU busy cycles", "cpu_busy_cycles"),
         ("CPU idle cycles", "cpu_idle_cycles"),
         ("RDP busy cycles", "rdp_busy"),
+        ("RDP page-miss cycles", "rdp_page_miss_cycles"),
+        ("RDP RDRAM page misses", "rdp_rdram_page_misses"),
         ("RSP busy cycles", "rsp_busy"),
         ("RDRAM bytes", "rdram_bytes"),
         ("D-cache misses", "dcache_misses"),
@@ -190,6 +192,16 @@ def check(_args):
     r = sh([sys.executable, "-m", "grader.grade", "grade", str(GAME), "--corpus", str(CORPUS),
             "--cache", str(CACHE), "--out", str(out)], cwd="/opt/mario-eval")
     summary_path = out / "summary.json"
+    # Update stable symlink atomically after grading writes summary.json so agents
+    # can always inspect /tmp/mev-last-check/summary.json without polling temp names.
+    last_link = pathlib.Path("/tmp/mev-last-check")
+    tmp_link = pathlib.Path(f"/tmp/.mev-last-check.{os.getpid()}")
+    try:
+        tmp_link.unlink(missing_ok=True)
+        tmp_link.symlink_to(out)
+        tmp_link.replace(last_link)
+    except OSError:
+        pass
     if summary_path.exists():
         try:
             s = json.loads(summary_path.read_text())
@@ -206,9 +218,30 @@ def check(_args):
             }
             with open("/task/.mev-history.jsonl", "a") as hf:
                 hf.write(json.dumps(rec) + "\n")
+            wls = s.get("workloads", {})
+            if wls:
+                print("\nPer-course breakdown (ms; bn = dominant bottleneck):")
+                print(f"  {'course':8s} {'console':>8s} {'p99':>8s} {'cpu':>8s} {'rsp':>8s} {'rdp':>8s} {'mem':>8s} {'bn':>6s} {'speedup':>8s}")
+                for wid, w in wls.items():
+                    m = w.get("metrics", {})
+                    bn_map = m.get("bottleneck_share", {})
+                    bn = max(bn_map, key=bn_map.get) if bn_map else "-"
+                    ratio = w.get("ratios", {}).get("est_console_ms", 0)
+                    sp = f"{1.0 / ratio:7.3f}x" if ratio else "     n/a"
+                    print(f"  {wid:8s} {m.get('est_console_ms', 0):8.2f} {m.get('est_console_p99_ms', 0):8.2f}"
+                          f" {m.get('cpu_ms', 0):8.2f} {m.get('rsp_ms', 0):8.2f} {m.get('rdp_ms', 0):8.2f}"
+                          f" {m.get('mem_ms', 0):8.2f} {bn:>6s} {sp}")
+            if s.get("status") != "valid":
+                for gname, gval in s.get("gates", {}).items():
+                    if not gval.get("pass", True):
+                        bad = [(wk, wv) for wk, wv in gval.get("workloads", {}).items() if not wv.get("pass", True)]
+                        if bad:
+                            print(f"\nFailed gate [{gname}]:")
+                            for wk, wv in bad[:6]:
+                                print(f"  {wk}: {json.dumps(wv)}")
         except Exception:
             pass
-    print(f"\nfull report: {summary_path}")
+    print(f"\nfull report: {summary_path} (symlink: /tmp/mev-last-check/summary.json)")
     sys.exit(r.returncode)
 
 
