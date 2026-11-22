@@ -70,7 +70,11 @@ now() { date +%s; }
 dc ps --services --filter status=running | grep -qx task || { echo "error: task container not running" >&2; exit 1; }
 
 in_task bash -c "echo $PROFILE > /task/PROFILE"
-PROMPT="$(in_task cat /task/TASK.md)"$'\n\n'"Your primary profile for this run: $PROFILE (also in /task/PROFILE). You have ${HOURS} hours."
+if [ -n "${MEV_INITIAL_PROMPT:-}" ]; then
+  PROMPT="$MEV_INITIAL_PROMPT"
+else
+  PROMPT="$(in_task cat /task/TASK.md)"$'\n\n'"Your primary profile for this run: $PROFILE (also in /task/PROFILE). You have ${HOURS} hours."
+fi
 CONTINUE_PROMPT="Continue working on the 24h optimization task in /task/TASK.md (profile: $PROFILE). Run 'mev check' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further. Check \$MEV_DEADLINE_EPOCH (seconds since epoch) and leave a clean, mev-check-passing tree before the deadline."
 
 # Snapshot /task/game onto refs/mev/checkpoints using a temporary index so we
