@@ -137,6 +137,23 @@ PY
     rm -rf "$dir/last-valid-src"
     mkdir -p "$dir/last-valid-src"
     if in_task git -C /task/game archive "$last_valid_commit" 2>/dev/null | tar -x -C "$dir/last-valid-src" 2>/dev/null; then
+      # Copy gitignored assets/tools (e.g. extracted SM64 assets & built host tools)
+      # from $dir/src without pulling in untracked working-tree files.
+      in_task git -C /task/game ls-files -z --others --ignored --exclude-standard 2>/dev/null \
+        | python3 -c '
+import pathlib, shutil, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+for raw in sys.stdin.buffer.read().split(b"\0"):
+    if not raw:
+        continue
+    rel = raw.decode("utf-8", "surrogateescape")
+    if rel == "build" or rel.startswith(("build/", "build_")):
+        continue
+    sp, dp = src / rel, dst / rel
+    if sp.is_file() and not dp.exists():
+        dp.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sp, dp)
+' "$dir/src" "$dir/last-valid-src" || true
       "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$dir/last-valid-grade" "${args[@]}" \
         > "$dir/last-valid-grade.txt" 2>&1 || true
       printf '%s\n' "$last_valid_commit" > "$dir/last-valid-commit"
@@ -200,12 +217,12 @@ start_agent() {
   N=$((N + 1)); AGENT_LOG="$RUN_DIR/agent-$(printf %03d $N).log"; AGENT_STARTED=$(now)
   local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$CONTINUE_PROMPT"
   log "starting agent invocation $N"
-  # Drop omp's quadratic streaming `tool_execution_update` lines (they repeat
-  # full accumulated stdout on every chunk and balloon logs to ~800 MB) while
-  # preserving every message, tool_execution_end, and final tool result.
+  # Drop omp's high-volume streaming delta lines (`tool_execution_update` and
+  # `message_update` balloon logs to 100-800 MB) while preserving every full
+  # message (`message_start`/`message_end`), tool call, and tool result.
   dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" task setsid --wait bash -lc \
     "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
-    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
+    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
 }
 stop_agent() {
