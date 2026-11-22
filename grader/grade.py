@@ -346,6 +346,8 @@ def run_workload(rom, replay, frames, out_dir, max_fields, timeout, clear_stale=
         return {"status": "host_timeout"}
     (out_dir / "stderr.txt").write_text("\n".join(
         l for l in proc.stderr.splitlines() if "Stalled compile" not in l))
+    shutil.rmtree(out_dir / "home", ignore_errors=True)
+    shutil.rmtree(out_dir / "saves", ignore_errors=True)
     result_path = out_dir / "result.json"
     if proc.returncode < 0 or not result_path.exists():
         raise GraderError(f"n64run died (code {proc.returncode}) on {replay}")

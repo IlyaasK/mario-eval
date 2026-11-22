@@ -330,13 +330,8 @@ auto nall::main(Arguments arguments) -> void {
   runner.audio.open(opt.out + "/audio.bin", std::ios::binary);
   runner.obs.open(opt.out + "/obs.bin", std::ios::binary);
 
-  if(opt.playFields) {
-    mia::setHomeLocation([&opt]() -> string { return {opt.out.c_str(), "/home/"}; });
-    mia::setSaveLocation([&opt]() -> string { return {opt.out.c_str(), "/saves/"}; });
-  } else {
-    mia::setHomeLocation([]() -> string { return "/tmp/n64run-home/"; });
-    mia::setSaveLocation([]() -> string { return "/tmp/n64run-saves/"; });
-  }
+  mia::setHomeLocation([&opt]() -> string { return {opt.out.c_str(), "/home/"}; });
+  mia::setSaveLocation([&opt]() -> string { return {opt.out.c_str(), "/saves/"}; });
   mia::construct();
 
   ares::platform = &runner;
