@@ -152,6 +152,7 @@ one past the budget):
 | `memory` | `footprint_bytes` | 0% | `cpu_effective_cycles` ≤ 5% |
 
 Reference points on SM64's public routes (console profile): GCC `-O2` alone
-1.39×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's
-public work, 1.67×; `r11-beyond-kaze`, adding our own
-D-cache layout work, 1.62× (earlier, smaller build).
+1.38×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's
+public work, 1.68× (1.22× vs `-O2`); `r11-beyond-kaze`, adding our own
+D-cache layout work, 1.63× (earlier, smaller base; stacking its D-cache
+struct reorders onto `r10-kaze-master` reaches 1.70×).

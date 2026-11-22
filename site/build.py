@@ -682,9 +682,9 @@ Hyrum's Law gates, log-scaled reward, and the <b>Kaze master</b> human-expert re
 <div class="diagram">{PIPELINE_SVG}</div>
 
 <div class="cards">
-<div class="card primary"><h3>console <span>headline</span></h3><p>Per-frame <code>max(CPU_ms, RSP_ms, RDP_ms)</code> within 4 MB RDRAM &mdash; true N64 frame rate.</p></div>
-<div class="card"><h3>speed <span>diagnostic</span></h3><p>93.75 MHz VR4300 CPU time per frame (COUNT ticks), including 16 KB I$ / 8 KB D$ stalls.</p></div>
-<div class="card"><h3>rdp <span>diagnostic</span></h3><p>62.5 MHz RDP combiner, Z/blend RMW, TMEM upload &amp; pipe-sync cycles.</p></div>
+<div class="card primary"><h3>console <span>headline</span></h3><p>Per-frame <code>max(CPU_ms, RSP_ms, RDP_ms, RDRAM_ms)</code> within 4 MB RDRAM &mdash; true N64 frame rate.</p></div>
+<div class="card"><h3>speed <span>diagnostic</span></h3><p>93.75 MHz VR4300 CPU time per frame (COUNT ticks), including 16 KB I$ / 8 KB D$ stalls and bus-coupled RCP contention.</p></div>
+<div class="card"><h3>rdp <span>diagnostic</span></h3><p>62.5 MHz RDP combiner, Z/blend RMW, 4-bank 2 KB RDRAM page-miss, TMEM upload &amp; pipe-sync cycles.</p></div>
 <div class="card"><h3>rsp <span>diagnostic</span></h3><p>62.5 MHz RSP Fast3D + ABI1 audio microcode busy cycles per frame.</p></div>
 <div class="card"><h3>traffic <span>diagnostic</span></h3><p>RDRAM bytes moved per frame across CPU caches, SP, DP, PI &amp; SI DMA.</p></div>
 <div class="card"><h3>memory <span>diagnostic</span></h3><p>Distinct 16-byte RDRAM lines touched after boot (hard 4,194,304 B ceiling).</p></div>

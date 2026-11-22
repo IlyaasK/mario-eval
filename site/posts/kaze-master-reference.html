@@ -1,4 +1,4 @@
-<!--{"title": "The Kaze master reference: what an expert does with SM64", "date": "2026-11-20", "summary": "A reconstruction of Kaze Emanuar's published optimizations on vanilla SM64: 1.67x on the console model. What made it in, what did not, and why the grader got stricter along the way."}-->
+<!--{"title": "The Kaze master reference: what an expert does with SM64", "date": "2026-11-20", "summary": "A reconstruction of Kaze Emanuar's published optimizations on vanilla SM64: 1.68x on the console model (1.22x vs GCC -O2). What made it in, what did not, and why the grader got stricter along the way."}-->
 <p>The question this eval asks is how much cheaper Super Mario 64 can run on the original Nintendo 64 when it is
 engineered well for that hardware, while the player gets exactly the same game. To judge an agent's answer we need a
 human one. <a href="https://www.youtube.com/@KazeEmanuar">Kaze Emanuar</a> has spent years doing this work and
@@ -28,17 +28,17 @@ describes. The transcripts and frames are his content and are not in the reposit
 <h2>Result</h2>
 <table>
 <tr><th>course</th><th class="num">vanilla ms</th><th class="num">kaze-master ms</th></tr>
-<tr><td>Jolly Roger Bay</td><td class="num">39.3</td><td class="num">22.5</td></tr>
-<tr><td>Dire Dire Docks</td><td class="num">30.5</td><td class="num">18.5</td></tr>
-<tr><td>Rainbow Ride</td><td class="num">32.3</td><td class="num">18.7</td></tr>
-<tr><td>Bob-omb Battlefield</td><td class="num">33.0</td><td class="num">20.1</td></tr>
-<tr><td>Whomp's Fortress</td><td class="num">30.7</td><td class="num">17.3</td></tr>
-<tr><td>Bowser in the Fire Sea</td><td class="num">29.6</td><td class="num">19.7</td></tr>
+<tr><td>Jolly Roger Bay</td><td class="num">39.2</td><td class="num">22.5</td></tr>
+<tr><td>Dire Dire Docks</td><td class="num">28.2</td><td class="num">16.9</td></tr>
+<tr><td>Rainbow Ride</td><td class="num">28.1</td><td class="num">16.2</td></tr>
+<tr><td>Bob-omb Battlefield</td><td class="num">30.2</td><td class="num">18.2</td></tr>
+<tr><td>Whomp's Fortress</td><td class="num">27.8</td><td class="num">15.5</td></tr>
+<tr><td>Bowser in the Fire Sea</td><td class="num">25.7</td><td class="num">17.0</td></tr>
 </table>
-<p>Geometric mean <b>1.67&times;</b> on the console model (reward 0.185), every gate passing. GCC <code>-O2</code> alone
-gives 1.39&times;. The largest single steps were compiling the renderer, math, collision and audio code for size so
-each frame's working set fits the 16 KB instruction cache, linking the audio thread's per-update code contiguously,
-vertical object culling, and baking Rainbow Ride's 14 decoration pieces into the level.</p>
+<p>Geometric mean <b>1.68&times;</b> on the console model (<b>1.22&times;</b> over GCC <code>-O2</code>, reward 0.187), every gate passing. GCC <code>-O2</code> alone
+gives 1.38&times;. The largest single steps were compiling the renderer, math, collision and audio code for size so
+each frame's working set fits the 16 KB instruction cache, switching from Fast3D to F3DEX2 (breaking the Fast3D RSP wall on BoB and RR), linking the audio thread's per-update code contiguously,
+vertical object culling, reduced-aliasing opaque modes (cutting RDP fillrate and RDRAM bus contention), and baking Rainbow Ride's 14 decoration pieces into the level.</p>
 <p>The follow-up pass removed unused engine command bodies and shared audio-bank relocation code. Branch hints did
 not move the score; rolling more matrix functions saved code space but ran slower on these routes.</p>
 <p><b>Correction (2026-11-21).</b> This reference was first published at 1.69&times;. Seeded button mashing, added
@@ -56,10 +56,7 @@ as its own change on top of this reference: about 60 trials, each timed at seven
 gameplay and audio on the public routes plus 24 seeded button-mashing runs. Four were exact and faster on every
 layout and are now in: compiling the N64 system library for size (r10's libultra flags only applied to the IDO
 compiler), Kaze's 4&times;3 matrices with shared rotation products, an exact flat-floor shortcut in collision from
-FazanaJ's fork, and overlapping the framebuffers' unused border rows (10 KB of RAM). Together they take the reference
-from 1.65&times; to 1.67&times;. Most of the rest landed inside the layout noise. Kaze's graphics-side work (F3DEX3,
-display-list culling, 1-cycle fog, front-to-back drawing, dither off) saves RSP or RDP time but cannot move the score,
-because every public route is CPU-bound. The full record is
+FazanaJ's fork, and overlapping the framebuffers' unused border rows (10 KB of RAM). Together they lifted the reference to <b>1.68&times;</b> under the updated hardware cost model (adding 4-bank &times; 2 KB RDP RDRAM page-miss penalties, bus-coupled CPU contention proportional to concurrent RCP traffic, and 60 Hz VI scanout at sustained 250 MB/s). Under that model, Fast3D hits an active RSP wall on BoB and RR as soon as CPU time drops, and JRB flips to 44% RDP-bound at <code>r10-kaze-master</code> (58%+ once D-cache layout is optimized further). The full per-technique record is
 <a href="https://github.com/IlyaasK/mario-eval/blob/main/sm64/calibration/r10-trials.md">r10-trials.md</a>.</p>
 
 <h2>What did not make it</h2>
