@@ -24,6 +24,12 @@ case "$GAME" in
   *) echo "unknown --game $GAME" >&2; exit 2 ;;
 esac
 
+CACHE_MOUNTS=()
+if [ -n "${MEV_REFERENCE_DIR:-}" ]; then
+  CACHE_MOUNTS=(--mount "type=bind,src=$(realpath "$MEV_REFERENCE_DIR"),dst=/reference,readonly")
+  CACHE=/reference
+fi
+
 TMP_EXTRACT=""
 cleanup() { [ -n "$TMP_EXTRACT" ] && rm -rf "$TMP_EXTRACT" || true; }
 trap cleanup EXIT
@@ -42,6 +48,7 @@ fi
 
 HELDOUT_MOUNTS=()
 GRADER_ARGS=()
+BUILD_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --heldout)
@@ -50,12 +57,25 @@ while [ $# -gt 0 ]; do
       GRADER_ARGS+=(--split all --heldout /heldout)
       shift 2
       ;;
+    --play-smoke) BUILD_ARGS+=(--play-smoke); GRADER_ARGS+=(--play-smoke); shift ;;
     *) GRADER_ARGS+=("$1"); shift ;;
   esac
 done
 
 mkdir -p "$OUT"
-docker run --rm -u "$(id -u):$(id -g)" \
-  -v "$REPO":/repo:ro -v "$SUB":/submission:ro -v "$OUT":/out "${HELDOUT_MOUNTS[@]}" \
+# The build container never receives grader inputs, held-out replays or the
+# reference cache. Measurement runs only after the build container exits.
+BUILD=$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/mev-submission.XXXXXX")
+trap 'rm -rf "$BUILD"; cleanup' EXIT
+docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+  -u "$(id -u):$(id -g)" -v "$SUB":/submission:ro \
+  -v "$REPO/$CORPUS/grader.json":/build-config.json:ro -v "$BUILD":/handoff \
+  mario-eval python3 -m grader.grade build /submission --config /build-config.json --out /handoff "${BUILD_ARGS[@]}"
+if [ -f "$BUILD/build.log" ] && [ ! -L "$BUILD/build.log" ]; then
+  cp --remove-destination "$BUILD/build.log" "$OUT/build.log"
+fi
+docker run --rm --network none -u "$(id -u):$(id -g)" \
+  -v "$REPO":/repo:ro -v "$SUB":/submission:ro -v "$OUT":/out \
+  -v "$BUILD":/handoff:ro "${CACHE_MOUNTS[@]}" "${HELDOUT_MOUNTS[@]}" \
   -w /repo mario-eval \
-  python3 -m grader.grade grade /submission --corpus "$CORPUS" --cache "$CACHE" --out /out "${GRADER_ARGS[@]}"
+  python3 -m grader.grade grade /submission --built /handoff --corpus "$CORPUS" --cache "$CACHE" --out /out "${GRADER_ARGS[@]}"

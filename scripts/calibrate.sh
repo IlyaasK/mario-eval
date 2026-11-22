@@ -25,6 +25,7 @@ case "$GAME" in
     ;;
   *) echo "unknown --game $GAME" >&2; exit 2 ;;
 esac
+OUT_BASE=$(realpath -m "${MEV_CALIBRATION_DIR:-$OUT_BASE}")
 
 NAMES=("$@")
 if [ ${#NAMES[@]} -eq 0 ]; then
@@ -70,18 +71,16 @@ PY
   fi
   out="$OUT_BASE/$name"
   rm -rf "$out"; mkdir -p "$out"
-  args=(); mounts=()
-  if [ -n "$HELDOUT" ]; then args=(--split all --heldout /heldout); mounts=(-v "$HELDOUT":/heldout:ro); fi
-  docker run --rm -u "$(id -u):$(id -g)" -v "$REPO":/repo:ro -v "$WORK/$name":/submission:ro \
-    -v "$REPO/$out":/out "${mounts[@]}" -w /repo mario-eval \
-    python3 -m grader.grade grade /submission --corpus "$CORPUS" --cache "$CACHE" --out /out "${args[@]}" \
+  args=()
+  if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
+  "$REPO/scripts/grade.sh" --game "$GAME" "$WORK/$name" "$out" "${args[@]}" \
     >/dev/null 2>&1 || true
 done
 
 python3 - "$OUT_BASE" "${NAMES[@]}" <<'EOF'
 import json, sys
 out_base = sys.argv[1]
-cols = ("console", "speed", "rdp", "rsp", "traffic", "memory")
+cols = ("console", "stutter", "speed", "rdp", "rsp", "traffic", "memory")
 print(f"{'patch':28s} {'status':8s} " + " ".join(f"{c:>7s}" for c in cols) + f" {'con_x':>7s} {'spd_x':>7s}  failed gates / notes")
 for name in sys.argv[2:]:
     s = json.load(open(f"{out_base}/{name}/summary.json"))

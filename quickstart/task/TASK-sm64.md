@@ -14,37 +14,42 @@ original 4 MB Nintendo 64 hardware — the kind of deep hardware-aware engineeri
 pioneered by Kaze Emanuar and cracked N64 systems programmers — **without
 changing the game the player experiences**.
 
-A naive compiler switch (`COMPILER=gcc -O2 -fno-fast-math`) only gets ~1.18×
-because `libultra` is already compiled with optimizations and Jolly Roger Bay /
-Dire, Dire Docks are RDP fillrate-bound. If you believe you are done, you are
-mistaken — keep profiling CPU, I-cache, D-cache, RSP, RDP, and RDRAM and keep
-pushing further.
+The GCC `-O2 -fno-fast-math` reference is about **1.39×** vanilla on the six
+public routes. In the current cost model, vanilla is CPU-bound on those
+routes. Start with CPU and cache profiling; remeasure after each milestone
+and optimize whichever subsystem limits the resulting frame time. This
+model is not a hardware measurement.
 
 ## Objective
 
 Your submission is scored on **one primary resource profile**, named in
 `/task/PROFILE` (default: `console`). All seven profiles are measured and reported:
 
+For `console`, maximize the game's capacity to render frames at unchanged
+quality, simulation cadence, and controls. Aim for a frame budget of **6.94 ms
+(144 FPS equivalent)** or better across courses, including busy scenes. That
+is a work budget, not a claim that actual N64 video output can display 144 FPS.
+Optimize the limiting subsystem and report sustained and slow-frame timing.
+
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
-| `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` within 4 MB RAM |
-| `stutter` | Worst frames (hitches the player feels)                | 99th-percentile per-frame `max(CPU_ms, RSP_ms, RDP_ms)` |
-| `speed`   | CPU time to simulate and build a frame                 | VR4300 COUNT ticks per frame (46.875 MHz) |
-| `rdp`     | Reality Display Processor hardware busy time           | RDP 62.5 MHz cycles per frame (raster/fill/Z/TMEM/sync) |
-| `rsp`     | Reality Signal Processor microcode busy time           | RSP non-halted cycles per frame (`gspFast3D` + `rspAspMain`) |
-| `traffic` | Total RDRAM bus traffic across all devices             | RDRAM bytes read+written per frame (CPU, SP, DP, PI, SI) |
-| `memory`  | Console RAM footprint                                  | Distinct 16-byte RDRAM lines touched after boot |
+| `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `est_console_ms` = `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)` within 4 MB RAM |
+| `stutter` | Worst frames (hitches the player feels)                | `est_console_p99_ms`, the 99th percentile of the same per-frame bottleneck |
+| `speed`   | CPU time to simulate and build a frame                 | `cpu_effective_cycles` per frame (VR4300 cycles incl. cache/bus stalls) |
+| `rdp`     | Reality Display Processor hardware busy time           | `rdp_busy` (RDP 62.5 MHz cycles: raster/fill/Z/TMEM/sync) |
+| `rsp`     | Reality Signal Processor microcode busy time           | `rsp_busy` (RSP non-halted cycles per frame) |
+| `traffic` | Total RDRAM bus traffic across all devices             | `rdram_bytes` read+written per frame (CPU, SP, DP, PI, SI) |
+| `memory`  | Console RAM footprint                                  | `footprint_bytes` (distinct 16-byte RDRAM lines touched after boot) |
 
 For each profile, `geo = geomean(yours / baseline)` over all courses:
-- **Bounded RL reward**: `reward = clip(1 - geo, -1, 1)` (`0.0` unchanged, `0.5` at 2×, `-1.0` if invalid or over budget).
+- **Reward (log-scaled, unbounded above)**: `reward = max(-1, log2(1 / geo) / 4)` — 2× scores 0.25, 4× 0.5, 16× 1.0 (`0.0` unchanged); any failed gate, or an over-budget profile, scores `-1.0`.
 - **Unbounded speedup**: `speedup = 1 / geo`, `log2_speedup = -log2(geo)`, and `vs_o2_speedup` (speedup beyond switching `COMPILER=gcc` `-O2 -fno-fast-math`, directly measuring genuine algorithmic & hardware optimization beyond the compiler).
 
-Cross-subsystem budgets enforce honest hardware engineering:
-- In `console`, no course may regress `est_console_ms` or `footprint_bytes` by more than **5%**.
-- In `stutter`, no course may regress `est_console_p99_ms` or `footprint_bytes` by more than **5%**.
-- In `speed`, no course may regress `frame_ticks` or `rdp_busy` by more than **5%**.
-- In `rdp`, `rsp`, and `traffic`, no course may regress the target metric or `frame_ticks` by more than **5%**.
-- In `memory`, no course may regress `footprint_bytes` (`0%`) and `frame_ticks` may not regress by more than **5%**.
+Course budgets enforce honest hardware engineering. Each profile has a **profile budget** on its own metric (a course may not regress it) and a **cross-subsystem budget** (a course may not regress the other metric):
+- `console` (`est_console_ms`) and `stutter` (`est_console_p99_ms`): ≤ **5%**; cross-subsystem `footprint_bytes` ≤ **5%**.
+- `speed` (`cpu_effective_cycles`): ≤ **5%**; cross-subsystem `rdp_busy` ≤ **5%**.
+- `rdp` (`rdp_busy`), `rsp` (`rsp_busy`), `traffic` (`rdram_bytes`): ≤ **5%**; cross-subsystem `cpu_effective_cycles` ≤ **5%**.
+- `memory` (`footprint_bytes`): no course may regress it at all (**0%**); cross-subsystem `cpu_effective_cycles` ≤ **5%**.
 
 ## Hyrum's Law: Preserve 1996 Gameplay Quirks, Fix Engine UB
 
@@ -74,12 +79,12 @@ the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled)
 
 ## Verification Gates (Player Equivalence)
 
-Grading replays recorded controller inputs across courses and checks six gates:
+Grading replays recorded controller inputs across courses and checks these gates:
 
 - **Integrity & Playable Build** — `src/game/mev.c` and `src/game/mev.h` must
   be byte-identical, and **both** the graded build (`make VERSION=us COMPARE=0 NOEXTRACT=1`)
-  and the real-time console `#ifdef PLAY` check (`make VERSION=us COMPARE=0 NOEXTRACT=1 check-play`)
-  must compile cleanly.
+  and the real-time console ROM (`make VERSION=us COMPARE=0 NOEXTRACT=1 check-play`)
+  must build and link. This does not validate physical-console behavior.
 - **Execution & Hardware** — every course must complete all 240 frames within
   the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak).
 - **Gameplay (Player Equivalence)** — `level_area`, `mario_stats` (health,
@@ -102,23 +107,38 @@ Grading replays recorded controller inputs across courses and checks six gates:
   `rr-statics`: Rainbow Ride's 14 static decoration pieces drawn as part of the
   level instead of as objects; or any combination of these): at most
   0.2% of pixels may differ by more than ±2/31 per channel from their best 3×3
-  neighbor.
+  neighbor. Each frame is matched against the set of *distinct* reference
+  frames for that frame index; identical combinations are stored once, and
+  `no-lod` subsumes `full-detail` (Mario's LOD is the only thing `full-detail`
+  changes), so the reference does not hold that combination separately.
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
-  non-silent frame; silence must stay silent.
+  non-silent frame; a frame the baseline renders silent (RMS ≤ 64 of 32768)
+  must stay silent (candidate samples there ≤ 256).
 
-Grading on the host also runs **private held-out routes and unseen courses** you
-cannot see — never special-case public course IDs or delete subsystem support
-(such as snow/desert/lava effects) used in other SM64 courses.
+Host grading also runs private held-out routes, unseen courses, and randomized
+controller inputs. Never special-case public course IDs or remove subsystem
+support (such as snow, desert, or lava effects) used in other courses.
 
 ## Tools
 
 ```
 mev build                 build /task/game
-mev run jrb               run a public course; prints console/CPU/RDP/RSP/RDRAM vs baseline
-mev profile bob           per-function CPU profile (cache & uncached stalls included)
+mev run jrb               run a public course; prints est_console_ms / est_console_p99_ms
+                          (console & stutter), cpu/rsp/rdp/rdram ms and vs-baseline speedups
+mev profile bob           per-function CPU profile plus D-cache misses, I-cache misses
+                          and D-cache writebacks by function (stalls included)
 mev check                 run the full grader on all 6 public courses
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
+mev restore-assets        restore missing extracted SM64 assets offline without overwriting edits
 ```
+
+Use `make clean` for ordinary rebuilds. If `make distclean` removes the
+extracted assets, run `mev restore-assets` before rebuilding. The task image
+does not contain the original ROM.
+
+`mev run` and `mev check` measure CPU busy time the same way: the idle thread's
+halt loop is excluded from CPU time and nothing else is, so an optimization
+cannot buy free time by moving work into the idle function or renaming it.
 
 Reference material: `/task/docs/n64-cost-model.md`. Both SGI IDO
 (`tools/ido-static-recomp`) and `mips64-elf-gcc` / `mips-linux-gnu-gcc` are

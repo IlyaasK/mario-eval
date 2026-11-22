@@ -17,22 +17,22 @@ Your submission is scored on **one primary resource profile**, named in
 
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
-| `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `max(CPU_ms, RSP_ms, RDP_ms)` within 4 MB RAM |
-| `speed`   | CPU time to compute and submit a frame                 | VR4300 COUNT ticks per frame (46.875 MHz) |
-| `rdp`     | Reality Display Processor hardware busy time           | RDP 62.5 MHz cycles per frame (raster/fill/Z/TMEM/sync) |
-| `rsp`     | Reality Signal Processor vector/microcode busy time    | RSP non-halted cycles per frame (62.5 MHz) |
-| `traffic` | Total RDRAM bus traffic across all devices             | RDRAM bytes read+written per frame (CPU, SP, DP, PI, SI) |
-| `memory`  | Console RAM footprint                                  | Distinct 16-byte RDRAM lines touched after boot |
+| `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `est_console_ms` = `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)` within 4 MB RAM |
+| `speed`   | CPU time to compute and submit a frame                 | `cpu_effective_cycles` per frame (VR4300 cycles incl. cache/bus stalls) |
+| `rdp`     | Reality Display Processor hardware busy time           | `rdp_busy` (RDP 62.5 MHz cycles: raster/fill/Z/TMEM/sync) |
+| `rsp`     | Reality Signal Processor vector/microcode busy time    | `rsp_busy` (RSP non-halted cycles per frame) |
+| `traffic` | Total RDRAM bus traffic across all devices             | `rdram_bytes` read+written per frame (CPU, SP, DP, PI, SI) |
+| `memory`  | Console RAM footprint                                  | `footprint_bytes` (distinct 16-byte RDRAM lines touched after boot) |
 
 For each profile, `geo = geomean(yours / baseline)` over all routes:
-- **Bounded RL reward**: `reward = clip(1 - geo, -1, 1)` (`0.0` unchanged, `0.5` at 2×, `-1.0` if invalid or over budget).
+- **Reward (log-scaled, unbounded above)**: `reward = max(-1, log2(1 / geo) / 4)` — 2× scores 0.25, 4× 0.5, 16× 1.0 (`0.0` unchanged); any failed gate, or an over-budget profile, scores `-1.0`.
 - **Unbounded speedup**: `speedup = 1 / geo`, `log2_speedup = -log2(geo)`, and `vs_o2_speedup` (speedup beyond a clean `-O2 -fno-fast-math` compiler-only build, so true hardware/algorithmic super-optimization beyond `-O2` is directly visible).
 
-Cross-subsystem budgets enforce honest hardware engineering:
+Course budgets enforce honest hardware engineering. Each profile has a **profile budget** on its own metric and a **cross-subsystem budget** on the other metric:
 - In `console`, no workload may regress `est_console_ms` or `footprint_bytes` by more than **5%**.
-- In `speed`, no workload may regress `frame_ticks` or `rdp_busy` by more than **5%**.
-- In `rdp`, `rsp`, and `traffic`, no workload may regress the target metric or `frame_ticks` by more than **5%**.
-- In `memory`, no workload may regress `footprint_bytes` (`0%`) and `frame_ticks` may not regress by more than **5%**.
+- In `speed`, no workload may regress `cpu_effective_cycles` or `rdp_busy` by more than **5%**.
+- In `rdp`, `rsp`, and `traffic`, no workload may regress the target metric or `cpu_effective_cycles` by more than **5%**.
+- In `memory`, no workload may regress `footprint_bytes` (`0%`) and `cpu_effective_cycles` may not regress by more than **5%**.
 
 ## What must not change
 

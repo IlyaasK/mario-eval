@@ -84,32 +84,35 @@ grade_checkpoint() {
   rm -rf "$dir/src"
   dc cp task:/task/game "$dir/src" >/dev/null
   rm -rf "$dir/src/.git" "$dir/src/build" "$dir/src/build_"*
-  local args=() mounts=()
-  if [ -n "$HELDOUT" ]; then args=(--split all --heldout /heldout); mounts=(-v "$HELDOUT":/heldout:ro); fi
-  docker run --rm -u "$(id -u):$(id -g)" -v "$REPO":/repo:ro -v "$dir/src":/submission:ro \
-    -v "$dir":/out "${mounts[@]}" -w /repo mario-eval \
-    python3 -m grader.grade grade /submission --corpus "$CORPUS" --cache "$CACHE" --out /out/grade "${args[@]}" \
+  date +%s > "$dir/snapshot-epoch"
+  local args=()
+  if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
+  "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
   dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true
   python3 - "$RUN_DIR" "$START" "$GAME" "$PROFILE" <<'PY' || true
-import glob, json, os, pathlib, sys
+import json, pathlib, sys
 run_dir, t0, game, profile = pathlib.Path(sys.argv[1]), float(sys.argv[2]), sys.argv[3], sys.argv[4]
 checks = []
 hist = run_dir / "mev-history.jsonl"
 if hist.exists():
     for line in hist.read_text().splitlines():
         if line.strip():
-            d = json.loads(line)
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # The agent may still be writing the last record.
             d["elapsed_hours"] = round(max(0.0, (d.get("ts", t0) - t0) / 3600.0), 4)
             checks.append(d)
 checkpoints = []
 for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_dir.glob("final/grade/summary.json")):
     name = p.parent.parent.name
     s = json.loads(p.read_text())
-    mtime = p.stat().st_mtime
+    captured = int((p.parent.parent / "snapshot-epoch").read_text())
     checkpoints.append({
         "name": name,
-        "elapsed_hours": round(max(0.0, (mtime - t0) / 3600.0), 4),
+        "elapsed_hours": round(max(0.0, (captured - t0) / 3600.0), 4),
+        "workload_set": s.get("workload_set"),
         "status": s.get("status"),
         "rewards": s.get("rewards", {}),
         "speedups": s.get("speedups", {}),
@@ -128,12 +131,21 @@ start_agent() {
   N=$((N + 1)); AGENT_LOG="$RUN_DIR/agent-$(printf %03d $N).log"; AGENT_STARTED=$(now)
   local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$CONTINUE_PROMPT"
   log "starting agent invocation $N"
-  dc exec -T task bash -lc "$AGENT_CMD $(printf '%q' "$prompt")" > "$AGENT_LOG" 2>&1 &
+  dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" task setsid --wait bash -lc \
+    "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" > "$AGENT_LOG" 2>&1 &
   AGENT_PID=$!
 }
 stop_agent() {
   [ -n "$AGENT_PID" ] && kill "$AGENT_PID" 2>/dev/null || true
-  in_task pkill -u agent -f -- "${AGENT_CMD%% *}" 2>/dev/null || true
+  in_task bash -c '
+    if read -r pgid < /tmp/mev-agent-pgid && [[ $pgid =~ ^[1-9][0-9]+$ ]]; then
+      if kill -TERM -- "-$pgid" 2>/dev/null; then
+        sleep 2
+        kill -KILL -- "-$pgid" 2>/dev/null || true
+      fi
+    fi
+    rm -f /tmp/mev-agent-pgid
+  ' 2>/dev/null || true
   wait "$AGENT_PID" 2>/dev/null || true; AGENT_PID=""
 }
 trap 'stop_agent; commit; log "interrupted"; exit 130' INT TERM
@@ -144,6 +156,7 @@ start_agent
 while [ "$(now)" -lt "$DEADLINE" ]; do
   sleep 10
   if ! kill -0 "$AGENT_PID" 2>/dev/null; then
+    stop_agent
     [ $(( $(now) - AGENT_STARTED )) -lt 60 ] && sleep 30
     [ "$(now)" -lt "$DEADLINE" ] && start_agent
   elif [ "$STALL_S" -gt 0 ]; then

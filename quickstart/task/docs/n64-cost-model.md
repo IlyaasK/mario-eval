@@ -70,8 +70,12 @@ Every RDP command emitted to the command buffer is profiled deterministically:
 ## Measurement definitions
 
 Each workload runs 240 logical frames **unthrottled**; frame 0 (boot and setup)
-is excluded from per-frame means. The CPU's idle thread (waiting for the RCP)
-is not counted as CPU work.
+is excluded from per-frame means. Time the CPU spends in the idle thread's halt
+loop (waiting for the RCP) is not counted as CPU work. The emulator recognizes
+that loop from the instruction itself — a branch to its own address inside the
+idle symbol's address range, plus its delay slot when that is a `nop` — so
+renaming or resizing `thread1_idle`, or moving real work into it, cannot buy
+free CPU time: nothing else is ever credited as idle.
 
 - **`est_console_ms` (`console`)** — estimated cost of the frame on a real
   console. SM64 overlaps its units: the CPU builds frame N+1 while the RSP and
@@ -93,17 +97,56 @@ is not counted as CPU work.
   CPU-bound).
 - **`cpu_effective_cycles` (`speed`)** — the CPU term above in VR4300 cycles
   (93.75 MHz; one 60 Hz NTSC field = 1,562,500 cycles).
+- **`est_console_p99_ms` (`stutter`)** — the 99th percentile of the same
+  per-frame bottleneck `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)`: the worst frames a
+  player actually feels, not the average.
 - **`rdp_busy` (`rdp`)** — RDP 62.5 MHz `gclk` cycles per frame.
 - **`rsp_busy` (`rsp`)** — RSP non-halted cycles per frame.
 - **`rdram_bytes` (`traffic`)** — total RDRAM bytes read + written per frame across all bus masters.
 - **`footprint_bytes` (`memory`)** — distinct 16-byte RDRAM cachelines touched by any bus master after entry point.
 
+## Physical-console calibration
+
+The console score is a model, not a measurement of display FPS. On the
+current public SM64 routes it is predominantly CPU-limited. Validate it on
+an NTSC N64 with 4 MB RAM before using it to rank graphics-heavy changes:
+
+1. Use ROMs for vanilla, GCC `-O2`, and Kaze, plus a graphics-focused change
+   such as opaque render modes. Play the same recorded inputs on each through
+   a controller-replay device. Include collision-heavy, fill-heavy underwater,
+   and geometry-heavy scenes. Capture VI scanout and audio from the linked
+   `PLAY=1` ROM; count repeated fields, not capture-host FPS.
+2. In separate instrumented copies, timestamp CPU work spans with CP0 Count
+   (46.875 MHz on NTSC; handle wrap). Timestamp RSP start, yield/resume and
+   completion separately from queue wait. Read RDP DPC counters and record
+   full-sync completion without resetting the counters while another task
+   owns the pipeline. Record overlap rather than adding the three times.
+   Buffer samples in RAM and export after the run; check the probe's overhead
+   against the uninstrumented capture.
+3. Compare medians, p99, and dropped-field rates per route against the
+   emulator's predictions. Use separate calibration and validation scenes.
+   Keep existing scores fixed until a new model improves out-of-sample
+   predictions, then version the model and regrade its reference points.
+
 ## Reward
 
 Per profile, the speedup is the geometric mean over workloads of
-baseline / candidate. The reward is `log2(speedup) / 4` (2× scores 0.25, 16×
-scores 1.0, no upper cap; a failed gate scores −1), so each doubling is worth
-the same.
+baseline / candidate. The reward is `max(-1, log2(speedup) / 4)` (2× scores
+0.25, 16× scores 1.0, no upper cap); any failed gate scores −1 for every
+profile, and a profile whose budget a workload exceeds scores −1 for that
+profile. A profile has a **profile budget** on its own metric and a
+**cross-subsystem budget** on another metric (a workload may not regress either
+one past the budget):
+
+| profile | metric | profile budget | cross-subsystem budget |
+|---------|--------|----------------|------------------------|
+| `console` | `est_console_ms` | ≤ 5% | `footprint_bytes` ≤ 5% |
+| `stutter` | `est_console_p99_ms` | ≤ 5% | `footprint_bytes` ≤ 5% |
+| `speed` | `cpu_effective_cycles` | ≤ 5% | `rdp_busy` ≤ 5% |
+| `rdp` | `rdp_busy` | ≤ 5% | `cpu_effective_cycles` ≤ 5% |
+| `rsp` | `rsp_busy` | ≤ 5% | `cpu_effective_cycles` ≤ 5% |
+| `traffic` | `rdram_bytes` | ≤ 5% | `cpu_effective_cycles` ≤ 5% |
+| `memory` | `footprint_bytes` | 0% | `cpu_effective_cycles` ≤ 5% |
 
 Reference points on SM64's public routes (console profile): GCC `-O2` alone
 1.39×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's

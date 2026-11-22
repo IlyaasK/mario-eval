@@ -32,6 +32,35 @@ RUN chmod -R a-w,a+rX /task/docs \
     && echo console > /task/PROFILE \
     && chown 1000:1000 /task /task/PROFILE
 
+# The ordinary distclean target can remove extracted assets from /task/game.
+# Keep only the extractor's manifest and its listed US assets outside /task.
+RUN <<'SH'
+set -eu
+if [ "$CORPUS_DIR" = sm64/corpus ]; then
+    cd /task/game
+    python3 - <<'PY'
+import json
+import pathlib
+import tarfile
+
+root = pathlib.Path.cwd()
+manifest = pathlib.Path(".assets-local.txt")
+assets = json.loads(pathlib.Path("assets.json").read_text())
+names = set(manifest.read_text().splitlines()[2:])
+expected = {name for name, spec in assets.items() if not name.startswith("@") and "us" in spec[-1]}
+assert expected <= names, "incomplete US asset extraction"
+with tarfile.open("/opt/mario-eval/sm64-assets.tar.gz", "w:gz", dereference=True) as archive:
+    for name in [manifest.name, *sorted(expected)]:
+        path = pathlib.Path(name)
+        assert not path.is_absolute() and ".." not in path.parts, name
+        assert path.is_file() and path.resolve().is_relative_to(root), name
+        assert path.suffix.lower() not in (".z64", ".n64", ".v64"), name
+        archive.add(path, arcname=name, recursive=False)
+PY
+    chmod 0444 /opt/mario-eval/sm64-assets.tar.gz
+fi
+SH
+
 # Verify zero held-out data or retail ROM images exist anywhere in the image.
 RUN python3 -c 'import json, pathlib; ref = pathlib.Path("/opt/mario-eval/reference"); idx = json.loads((ref / "index.json").read_text()); assert all(not k.startswith("heldout") for k in idx.get("workloads", {})), "heldout leaked in index.json"; assert not list(ref.rglob("heldout*")), "heldout files leaked in reference"; assert not list(pathlib.Path("/task/game").rglob("*.z64")), "ROM file leaked in /task/game"'
 
