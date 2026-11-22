@@ -7,13 +7,16 @@
 #include <ultra64.h>
 #include "types.h"
 
-#define MEV_MAX_ACTORS         64
+/* Every active object in the five gameplay object lists is recorded up to this
+ * many; the public routes peak at 81 (Bob-omb Battlefield), the vanilla cap of
+ * 64 made the grader skip the actor gate on every such frame. */
+#define MEV_MAX_ACTORS         256
 #define MEV_AUDIO_SUBFRAMES    2
 #define MEV_AUDIO_SUB_SAMPLES  544
 #define MEV_AUDIO_SAMPLES      (MEV_AUDIO_SUBFRAMES * MEV_AUDIO_SUB_SAMPLES)
 #define MEV_AUDIO_BYTES        (MEV_AUDIO_SAMPLES * 2 * (s32)sizeof(s16))
 
-/* 288 big-endian 32-bit words (1152 bytes); matches grader/contract.py SCHEMAS["sm64"]. */
+/* 1056 big-endian 32-bit words (4224 bytes); matches grader/contract.py SCHEMAS["sm64"]. */
 typedef struct {
     u32 frame;
     u32 level_area;

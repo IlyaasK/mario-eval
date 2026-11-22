@@ -6,6 +6,7 @@
   "elf": "build/us/sm64.us.elf",
   "build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "-j4"],
   "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "check-play"],
+  "play_rom": "build_play/us/sm64.us.z64",
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
   "protected_files": ["src/game/mev.c", "src/game/mev.h"],
   "idle_symbols": ["thread1_idle"],
@@ -37,7 +38,8 @@
     {
       "id": "full-detail",
       "patch": "variants/full-detail.patch",
-      "policy": "Mario may always be drawn with his high-polygon model instead of switching to medium/low-polygon LOD models at distance (as Kaze Emanuar does in Return to Yoshi's Island). Judged equal or better looking; gameplay and audio must be unchanged."
+      "subsumed_by": ["no-lod"],
+      "policy": "Mario may always be drawn with his high-polygon model instead of switching to medium/low-polygon LOD models at distance (as Kaze Emanuar does in Return to Yoshi's Island). Judged equal or better looking; gameplay and audio must be unchanged. The change is only Mario's level of detail, which no-lod already removes, so combinations with no-lod render exactly like no-lod and are not precomputed separately (verified against every combination on every public route)."
     },
     {
       "id": "ra-zb-opa",

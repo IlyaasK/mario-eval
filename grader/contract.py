@@ -23,7 +23,7 @@ SCHEMAS = {
         ("mario_angles", "i", 3), ("mario_stats", "i", 4),
         ("cam_pos", "f", 3), ("cam_focus", "f", 3), ("cam_yaw_mode", "I", 1),
         ("actor_count", "I", 1),
-        ("actor_pos", "f", 64 * 3), ("actor_state", "I", 64),
+        ("actor_pos", "f", 256 * 3), ("actor_state", "I", 256),
     ],
 }
 

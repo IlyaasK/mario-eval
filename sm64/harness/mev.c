@@ -21,7 +21,7 @@
 #include "level_commands.h"
 #include "levels/scripts.h"
 
-typedef char mev_obs_size_check[(sizeof(mev_obs_t) == 1152) ? 1 : -1];
+typedef char mev_obs_size_check[(sizeof(mev_obs_t) == 4224) ? 1 : -1];
 
 #define ISV_BUFFER_K1     0xB3FF0020U
 #define ISV_LENGTH_K1     0xB3FF0014U

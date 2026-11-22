@@ -1,5 +1,5 @@
 diff --git i/ares/n64/cpu/cpu.cpp w/ares/n64/cpu/cpu.cpp
-index 41964d4..08e5e6c 100644
+index 41964d4..d618b76 100644
 --- i/ares/n64/cpu/cpu.cpp
 +++ w/ares/n64/cpu/cpu.cpp
 @@ -83,6 +83,7 @@ auto CPU::flushCount() -> void {
@@ -10,7 +10,7 @@ index 41964d4..08e5e6c 100644
    Thread::clock = 0;
    countClock = 0;
    jitClockTarget = 0;
-@@ -156,6 +157,32 @@ auto CPU::instruction() -> bool {
+@@ -156,6 +157,27 @@ auto CPU::instruction() -> bool {
  
    auto access = devirtualize<Read, Word>(ipu.pc);
    if(!access) return true;
@@ -32,18 +32,44 @@ index 41964d4..08e5e6c 100644
 +        }
 +      }
 +    }
-+    u32 pc = (u32)ipu.pc;
-+    bool idle = false;
-+    for(u32 n = 0; n < sampler.idleRanges; n++) {
-+      if(pc >= sampler.idleLo[n] && pc < sampler.idleHi[n]) { idle = true; break; }
-+    }
-+    sampler.lastIdle = idle;
-+    sampler.lastPC = pc;
++    sampler.prevPC = sampler.lastPC;
++    sampler.lastPC = (u32)ipu.pc;
 +  }
  
    if(Accuracy::CPU::Recompiler && recompiler.enabled && access.cache) {
      if(vaddrAlignedError<Word>(access.vaddr, false)) return true;
-@@ -192,6 +219,13 @@ auto CPU::icacheFillLine(u64 vaddr, u32 paddr) -> void {
+@@ -169,6 +191,7 @@ auto CPU::instruction() -> bool {
+         s64 capBudget = min<s64>(Accuracy::CPU::JitInterleaving, min(timerDelta, queueDelta));
+         jitClockTarget = Thread::clock + capBudget;
+       }
++      sampler.lastIdle = false;  //a whole recompiled block is not the idle halt loop
+       block->execute(*this);
+       return Thread::clock >= jitClockTarget;
+     }
+@@ -176,6 +199,22 @@ auto CPU::instruction() -> bool {
+ 
+   auto data = fetch(access);
+   if (!data) return true;
++  if(unlikely(sampler.idleRanges)) {
++    //mario-eval: credit idle time only for a genuine halt loop inside a
++    //configured range: an instruction that branches to its own address, plus
++    //its delay slot when that is a nop. Nothing else is ever idle, so renaming
++    //or enlarging the idle function, or moving real work into it, cannot buy
++    //free CPU time.
++    u32 pc = (u32)ipu.pc;
++    bool inRange = false;
++    for(u32 n = 0; n < sampler.idleRanges; n++) {
++      if(pc >= sampler.idleLo[n] && pc < sampler.idleHi[n]) { inRange = true; break; }
++    }
++    bool self = isSelfBranch(pc, *data);
++    bool delaySlot = sampler.lastSelfBranch && pc == sampler.prevPC + 4 && *data == 0;
++    sampler.lastIdle = inRange && (self || delaySlot);
++    sampler.lastSelfBranch = inRange && self;
++  }
+   pipeline.begin();
+   instructionPrologue(ipu.pc, *data);
+   decoderEXECUTE(*data);
+@@ -192,6 +231,29 @@ auto CPU::icacheFillLine(u64 vaddr, u32 paddr) -> void {
    icache.line(vaddr).fill(paddr, *this);
  }
  
@@ -54,24 +80,41 @@ index 41964d4..08e5e6c 100644
 +  icache.line(vaddr).fill(paddr, *this);
 +}
 +
++//mario-eval: does this instruction branch to its own address? Only such a loop
++//can spin without ever leaving (a branch always has a delay slot, so the halt
++//loop is this instruction plus at most one more), which is what makes it a
++//safe, symbol-independent definition of "the CPU is waiting".
++auto CPU::isSelfBranch(u32 pc, u32 instruction) -> bool {
++  u32 opcode = instruction >> 26;
++  if(opcode == 2 || opcode == 3) {  //j, jal
++    u32 target = ((pc + 4) & 0xf0000000u) | ((instruction & 0x03ffffffu) << 2);
++    return target == pc;
++  }
++  if(opcode == 1 || (opcode >= 4 && opcode <= 7) || (opcode >= 0x14 && opcode <= 0x17)) {
++    return (instruction & 0xffffu) == 0xffffu;  //branch offset -1: target == pc
++  }
++  return false;
++}
++
  template<bool Recompiled>
  auto CPU::instructionEpilogue() -> void {
    if constexpr(!Recompiled) {
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..092910d 100644
+index b51000d..4d3bea7 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
-@@ -53,6 +53,9 @@ struct CPU : Thread {
+@@ -53,6 +53,10 @@ struct CPU : Thread {
    template<bool Recompiled> auto instructionEpilogue() -> void;
    auto raiseCoprocessor1Exception() -> void;
    auto icacheFillLine(u64 vaddr, u32 paddr) -> void;
 +  auto uncachedRdramRead() -> void;
 +  auto uncachedRdramWrite() -> void;
 +  auto icacheFillLineProfiled(u64 vaddr, u32 paddr) -> void;
++  auto isSelfBranch(u32 pc, u32 instruction) -> bool;
  
    auto power(bool reset) -> void;
  
-@@ -152,6 +155,7 @@ struct CPU : Thread {
+@@ -152,6 +156,7 @@ struct CPU : Thread {
        auto& line = this->line(vaddr);
        if(!line.hit(paddr)) {
          self.profile.icacheMisses++;
@@ -79,7 +122,7 @@ index b51000d..092910d 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -163,6 +167,7 @@ struct CPU : Thread {
+@@ -163,6 +168,7 @@ struct CPU : Thread {
        auto& line = this->line(vaddr);
        if(!line.hit(paddr)) {
          self.profile.icacheMisses++;
@@ -87,7 +130,7 @@ index b51000d..092910d 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1302,38 @@ struct CPU : Thread {
+@@ -1297,11 +1303,42 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
@@ -101,9 +144,11 @@ index b51000d..092910d 100644
 +  //mario-eval: clock-weighted PC sampler. Elapsed CPU clocks between two
 +  //instruction starts are charged to the earlier instruction, so cache-miss
 +  //and uncached-access stalls land on the instruction that caused them.
-+  //The same accounting charges clocks spent inside configured idle ranges
-+  //(e.g. libultra's idle thread) to idleClocks, so CPU busy time can exclude
-+  //time the CPU only spent waiting for the RCP.
++  //Clocks spent executing a genuine halt loop inside a configured idle range
++  //(e.g. libultra's idle thread) are charged to idleClocks, so CPU busy time
++  //excludes time the CPU only spent waiting for the RCP. The halt loop is
++  //recognized from the instruction itself (a branch to its own address, plus
++  //its delay slot when that is a nop), never from a symbol name or size.
 +  struct Sampler {
 +    bool enabled = false;
 +    s64 interval = 4096;
@@ -111,7 +156,9 @@ index b51000d..092910d 100644
 +    s64 base = 0;
 +    s64 lastClock = 0;
 +    u32 lastPC = 0;
++    u32 prevPC = 0;
 +    bool lastIdle = false;
++    bool lastSelfBranch = false;  //previous instruction was a jump to itself inside an idle range
 +    bool jitProfile = false;  //set before power-on: recompiled blocks take the profiled I-cache refill
 +    u32 idleRanges = 0;
 +    u32 idleLo[8] = {};

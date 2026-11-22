@@ -47,7 +47,7 @@ struct Options {
   std::string rom, replay, out, profile;
   u64 frames = 0;
   u64 maxFields = 0;
-  u64 boot = 0;
+  u64 playFields = 0;
 };
 
 auto parsePad(const std::string& line) -> Pad {
@@ -90,12 +90,14 @@ struct Runner : ares::Platform {
   ares::Node::System root;
   std::vector<Pad> replay;
 
+  u64 playField = 0, videoFields = 0, videoChanges = 0;
+  u64 videoHash = 0;
   std::string line;
   u64 frame = 0;         // logical frames completed
   bool failed = false;
   std::string failure;
 
-  std::ofstream jsonl, video, audio, obs;
+  std::ofstream jsonl, framebuffers, audio, obs;
 
   auto pak(ares::Node::Object node) -> std::shared_ptr<vfs::directory> override {
     if(node->name() == "Nintendo 64") return systemPak->pak;
@@ -105,8 +107,9 @@ struct Runner : ares::Platform {
 
   auto currentPad() const -> const Pad& {
     static const Pad idle;
-    // Input for the frame being computed: frame index == frames completed.
-    if(frame < replay.size()) return replay[frame];
+    // Playable builds have no harness frame markers; their replays are VI-field based.
+    u64 index = opt.playFields ? playField : frame;
+    if(index < replay.size()) return replay[index];
     return idle;
   }
 
@@ -135,6 +138,17 @@ struct Runner : ares::Platform {
       else if(name == "Y-Axis") axis->setValue(p.y);
       else axis->setValue(0);
     }
+  }
+
+  auto video(ares::Node::Video::Screen, const u32* data, u32 pitch, u32 width, u32 height) -> void override {
+    if(!opt.playFields || !N64::vi.active() || !width || !height) return;
+    u64 hash = 14695981039346656037ull;
+    for(u32 y = 0; y < height; y++) {
+      auto* row = reinterpret_cast<const u32*>(reinterpret_cast<const u8*>(data) + y * pitch);
+      for(u32 x = 0; x < width; x++) hash = (hash ^ row[x]) * 1099511628211ull;
+    }
+    if(videoFields++ && hash != videoHash) videoChanges++;
+    videoHash = hash;
   }
 
   auto log(ares::Node::Debugger::Tracer::Tracer node, string_view message) -> void override {
@@ -190,7 +204,7 @@ struct Runner : ares::Platform {
        >> std::dec >> fbW >> fbH >> fbBpp >> std::hex >> auP >> std::dec >> auLen;
     if(!in) return fail("malformed @mev line: " + text);
     if(n != frame) return fail("frame counter " + std::to_string(n) + " != expected " + std::to_string(frame));
-    if(obsLen > 4096) return fail("observation record too large");
+    if(obsLen > 16384) return fail("observation record too large");
     if(fbBpp != 16 && fbBpp != 32) return fail("unsupported framebuffer depth");
     if(fbW == 0 || fbH == 0 || fbW > 640 || fbH > 480) return fail("bad framebuffer size");
     if(auLen > 64 * 1024) return fail("audio buffer too large");
@@ -199,7 +213,7 @@ struct Runner : ares::Platform {
     auto fb = readRdram(fbP, fbW * fbH * fbBpp / 8);
     auto au = readRdram(auP, auLen);
     obs.write((const char*)o.data(), o.size());
-    video.write((const char*)fb.data(), fb.size());
+    framebuffers.write((const char*)fb.data(), fb.size());
     audio.write((const char*)au.data(), au.size());
 
     auto& cp = N64::cpu.profile;
@@ -251,8 +265,13 @@ struct Runner : ares::Platform {
     for(char c : failure) { if(c == '"' || c == '\\') r << '\\'; r << c; }
     r << "\",\"frames\":" << frame
       << ",\"vi_fields\":" << fields
-      << ",\"footprint_lines\":" << fp.lines()
-      << ",\"footprint_bytes\":" << fp.lines() * 16
+      << ",\"footprint_lines\":" << fp.lines();
+    if(opt.playFields) {
+      r << ",\"play_video_fields\":" << videoFields
+        << ",\"play_video_changes\":" << videoChanges
+        << ",\"play_final_video_hash\":\"" << std::hex << videoHash << std::dec << "\"";
+    }
+    r << ",\"footprint_bytes\":" << fp.lines() * 16
       << ",\"highest_line\":" << fp.highestLine()
       << ",\"host_seconds\":" << seconds << "}\n";
   }
@@ -268,6 +287,7 @@ auto nall::main(Arguments arguments) -> void {
   if(arguments.take("--replay", value)) opt.replay = value;
   if(arguments.take("--out", value)) opt.out = value;
   if(arguments.take("--frames", value)) opt.frames = value.natural();
+  if(arguments.take("--play-fields", value)) opt.playFields = value.natural();
   if(arguments.take("--max-fields", value)) opt.maxFields = value.natural();
   if(arguments.take("--profile", value)) { opt.profile = value; N64::cpu.sampler.jitProfile = true; }
   // --idle-range LO:HI (hex virtual addresses, repeatable): CPU time spent
@@ -281,8 +301,13 @@ auto nall::main(Arguments arguments) -> void {
     s.idleHi[s.idleRanges] = (u32)std::stoul(text.substr(colon + 1), nullptr, 16);
     s.idleRanges++;
   }
-  if(opt.rom.empty() || opt.out.empty() || !opt.frames) {
-    fprintf(stderr, "usage: n64run --rom ROM --out DIR --frames N [--replay FILE] [--max-fields N] [--profile FILE] [--idle-range LO:HI ...]\n");
+  if(opt.rom.empty() || opt.out.empty() || ((!opt.frames) == (!opt.playFields))) {
+    fprintf(stderr, "usage: n64run --rom ROM --out DIR (--frames N | --play-fields N) [--replay FILE] [--max-fields N] [--profile FILE] [--idle-range LO:HI ...]\n");
+    fprintf(stderr, "  --play-fields N runs a PLAY=1 ROM for N VI fields; replay input uses one row per VI field.\n");
+    fprintf(stderr, "  --profile FILE writes the PC histogram to FILE and the cache profiles to FILE.dmiss (data-cache misses by faulting PC),\n");
+    fprintf(stderr, "  FILE.imiss (instruction-cache misses by line address), FILE.wb (writebacks by last writer PC) and FILE.dmissaddr.\n");
+    fprintf(stderr, "  --idle-range LO:HI (hex virtual addresses, repeatable) marks the idle function's range: CPU time is credited as idle only while the CPU\n");
+    fprintf(stderr, "  executes a branch to its own address inside it (plus a nop delay slot), i.e. a genuine halt loop.\n");
     exit(2);
   }
   if(!opt.maxFields) opt.maxFields = opt.frames * 60 + 600;
@@ -299,12 +324,17 @@ auto nall::main(Arguments arguments) -> void {
 
   directory::create(opt.out.c_str());
   runner.jsonl.open(opt.out + "/frames.jsonl");
-  runner.video.open(opt.out + "/video.bin", std::ios::binary);
+  runner.framebuffers.open(opt.out + "/video.bin", std::ios::binary);
   runner.audio.open(opt.out + "/audio.bin", std::ios::binary);
   runner.obs.open(opt.out + "/obs.bin", std::ios::binary);
 
-  mia::setHomeLocation([]() -> string { return "/tmp/n64run-home/"; });
-  mia::setSaveLocation([]() -> string { return "/tmp/n64run-saves/"; });
+  if(opt.playFields) {
+    mia::setHomeLocation([&opt]() -> string { return {opt.out.c_str(), "/home/"}; });
+    mia::setSaveLocation([&opt]() -> string { return {opt.out.c_str(), "/saves/"}; });
+  } else {
+    mia::setHomeLocation([]() -> string { return "/tmp/n64run-home/"; });
+    mia::setSaveLocation([]() -> string { return "/tmp/n64run-saves/"; });
+  }
   mia::construct();
 
   ares::platform = &runner;
@@ -339,14 +369,19 @@ auto nall::main(Arguments arguments) -> void {
   auto start = std::chrono::steady_clock::now();
   u64 fields = 0;
   std::string status = "completed";
-  while(runner.frame < opt.frames) {
+  while(opt.playFields ? fields < opt.playFields : runner.frame < opt.frames) {
+    runner.playField = fields;
     runner.root->run();
     fields++;
     if(runner.failed) { status = "protocol_error"; break; }
-    if(fields >= opt.maxFields) { status = "timeout"; runner.fail("no progress: " + std::to_string(runner.frame) + " frames in " + std::to_string(fields) + " VI fields"); break; }
+    if(!opt.playFields && fields >= opt.maxFields) { status = "timeout"; runner.fail("no progress: " + std::to_string(runner.frame) + " frames in " + std::to_string(fields) + " VI fields"); break; }
+  }
+  if(opt.playFields && status == "completed" && !runner.videoChanges) {
+    status = "play_no_video_progress";
+    runner.fail("no changing VI output");
   }
   double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-  runner.jsonl.close(); runner.video.close(); runner.audio.close(); runner.obs.close();
+  runner.jsonl.close(); runner.framebuffers.close(); runner.audio.close(); runner.obs.close();
   runner.writeResult(status, fields, seconds);
   if(!opt.profile.empty()) {
     std::ofstream p(opt.profile);

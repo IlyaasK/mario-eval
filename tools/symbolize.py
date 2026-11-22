@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Fold n64run PC samples into per-function totals.
+"""Fold n64run address-keyed samples into per-function totals.
 
 usage: symbolize.py SAMPLES SYMBOLS [--top N]
 
-SAMPLES is the file written by `n64run --profile`. SYMBOLS is either
+SAMPLES is any file written by `n64run --profile`: the PC sample histogram
+(`pc count`), or one of the cache profiles it writes beside it — `.dmiss`
+(`faulting_pc count`), `.imiss` (`line_address count`), `.wb` and
+`.dmissaddr` (`line_address pc count`, keyed by the PC). A two-column file is
+keyed by its first (hex) column, a three-column file by the second (hex) PC
+column; the last column is always the count. SYMBOLS is either
 `mips64-elf-objdump -t ELF` (preferred: includes assembly labels such as
 osWritebackDCacheAll and the exception handler) or `mips64-elf-nm -n
---defined-only ELF`. Prints functions by share of sampled CPU time (stalls
-included).
+--defined-only ELF`. Prints functions by share of the total (for the CPU
+profile: sampled CPU time, stalls included).
 """
 import argparse
 import bisect
@@ -35,6 +40,19 @@ def load_symbols(path):
     return [a for a, _ in out], [n for _, n in out]
 
 
+def totals(samples, starts, names):
+    out = collections.Counter()
+    for line in open(samples):
+        if line.startswith("#") or not line.strip():
+            continue
+        parts = line.split()
+        addr = int(parts[0], 16) if len(parts) == 2 else int(parts[1], 16)
+        n = int(parts[-1])
+        i = bisect.bisect_right(starts, addr) - 1
+        out[names[i] if i >= 0 else f"?{addr:08x}"] += n
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("samples")
@@ -43,16 +61,9 @@ def main():
     args = ap.parse_args()
 
     starts, names = load_symbols(args.symbols)
-    totals = collections.Counter()
-    for line in open(args.samples):
-        if line.startswith("#") or not line.strip():
-            continue
-        pc, n = line.split()
-        pc = int(pc, 16)
-        i = bisect.bisect_right(starts, pc) - 1
-        totals[names[i] if i >= 0 else f"?{pc:08x}"] += int(n)
-    total = sum(totals.values()) or 1
-    for name, n in totals.most_common(args.top):
+    counted = totals(args.samples, starts, names)
+    total = sum(counted.values()) or 1
+    for name, n in counted.most_common(args.top):
         print(f"{100.0 * n / total:6.2f}%  {n:9d}  {name}")
 
 

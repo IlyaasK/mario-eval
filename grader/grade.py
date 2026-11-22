@@ -29,7 +29,9 @@ import itertools
 import math
 import os
 import pathlib
+import resource
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -68,31 +70,117 @@ def _copy_source(src, dst):
     shutil.copytree(src, dst, ignore=_ignore)
 
 
-def build(src, cfg, log_path):
-    """Copy src to a scratch dir, build it (plus optional play_build_cmd), return (rom_bytes_path, reason)."""
+_DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Environment a build must not inherit: preload/library shims and interpreter
+# hook paths can hijack the compiler, and credentials/proxies would leak from
+# the grading environment (and have no use with no network). Everything else
+# (e.g. the toolchain's N64_INST, PATH) is kept, because a legitimate build
+# needs it.
+_BUILD_ENV_DROP = {
+    "LD_PRELOAD", "LD_AUDIT", "LD_DEBUG", "LD_LIBRARY_PATH",
+    "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE",
+    "PERL5LIB", "BASH_ENV", "ENV",
+    "HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "ftp_proxy", "all_proxy", "no_proxy",
+    "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+}
+_BUILD_ENV_SECRET_HINTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "PASSWD")
+
+
+def _build_env(home, tmp):
+    """Environment for the untrusted submission build.
+
+    The build must not inherit anything that can hijack it (LD_PRELOAD,
+    PYTHONPATH, ...) or leak the grading environment's credentials, and must
+    not share the grader's HOME/TMPDIR; it gets its own inside the scratch
+    tree, deleted with it. Toolchain variables (`N64_INST`, `PATH`, ...) are
+    kept: a legitimate build needs them.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k not in _BUILD_ENV_DROP and not any(h in k.upper() for h in _BUILD_ENV_SECRET_HINTS)}
+    env.update({
+        "PATH": os.environ.get("PATH", _DEFAULT_PATH),
+        "HOME": str(home),
+        "TMPDIR": str(tmp),
+        "TMP": str(tmp),
+        "TEMP": str(tmp),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TERM": "dumb",
+        "SHELL": "/bin/sh",
+    })
+    return env
+
+
+def _kill_build_group(proc):
+    """Kill the build's whole process group, so no leftover background process
+    can keep running (and tamper with the grading environment) after it."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+
+
+def _run_build(cmd, cwd, home, tmp, timeout):
+    """Run one untrusted build command, isolated as far as the container allows.
+
+    The submission's Makefile runs as the same container user as the grader, so
+    it cannot be given a private filesystem view without namespaces (blocked by
+    the default container seccomp profile). What it does get: a scrubbed
+    environment, its own HOME/TMPDIR, its own session/process group (killed
+    afterwards), no core dumps, and the grading container runs with no network.
+    Returns (returncode, output, timed_out).
+    """
+    def child_setup():
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    proc = subprocess.Popen(cmd, cwd=cwd, env=_build_env(home, tmp),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            start_new_session=True, preexec_fn=child_setup)
+    timed_out = False
+    out = ""
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_build_group(proc)
+        try:
+            out, _ = proc.communicate(timeout=60)
+        except Exception:
+            out = ""
+    _kill_build_group(proc)
+    return proc.returncode, out or "", timed_out
+
+
+def build(src, cfg, log_path, keep_play=False):
+    """Build in scratch, retaining only the benchmark ROM, idle ranges and optional PLAY ROM."""
     work = pathlib.Path(tempfile.mkdtemp(prefix="mev-build-"))
     out_rom = work / "built.z64"
+    home, tmp = work / "home", work / "tmp"
     try:
         _copy_source(src, work / "src")
+        home.mkdir(exist_ok=True)
+        tmp.mkdir(exist_ok=True)
         jobs = str(os.cpu_count() or 4)
         base_cmd = cfg.get("build_cmd", ["make"])
         cmd = [base_cmd[0], f"-j{jobs}", *base_cmd[1:]] if base_cmd[0] == "make" else list(base_cmd)
-        try:
-            proc = subprocess.run(cmd, cwd=work / "src", capture_output=True, text=True,
-                                  timeout=cfg["build_timeout_s"])
-        except subprocess.TimeoutExpired:
-            pathlib.Path(log_path).write_text("build timed out\n")
+        rc, out, timed_out = _run_build(cmd, work / "src", home, tmp, cfg["build_timeout_s"])
+        if timed_out:
+            pathlib.Path(log_path).write_text(out + "\nbuild timed out\n")
             shutil.rmtree(work, ignore_errors=True)
             return None, "build timed out"
 
-        logs = [proc.stdout + proc.stderr]
+        logs = [out]
         rom = work / "src" / cfg["rom"]
-        if proc.returncode != 0 or not rom.exists():
+        if rc != 0 or not rom.exists():
             pathlib.Path(log_path).write_text("".join(logs))
             shutil.rmtree(work, ignore_errors=True)
             return None, "build failed; see build.log"
 
         shutil.copy2(rom, out_rom)
+        # The ELF is only used to scope the idle-time exclusion to the idle
+        # function; the emulator credits only a genuine halt loop inside that
+        # range, so a doctored ELF buys nothing.
         idle = idle_ranges(work / "src" / cfg["elf"], cfg.get("idle_symbols", [])) if cfg.get("elf") else []
         (work / "built.idle.json").write_text(json.dumps(idle))
 
@@ -100,19 +188,24 @@ def build(src, cfg, log_path):
         if play_cmd:
             shutil.rmtree(work / "src" / "build", ignore_errors=True)
             pcmd = [play_cmd[0], f"-j{jobs}", *play_cmd[1:]] if play_cmd[0] == "make" else list(play_cmd)
-            try:
-                pproc = subprocess.run(pcmd, cwd=work / "src", capture_output=True, text=True,
-                                       timeout=cfg["build_timeout_s"])
-            except subprocess.TimeoutExpired:
-                logs.append("\n--- play build timed out ---\n")
+            prc, pout, ptimeout = _run_build(pcmd, work / "src", home, tmp, cfg["build_timeout_s"])
+            logs.append("\n--- play build ---\n" + pout)
+            if ptimeout:
+                logs.append("\n--- PLAY=1 ROM build timed out ---\n")
                 pathlib.Path(log_path).write_text("".join(logs))
                 shutil.rmtree(work, ignore_errors=True)
-                return None, "console PLAY=1 build timed out"
-            logs.append("\n--- play build ---\n" + pproc.stdout + pproc.stderr)
-            if pproc.returncode != 0:
+                return None, "PLAY=1 ROM build timed out"
+            if prc != 0:
                 pathlib.Path(log_path).write_text("".join(logs))
                 shutil.rmtree(work, ignore_errors=True)
-                return None, "console PLAY=1 build failed; see build.log"
+                return None, "PLAY=1 ROM build failed; see build.log"
+            if keep_play:
+                playable = work / "src" / cfg["play_rom"]
+                if not playable.is_file():
+                    pathlib.Path(log_path).write_text("".join(logs))
+                    shutil.rmtree(work, ignore_errors=True)
+                    return None, "PLAY=1 build did not produce its ROM; see build.log"
+                shutil.copyfile(playable, work / "play.z64")
 
         pathlib.Path(log_path).write_text("".join(logs))
         shutil.rmtree(work / "src", ignore_errors=True)
@@ -120,6 +213,78 @@ def build(src, cfg, log_path):
     except Exception:
         shutil.rmtree(work, ignore_errors=True)
         raise
+
+
+def build_submission(args):
+    cfg = json.loads(pathlib.Path(args.config).read_text())
+    out = pathlib.Path(args.out)
+    if args.play_smoke and not cfg.get("play_rom"):
+        raise GraderError("PLAY runtime smoke is not supported for this target")
+    rom, error = build(args.source, cfg, out / "build.log", keep_play=args.play_smoke)
+    if rom is None:
+        (out / "error.txt").write_text(error)
+        return
+    try:
+        for name in ("built.z64", "built.idle.json"):
+            shutil.copyfile(rom.parent / name, out / name)
+        if args.play_smoke:
+            shutil.copyfile(rom.parent / "play.z64", out / "play.z64")
+    finally:
+        shutil.rmtree(rom.parent, ignore_errors=True)
+
+
+def load_submission_build(directory):
+    for name in ("error.txt", "built.z64", "built.idle.json", "play.z64"):
+        p = directory / name
+        if p.is_symlink() or (p.exists() and not p.is_file()):
+            raise GraderError("invalid build handoff")
+    error = directory / "error.txt"
+    if error.is_file():
+        with error.open(encoding="utf-8", errors="replace") as stream:
+            return None, stream.read(256)
+    if not all((directory / name).is_file() for name in ("built.z64", "built.idle.json")):
+        raise GraderError("missing isolated build output")
+    return directory / "built.z64", None
+
+
+# ------------------------------------------------------- build-time integrity
+
+def _digest(paths):
+    """sha256 over the (path, content) of every file the measurement trusts."""
+    h = hashlib.sha256()
+    for p in paths:
+        p = pathlib.Path(p)
+        h.update(str(p).encode())
+        try:
+            h.update(sha256(p).encode())
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            h.update(b"-")
+    return h.hexdigest()
+
+
+def measurement_artifacts(corpus, cache, items):
+    """Everything a malicious build could rewrite to change what is scored:
+    the emulator, the grader itself, the corpus (config/patches/variants), the
+    reference cache and the replays. The grader hashes these before the build
+    and again before measuring, so tampering is detected instead of scored."""
+    paths = []
+    exe = shutil.which("n64run")
+    if exe:
+        paths.append(exe)
+    paths += sorted(str(p) for p in pathlib.Path(__file__).parent.rglob("*.py"))
+    corpus = pathlib.Path(corpus)
+    paths += sorted(str(p) for p in corpus.rglob("*") if p.is_file())
+    cache = pathlib.Path(cache)
+    if (cache / "index.json").exists():
+        paths.append(str(cache / "index.json"))
+    for w in items:
+        run = cache / "runs" / w["id"]
+        for name in ("obs.bin", "audio.bin", "frames.jsonl", "result.json", "frames.bin", "frames.json"):
+            if (run / name).exists():
+                paths.append(str(run / name))
+        paths += sorted(str(p) for p in run.glob("video*.z"))
+        paths.append(str(w["replay"]))
+    return _digest(paths)
 
 
 def idle_ranges(elf, symbols):
@@ -149,6 +314,11 @@ def run_workload(rom, replay, frames, out_dir, max_fields, timeout):
     out_dir = pathlib.Path(out_dir)
     if out_dir.exists():
         shutil.rmtree(out_dir)
+    # The submission build runs in this container and shares /tmp, and n64run
+    # keeps its ares settings/saves there; clear them so a planted ares home
+    # cannot influence the emulator.
+    for stale in ("/tmp/n64run-home", "/tmp/n64run-saves"):
+        shutil.rmtree(stale, ignore_errors=True)
     cmd = ["n64run", "--rom", str(rom), "--replay", str(replay), "--out", str(out_dir),
            "--frames", str(frames), "--max-fields", str(max_fields)]
     idle_file = pathlib.Path(rom).with_suffix(".idle.json")
@@ -407,43 +577,92 @@ def mismatch(a, b, tol):
     return unmatched(a, b, tol) | unmatched(b, a, tol)
 
 
-def compare_video(ref_videos, cand_path, ref_rows, cand_rows, cfg):
-    """ref_videos[0] is the original; the rest are accepted visual variants.
+def reference_variants(entry, fallback=()):
+    """Which stored video holds each accepted variant for one workload.
 
-    Each frame must match, as a whole frame within tolerance, either the
-    original picture or one of the accepted visual variants (preventing
-    half-original / half-variant per-pixel mixing within a single frame).
+    A dict {"combo": stored}, where "" means the combination renders exactly
+    like the baseline. Caches written before deduplication stored a plain list
+    of variant ids (one video each), either per workload or once for the whole
+    cache; both are still read."""
+    v = entry.get("variants")
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, list):
+        return {name: name for name in v}
+    return {name: name for name in fallback}
+
+
+def _reference_frame_sets(ref_dir, variants, frames, w, h, bpp):
+    """Distinct reference frames per frame index: index 0 is the original
+    picture, the rest are accepted variants.
+
+    Each distinct picture counts once (a minimum over duplicates is unchanged),
+    so grading memory is bounded by the distinct frames rather than one whole
+    video per accepted combination, and repeated comparisons are skipped. The
+    storage deduplication already collapsed identical combinations; this also
+    collapses frames a variant shares with the original or another variant."""
+    size = w * h * bpp // 8
+    files = [ref_dir / "video.bin.z"] + [ref_dir / f"video.{v}.bin.z"
+                                         for v in sorted(set(variants.values()) - {""})]
+    seen = [dict() for _ in range(frames)]
+    out = [[] for _ in range(frames)]
+    for path in files:
+        video = zlib.decompress(path.read_bytes())
+        for i in range(frames):
+            frame = video[i * size:(i + 1) * size]
+            key = hashlib.sha1(frame).digest()
+            if key not in seen[i]:
+                seen[i][key] = True
+                out[i].append(frame)
+        del video
+    return out
+
+
+def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg):
+    """Every frame must match, as a whole frame within tolerance, either the
+    original picture or one of the accepted visual variants, at that frame
+    index (preventing half-original / half-variant per-pixel mixing within a
+    single frame).
+
+    The reference is the set of distinct frames per index, so an accepted
+    visual change present in several combinations costs one comparison.
     """
+    if len(ref_rows) != len(cand_rows):
+        return {"pass": False, "frame": min(len(ref_rows), len(cand_rows)), "reason": "frame count changed"}
     w, h, bpp = ref_rows[0]["fb"]
     size = w * h * bpp // 8
     tol = cfg["video"]["channel_tolerance"]
     limit = cfg["video"]["max_bad_fraction"]
+    refs = _reference_frame_sets(ref_dir, variants, len(ref_rows), w, h, bpp)
     worst = (0.0, -1)
     variant_frames = 0
+    failed_frames = 0
     with open(cand_path, "rb") as f:
         for i, row in enumerate(cand_rows):
             if row["fb"] != [w, h, bpp]:
                 return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
             cand = f.read(size)
-            refs = [v[i * size:(i + 1) * size] for v in ref_videos]
-            if cand == refs[0]:
+            orig = refs[i][0]
+            if cand == orig:
                 continue
-            if cand in refs[1:]:
+            if cand in refs[i][1:]:
                 variant_frames += 1
                 continue
             c = decode_frame(cand, w, h, bpp)
-            orig_frac = float(mismatch(c, decode_frame(refs[0], w, h, bpp), tol).mean())
+            orig_frac = float(mismatch(c, decode_frame(orig, w, h, bpp), tol).mean())
             frac = orig_frac
-            for ref in refs[1:]:
+            for ref in refs[i][1:]:
                 v_frac = float(mismatch(c, decode_frame(ref, w, h, bpp), tol).mean())
                 if v_frac < frac:
                     frac = v_frac
             if orig_frac > limit and frac <= limit:
                 variant_frames += 1
+            failed_frames += frac > limit
             if frac > worst[0]:
                 worst = (frac, i)
     ok = worst[0] <= limit
-    return {"pass": ok, "worst_bad_fraction": worst[0], "worst_frame": worst[1], "variant_frames": variant_frames}
+    return {"pass": ok, "worst_bad_fraction": worst[0], "worst_frame": worst[1],
+            "max_bad_fraction": limit, "failed_frames": failed_frames, "variant_frames": variant_frames}
 
 
 def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
@@ -473,7 +692,8 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
             if fsnr < worst[0]:
                 worst = (fsnr, i)
     ok = snr >= acfg["min_snr_db"] and worst[0] >= acfg["min_frame_snr_db"]
-    return {"pass": ok, "snr_db": snr, "worst_frame_snr_db": worst[0], "worst_frame": worst[1]}
+    return {"pass": ok, "snr_db": snr, "worst_frame_snr_db": worst[0], "worst_frame": worst[1],
+            "min_snr_db": acfg["min_snr_db"], "min_frame_snr_db": acfg["min_frame_snr_db"]}
 
 
 # ------------------------------------------------------------------- corpus
@@ -516,20 +736,45 @@ def patched_copy(source, patch_files):
     return work
 
 
+def essential_atoms(atoms):
+    """The atoms of a combination that actually change its rendering.
+
+    An atom may declare `subsumed_by`: other atoms whose change already
+    includes its effect, so the combination renders exactly like the same one
+    without it. `full-detail` only forces Mario's high-polygon model, and
+    `no-lod` removes every level-of-detail switch (Mario's included), so
+    `full-detail+no-lod` is `no-lod` frame for frame, on every route (checked
+    against every precomputed combination). Dropping such atoms means those
+    combinations are never built, stored or compared twice."""
+    keep = list(atoms)
+    while True:
+        ids = {v["id"] for v in keep}
+        reduced = [v for v in keep if not (ids - {v["id"]}) & set(v.get("subsumed_by", []))]
+        if len(reduced) == len(keep):
+            return keep
+        keep = reduced
+
+
 def variant_combinations(cfg):
-    """Every non-empty combination of the atomic accepted visual changes.
+    """Every distinct non-empty combination of the atomic accepted visual changes.
 
     The video gate matches each frame as a whole against one reference, so a
     submission that uses several accepted changes needs a reference with
-    exactly that combination. An atom may list the "workloads" it can change
-    (e.g. one course's scenery); elsewhere the combination looks exactly like
-    the combination without it. Smaller combinations come first.
-    Returns [(id, [atom, ...]), ...]."""
+    exactly that combination. Combinations another combination already renders
+    identically are skipped (see essential_atoms), and an atom may list the
+    "workloads" it can change (e.g. one course's scenery); elsewhere the
+    combination looks exactly like the combination without it. Smaller
+    combinations come first. Returns [(id, [atom, ...]), ...]."""
     atoms = cfg.get("accepted_visual_variants", [])
-    out = []
+    out, seen = [], set()
     for r in range(1, len(atoms) + 1):
         for combo in itertools.combinations(atoms, r):
-            out.append(("+".join(v["id"] for v in combo), list(combo)))
+            essential = essential_atoms(combo)
+            vid = "+".join(v["id"] for v in essential)
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            out.append((vid, essential))
     return out
 
 
@@ -539,7 +784,9 @@ def effective_variant(atoms, workload):
     Held-out routes may visit any course, so every atom counts for them."""
     def affects(v):
         return "workloads" not in v or workload["split"] != "public" or workload["id"] in v["workloads"]
-    return "+".join(v["id"] for v in atoms if affects(v)) or None
+    # Drop the atoms that cannot change this workload first: subsumption only
+    # holds between atoms that are both part of the combination here.
+    return "+".join(v["id"] for v in essential_atoms([v for v in atoms if affects(v)])) or None
 
 
 def precompute(args):
@@ -580,55 +827,71 @@ def precompute(args):
     finally:
         shutil.rmtree(rom.parent, ignore_errors=True)
 
-    # Accepted visual variants: the baseline with each combination of the
-    # listed visual changes applied. Each must leave gameplay bit-exact and
+    # Accepted visual variants: the baseline with each distinct combination of
+    # the listed visual changes applied. Each must leave gameplay bit-exact and
     # audio within the audio gate (a microcode swap shifts RSP task timing,
-    # which can move a few samples by a few LSBs); only its video is kept, as
-    # an extra reference for the video gate.
+    # which can move a few samples by a few LSBs); only its video is kept, as an
+    # extra reference for the video gate. A combination whose video is
+    # byte-identical to one already stored is recorded as an alias of it
+    # (video_alias) instead of being written again, and the gate compares
+    # against distinct frames only, so storage and grading memory both shrink.
+    video_alias = {w["id"]: {} for w in items}   # -> {variant id: stored variant id or "" (baseline)}
+    video_seen = {}                              # (workload, sha1 of the video) -> stored variant id or ""
+    for w in items:
+        raw = zlib.decompress((cache / "runs" / w["id"] / "video.bin.z").read_bytes())
+        video_seen[(w["id"], hashlib.sha1(raw).hexdigest())] = ""
+    stored_variants = set()
+
     for variant_id, atoms in variant_combinations(cfg):
-        variant = {"id": variant_id}
-        # Workloads this combination renders like a smaller one reuse its video.
         own = []
         for w in items:
             same = effective_variant(atoms, w)
-            run_dir = cache / "runs" / w["id"]
             if same == variant_id:
                 own.append(w)
-            elif same is None:
-                shutil.copyfile(run_dir / "video.bin.z", run_dir / f"video.{variant_id}.bin.z")
             else:
-                shutil.copyfile(run_dir / f"video.{same}.bin.z", run_dir / f"video.{variant_id}.bin.z")
+                # Renders like a smaller combination here; alias its stored video.
+                video_alias[w["id"]][variant_id] = video_alias[w["id"]].get(same or "", same or "")
         if not own:
-            index["variants"].append(variant_id)
             continue
         vwork = patched_copy(args.source, [(corpus / v["patch"]).resolve() for v in atoms])
         vrom = None
         try:
-            vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant['id']}.log")
+            vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant_id}.log")
             if vrom is None:
-                raise GraderError(f"variant {variant['id']} failed to build: {verr}")
-            vdir = cache / "variant-runs" / variant["id"]
+                raise GraderError(f"variant {variant_id} failed to build: {verr}")
+            vdir = cache / "variant-runs" / variant_id
             vres = run_all(vrom, own, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
             for w in own:
-                if vres[w["id"]].get("status") != "completed":
-                    raise GraderError(f"variant {variant['id']} did not complete {w['id']}")
-                base_run, var_run = load_run(cache / "runs" / w["id"]), load_run(vdir / w["id"])
+                wid = w["id"]
+                if vres[wid].get("status") != "completed":
+                    raise GraderError(f"variant {variant_id} did not complete {wid}")
+                base_run, var_run = load_run(cache / "runs" / wid), load_run(vdir / wid)
                 if base_run["obs"] != var_run["obs"]:
-                    raise GraderError(f"variant {variant['id']} changes gameplay on {w['id']}; "
+                    raise GraderError(f"variant {variant_id} changes gameplay on {wid}; "
                                       "an accepted visual change must be visual only")
                 au = compare_audio(base_run["audio"], var_run["audio"], base_run["rows"], var_run["rows"], cfg)
                 if not au["pass"]:
-                    raise GraderError(f"variant {variant['id']} changes audio on {w['id']}: {au}")
+                    raise GraderError(f"variant {variant_id} changes audio on {wid}: {au}")
                 if base_run["audio"] != var_run["audio"]:
-                    print(f"variant {variant['id']} {w['id']}: audio SNR {au['snr_db']:.1f} dB", file=sys.stderr)
-                video = (vdir / w["id"] / "video.bin").read_bytes()
-                (cache / "runs" / w["id"] / f"video.{variant['id']}.bin.z").write_bytes(zlib.compress(video, 6))
+                    print(f"variant {variant_id} {wid}: audio SNR {au['snr_db']:.1f} dB", file=sys.stderr)
+                video = (vdir / wid / "video.bin").read_bytes()
+                digest = hashlib.sha1(video).hexdigest()
+                if (wid, digest) in video_seen:
+                    video_alias[wid][variant_id] = video_seen[(wid, digest)]
+                else:
+                    (cache / "runs" / wid / f"video.{variant_id}.bin.z").write_bytes(zlib.compress(video, 6))
+                    video_seen[(wid, digest)] = variant_id
+                    video_alias[wid][variant_id] = variant_id
+                    stored_variants.add(variant_id)
             shutil.rmtree(vdir, ignore_errors=True)
-            index["variants"].append(variant["id"])
         finally:
             if vrom is not None:
                 shutil.rmtree(vrom.parent, ignore_errors=True)
             shutil.rmtree(vwork, ignore_errors=True)
+
+    index["variants"] = sorted(stored_variants)
+    for w in items:
+        index["workloads"][w["id"]]["variants"] = video_alias[w["id"]]
 
     # Optional GCC -O2 (IEEE) reference calibration, so summary.json can report
     # both speedup vs vanilla (-O0 / IDO) and speedup beyond compiler flags.
@@ -698,10 +961,59 @@ def export_public(args):
 
 # --------------------------------------------------------------------- grade
 
+def failure_details(gates):
+    failures = []
+    for name, gate in gates.items():
+        if gate["pass"]:
+            continue
+        if "workloads" not in gate:
+            failures.append({"gate": name, **{k: v for k, v in gate.items() if k != "pass"}})
+            continue
+        for workload, result in gate["workloads"].items():
+            if not result["pass"]:
+                failures.append({"gate": name, "workload": workload,
+                                 **{k: None if isinstance(v, float) and not math.isfinite(v) else v
+                                    for k, v in result.items() if k not in ("pass", "host_seconds")}})
+    return failures
+
+
+def play_runtime_smoke(rom, out, timeout):
+    """Compare idle and controller-driven execution of the same linked PLAY ROM."""
+    fields = 1200
+    out.mkdir(parents=True, exist_ok=True)
+    replay = out / "controller.txt"
+    replay.write_text("".join(
+        ("." if i < 120 else "S" if i % 120 < 50 else "A" if i % 120 < 100 else ".") + " 0 0\n"
+        for i in range(fields)
+    ))
+    results = {}
+    for mode, extra in (("idle", []), ("controller", ["--replay", str(replay)])):
+        path = pathlib.Path(tempfile.mkdtemp(prefix=f"{mode}-", dir=out))
+        # Let n64run create its output directory; nall rewrites existing paths.
+        capture = path / "capture"
+        cmd = ["n64run", "--rom", str(rom), "--out", str(capture), "--play-fields", str(fields), *extra]
+        with (path / "stderr.txt").open("w") as errors:
+            try:
+                run = subprocess.run(cmd, stderr=errors, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return {"pass": False, "status": "host_timeout", "scenario": mode}
+        report = capture / "result.json"
+        result = json.loads(report.read_text()) if report.is_file() else {"status": "runner_error"}
+        results[mode] = result
+        if run.returncode or result["status"] != "completed" or result.get("vi_fields") != fields:
+            return {"pass": False, "status": result["status"], "scenario": mode,
+                    "returncode": run.returncode, "scenarios": results}
+    different = results["idle"]["play_final_video_hash"] != results["controller"]["play_final_video_hash"]
+    return {"pass": different, "status": "completed" if different else "no_controller_response",
+            "scenarios": results}
+
+
 def grade(args):
     t0 = time.time()
     corpus = pathlib.Path(args.corpus)
     cfg = json.loads((corpus / "grader.json").read_text())
+    if args.play_smoke and not cfg.get("play_rom"):
+        raise GraderError("PLAY runtime smoke is not supported for this target")
     cache = pathlib.Path(args.cache)
     index = json.loads((cache / "index.json").read_text())
     schema_name = cfg.get("contract", index.get("contract", "pips-garden"))
@@ -721,6 +1033,7 @@ def grade(args):
         if reason:
             summary["reason"] = reason
         if status == "invalid":
+            summary["failures"] = failure_details(summary["gates"])
             summary["rewards"] = {p: -1.0 for p in cfg["profiles"]}
             summary["speedups"] = {p: 0.0 for p in cfg["profiles"]}
         summary["grader_seconds"] = round(time.time() - t0, 1)
@@ -735,24 +1048,51 @@ def grade(args):
     if changed:
         return finish("invalid", f"protected files modified: {changed}")
 
-    # 2. build
-    rom, build_err = build(args.source, cfg, out / "build.log")
+    # 2. build. Private measurements require a separate build container.
+    # Public local checks can build in-process with an artifact integrity check.
+    isolated = args.built is not None
+    if not isolated and (args.split != "public" or args.heldout):
+        raise GraderError("held-out grading requires an isolated build; use scripts/grade.sh")
+    items = workloads(args.corpus, cfg, args.split, args.heldout)
+    missing = [w["id"] for w in items if w["id"] not in index["workloads"]]
+    if missing:
+        raise GraderError(f"no baseline reference for {missing}; run precompute with this split")
+    replay_hashes = {w["id"]: sha256(w["replay"]) for w in items}
+    mismatches = [wid for wid, digest in replay_hashes.items()
+                  if index["workloads"][wid]["replay_sha256"] != digest]
+    if mismatches:
+        raise GraderError(f"replay differs from the baseline reference: {mismatches}")
+    summary["workload_set"] = hashlib.sha256(
+        json.dumps(replay_hashes, sort_keys=True).encode()
+    ).hexdigest()
+    trusted = None if isolated else measurement_artifacts(args.corpus, cache, items)
+    if isolated:
+        rom, build_err = load_submission_build(pathlib.Path(args.built))
+    else:
+        rom, build_err = build(args.source, cfg, out / "build.log", keep_play=args.play_smoke)
+    if isolated and rom is not None and args.play_smoke and not (rom.parent / "play.z64").is_file():
+        raise GraderError("PLAY=1 ROM missing from build handoff")
     summary["gates"]["build"] = {"pass": rom is not None, **({"reason": build_err} if build_err else {})}
     if rom is None:
         return finish("invalid", build_err or "build failed; see build.log")
+    if not isolated and measurement_artifacts(args.corpus, cache, items) != trusted:
+        raise GraderError("the submission's build modified grading artifacts "
+                          "(the emulator, the grader, the corpus, the reference cache or the replays)")
     try:
         summary["rom_sha256"] = sha256(rom)
         summary["rom_bytes"] = rom.stat().st_size
+        if args.play_smoke:
+            result = play_runtime_smoke(rom.parent / "play.z64", out / "play-smoke", cfg["run_timeout_s"])
+            summary["gates"]["play_runtime"] = result
+            if not result["pass"]:
+                return finish("invalid", f"PLAY=1 runtime smoke failed: {result['status']}")
 
         # 3. run
-        items = workloads(args.corpus, cfg, args.split, args.heldout)
-        missing = [w["id"] for w in items if w["id"] not in index["workloads"]]
-        if missing:
-            raise GraderError(f"no baseline reference for {missing}; run precompute with this split")
         budget = lambda wid: int(index["workloads"][wid]["vi_fields"] * cfg["max_fields_factor"]) + 600
         results = run_all(rom, items, cfg["frames"], out / "runs", budget, cfg["run_timeout_s"])
     finally:
-        shutil.rmtree(rom.parent, ignore_errors=True)
+        if not isolated:
+            shutil.rmtree(rom.parent, ignore_errors=True)
 
     execution, gameplay, video, audio, hardware = {}, {}, {}, {}, {}
     for w in items:
@@ -763,14 +1103,13 @@ def grade(args):
         cand = load_run(out / "runs" / wid)
         ref_dir = cache / "runs" / wid
         ref = load_run(ref_dir)
-        ref_videos = [zlib.decompress((ref_dir / "video.bin.z").read_bytes())]
-        ref_videos += [zlib.decompress((ref_dir / f"video.{v}.bin.z").read_bytes()) for v in index.get("variants", [])]
         gameplay[wid] = compare_obs(ref["obs"], cand["obs"], cfg["frames"], schema_name, cfg)
-        video[wid] = compare_video(ref_videos, cand["video_path"], ref["rows"], cand["rows"], cfg)
+        video[wid] = compare_video(ref_dir, reference_variants(index["workloads"][wid], index.get("variants", [])),
+                                   cand["video_path"], ref["rows"], cand["rows"], cfg)
         audio[wid] = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
         m = metrics(cand)
         hardware[wid] = {"pass": m["highest_byte"] <= cfg["hardware"]["rdram_bytes"],
-                         "highest_byte": m["highest_byte"]}
+                         "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"]}
         base = index["workloads"][wid]["metrics"]
         summary["workloads"][wid] = {
             "metrics": m,
@@ -853,6 +1192,12 @@ def main():
     p_pre.add_argument("--heldout")
     p_pre.add_argument("--o2-patch")
 
+    p_build = sub.add_parser("build")
+    p_build.add_argument("source")
+    p_build.add_argument("--config", required=True)
+    p_build.add_argument("--out", required=True)
+    p_build.add_argument("--play-smoke", action="store_true", help="retain the linked PLAY=1 ROM")
+
     p_grd = sub.add_parser("grade")
     p_grd.add_argument("source")
     p_grd.add_argument("--corpus", required=True)
@@ -860,6 +1205,8 @@ def main():
     p_grd.add_argument("--split", default="public", choices=["public", "heldout", "all"])
     p_grd.add_argument("--heldout")
     p_grd.add_argument("--out", required=True)
+    p_grd.add_argument("--built", help="isolated build handoff directory")
+    p_grd.add_argument("--play-smoke", action="store_true", help="require the PLAY=1 ROM to boot and render")
 
     p_exp = sub.add_parser("export-public")
     p_exp.add_argument("--corpus", required=True)
@@ -870,6 +1217,8 @@ def main():
     try:
         if args.cmd == "precompute":
             precompute(args)
+        elif args.cmd == "build":
+            build_submission(args)
         elif args.cmd == "export-public":
             export_public(args)
         else:
@@ -877,6 +1226,7 @@ def main():
             print(json.dumps({
                 "status": s["status"],
                 "reason": s.get("reason"),
+                **({"failures": s["failures"]} if s.get("failures") else {}),
                 "rewards": s["rewards"],
                 "speedups": s.get("speedups"),
             }, indent=1))

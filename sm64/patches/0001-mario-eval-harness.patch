@@ -35,6 +35,13 @@ index b267233..7a6eab1 100644
    ifeq ($(NOEXTRACT),0)
      DUMMY != $(PYTHON) extract_assets.py $(VERSION) >&2 || echo FAIL
      ifeq ($(DUMMY),FAIL)
+@@ -279,3 +283,6 @@
+ # Object files
++ifneq ($(PLAY),)
++  C_FILES := $(filter-out src/game/mev.c,$(C_FILES))
++endif
+ O_FILES := $(foreach file,$(C_FILES),$(BUILD_DIR)/$(file:.c=.o)) \
+            $(foreach file,$(S_FILES),$(BUILD_DIR)/$(file:.s=.o)) \
 @@ -397,7 +401,8 @@ CC_CHECK := gcc
  CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(CC_CFLAGS) $(TARGET_CFLAGS) -std=gnu90 -Wall -Wextra -Wno-format-security -Wno-main -DNON_MATCHING -DAVOID_UB $(DEF_INC_CFLAGS)
  
@@ -45,20 +52,13 @@ index b267233..7a6eab1 100644
  ifeq ($(COMPILER),gcc)
    CFLAGS += -mno-shared -march=vr4300 -mfix4300 -mabi=32 -mhard-float -mdivide-breaks -fno-stack-protector -fno-common -fno-zero-initialized-in-bss -fno-PIC -mno-abicalls -fno-strict-aliasing -fno-inline-functions -ffreestanding -fwrapv -Wall -Wextra
  else
-@@ -930,7 +935,17 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
+@@ -930,7 +938,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
  
  
  
 -.PHONY: all clean distclean default diff test load libultra
-+PLAY_CHECK_SRCS := src/game/main.c src/game/game_init.c src/game/sound_init.c src/game/level_update.c src/audio/external.c src/audio/heap.c src/engine/behavior_script.c src/game/mev.c
-+
 +check-play:
-+	@mkdir -p $(BUILD_DIR)/play_check
-+	@for f in $(PLAY_CHECK_SRCS); do \
-+	  $(CC_CHECK) $(CC_CHECK_CFLAGS) -DPLAY=1 $$f || exit 1; \
-+	  $(CC) -c $(CFLAGS) -DPLAY=1 -o $(BUILD_DIR)/play_check/$$(basename $$f .c).o $$f || exit 1; \
-+	done
-+	@$(RM) -r $(BUILD_DIR)/play_check
++	$(MAKE) PLAY=1 BUILD_DIR_BASE=build_play all
 +
 +.PHONY: all clean distclean default diff test load libultra check-play
  # with no prerequisites, .SECONDARY causes no intermediate target to be removed
