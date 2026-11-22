@@ -3209,7 +3209,7 @@ index 2343068..a10198e 100644
      if (matrix[3][2] < -20000.0f - cullingRadius) {
          return FALSE;
      }
-@@ -799,6 +905,23 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -799,6 +905,27 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      if (matrix[3][0] < -hScreenEdge - cullingRadius) {
          return FALSE;
      }
@@ -3221,12 +3221,16 @@ index 2343068..a10198e 100644
 +    // object's prevObj (sushi/Bowser collision children, Lakitu's Spiny,
 +    // Monty Mole's rock, Mr. Blizzard's snowball, Mario held by Chuckya or
 +    // King Bob-omb). Vanilla draws them whenever they are horizontally in
-+    // view, so they keep the vanilla test.
++    // view, so they keep the vanilla test. Also use a conservative vertical
++    // margin (at least 1200 units) because vanilla never culled vertically and
++    // tall level objects (e.g. WDW elevators/platforms) extend past the default
++    // 300-unit horizontal culling radius.
 +    if ((struct Object *) node != gMarioObject && ((struct Object *) node)->prevObj == NULL) {
-+        if (matrix[3][1] > hScreenEdge + cullingRadius) {
++        s16 vRadius = (cullingRadius < 1200) ? 1200 : cullingRadius;
++        if (matrix[3][1] > hScreenEdge + vRadius) {
 +            return FALSE;
 +        }
-+        if (matrix[3][1] < -hScreenEdge - cullingRadius) {
++        if (matrix[3][1] < -hScreenEdge - vRadius) {
 +            return FALSE;
 +        }
 +    }

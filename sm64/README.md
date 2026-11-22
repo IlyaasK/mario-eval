@@ -37,7 +37,7 @@ invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
 
 - `r0-unchanged` to `r9-kaze-partial`: compiler flags and a growing subset of
   Kaze Emanuar's techniques.
-- **`r10-kaze-master`, the human-expert reference (1.68x console speedup, 1.22x vs `-O2`)**:
+- **`r10-kaze-master`, the human-expert reference (1.67x console speedup, 1.21x vs `-O2`; 1.65x across all 25 public+held-out routes)**:
   a reconstruction of applicable optimizations from Kaze's public videos,
   on-screen code, and two code downloads (the "How Optimizations made Mario 64
   SLOWER" repository and the audio code from "Revolutionizing N64 programming!").
@@ -56,7 +56,7 @@ invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
   Every remaining Kaze and ultrasm64 technique was then measured one at a time
   on top of r10; the record, including what was not adopted and why, is
   [`calibration/r10-trials.md`](calibration/r10-trials.md).
-- `r11-beyond-kaze` (1.63x on an earlier/smaller base; stacking its D-cache
+- `r11-beyond-kaze` (1.65x on an earlier/smaller base; stacking its D-cache
   struct reorders onto `r10-kaze-master` reaches 1.70x): adds techniques Kaze
   never described (object fields ordered for the 16-byte D-cache lines, skipped
   unchanged stores, audio struct reorder, double buffering), to check that the

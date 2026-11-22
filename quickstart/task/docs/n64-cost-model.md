@@ -154,6 +154,6 @@ one past the budget):
 
 Reference points on SM64's public routes (console profile): GCC `-O2` alone
 1.38×; `r10-kaze-master`, reconstructed techniques from Kaze Emanuar's
-public work, 1.68× (1.22× vs `-O2`); `r11-beyond-kaze`, adding our own
-D-cache layout work, 1.63× (earlier, smaller base; stacking its D-cache
-struct reorders onto `r10-kaze-master` reaches 1.70×).
+public work, 1.67× (1.21× vs `-O2`, 1.65× across all 25 private routes);
+`r11-beyond-kaze`, adding our own D-cache layout work, 1.65× (earlier, smaller
+base; stacking its D-cache struct reorders onto `r10-kaze-master` reaches 1.70×).
