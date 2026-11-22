@@ -240,6 +240,7 @@ struct Runner : ares::Platform {
       << ",\"rdp_triangles\":" << dp.triangles
       << ",\"rdp_rectangles\":" << dp.rectangles
       << ",\"rdp_pixels\":" << dp.pixels
+      << ",\"rdp_z_rejected_pixels\":" << dp.zRejectedPixels
       << ",\"rdp_tmem_loads\":" << dp.tmemLoads
       << ",\"rdp_tmem_bytes\":" << dp.tmemBytes
       << ",\"rdp_syncs\":" << dp.syncs

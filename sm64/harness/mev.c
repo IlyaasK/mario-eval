@@ -39,12 +39,13 @@ static OSMesgQueue sMevAudioDoneQueue;
 static OSMesg sMevAudioDoneBuf[2];
 static u64 sMevAudioStorage[(MEV_AUDIO_BYTES + 31) / 8];
 
-static const s32 sMevActorLists[5] = {
+static const s32 sMevActorLists[6] = {
     OBJ_LIST_DESTRUCTIVE,
     OBJ_LIST_GENACTOR,
     OBJ_LIST_PUSHABLE,
     OBJ_LIST_LEVEL,
-    OBJ_LIST_POLELIKE
+    OBJ_LIST_POLELIKE,
+    OBJ_LIST_SURFACE
 };
 
 static const LevelScript sMevEntryScript[] = {
@@ -150,6 +151,10 @@ s32 mev_select_boot_level(UNUSED s16 arg, UNUSED s32 prev) {
         level = LEVEL_SSL;
     } else if (btn & U_CBUTTONS) {
         level = LEVEL_LLL;
+    } else if (btn & D_CBUTTONS) {
+        level = LEVEL_HMC;
+    } else if (btn & L_CBUTTONS) {
+        level = LEVEL_WDW;
     }
 
     gCurrSaveFileNum = 1;
@@ -226,7 +231,7 @@ static void mev_observe(mev_obs_t *obs) {
                       | ((u32) gLakituState.defMode);
 
     if (gObjectLists != NULL) {
-        for (li = 0; li < 5; li++) {
+        for (li = 0; li < 6; li++) {
             struct ObjectNode *head = &gObjectLists[sMevActorLists[li]];
             struct ObjectNode *node = head->next;
             while (node != NULL && node != head) {

@@ -470,6 +470,7 @@ def metrics(run):
         "rdp_sync_cycles": _delta_mean(rows, "rdp_sync_cycles"),
         "rdp_triangles": _delta_mean(rows, "rdp_triangles"),
         "rdp_pixels": _delta_mean(rows, "rdp_pixels"),
+        "rdp_z_rejected_pixels": _delta_mean(rows, "rdp_z_rejected_pixels"),
         "rdp_tmem_loads": _delta_mean(rows, "rdp_tmem_loads"),
         "rdp_tmem_bytes": _delta_mean(rows, "rdp_tmem_bytes"),
         "rdp_syncs": _delta_mean(rows, "rdp_syncs"),
@@ -1160,6 +1161,15 @@ def grade(args):
     if not isolated and (args.split != "public" or args.heldout):
         raise GraderError("held-out grading requires an isolated build; use scripts/grade.sh")
     items = workloads(args.corpus, cfg, args.split, args.heldout)
+    if getattr(args, "workloads", None):
+        if args.split != "public" or args.heldout:
+            raise GraderError("--workloads is only allowed on public local checks")
+        wanted = [x.strip() for x in args.workloads.split(",") if x.strip()]
+        by_id = {w["id"]: w for w in items}
+        unknown = [x for x in wanted if x not in by_id]
+        if unknown:
+            raise GraderError(f"unknown workloads: {unknown} (available: {sorted(by_id)})")
+        items = [by_id[x] for x in wanted]
     missing = [w["id"] for w in items if w["id"] not in index["workloads"]]
     if missing:
         raise GraderError(f"no baseline reference for {missing}; run precompute with this split")
@@ -1329,6 +1339,7 @@ def main():
     p_grd.add_argument("--heldout")
     p_grd.add_argument("--out", required=True)
     p_grd.add_argument("--built", help="isolated build handoff directory")
+    p_grd.add_argument("--workloads", help="comma-separated public workload IDs (local checks only)")
     p_grd.add_argument("--play-smoke", action="store_true", help="require the PLAY=1 ROM to boot and render")
 
     p_exp = sub.add_parser("export-public")

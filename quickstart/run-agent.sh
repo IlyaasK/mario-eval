@@ -108,6 +108,7 @@ grade_checkpoint() {
   date +%s > "$dir/snapshot-epoch"
   local args=()
   if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
+  if [ "$name" = "final" ] && [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
   "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
   dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true

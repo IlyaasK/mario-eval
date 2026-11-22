@@ -53,14 +53,54 @@ def totals(samples, starts, names):
     return out
 
 
+def icache_conflicts(samples, starts, names, top):
+    """Group .imiss line misses by 16 KB direct-mapped VR4300 I-cache set
+    (512 sets of 32 bytes: set = (addr & 0x3fff) >> 5) and report the top
+    colliding function pairs that evict each other from the same sets."""
+    per_set = collections.defaultdict(collections.Counter)
+    for line in open(samples):
+        if line.startswith("#") or not line.strip():
+            continue
+        parts = line.split()
+        addr = int(parts[0], 16)
+        n = int(parts[-1])
+        cset = (addr & 0x3FFF) >> 5
+        i = bisect.bisect_right(starts, addr) - 1
+        fn = names[i] if i >= 0 else f"?{addr:08x}"
+        per_set[cset][fn] += n
+    pair_score = collections.Counter()
+    pair_sets = collections.defaultdict(int)
+    for cset, counts in per_set.items():
+        if len(counts) < 2:
+            continue
+        items = counts.most_common(4)
+        for idx_a in range(len(items)):
+            fa, ca = items[idx_a]
+            for idx_b in range(idx_a + 1, len(items)):
+                fb, cb = items[idx_b]
+                if fa == fb:
+                    continue
+                key = (fa, fb) if fa < fb else (fb, fa)
+                # Conflict intensity in this set is bounded by the smaller sharer's misses
+                pair_score[key] += min(ca, cb)
+                pair_sets[key] += 1
+    total_conflicts = sum(pair_score.values()) or 1
+    for (fa, fb), score in pair_score.most_common(top):
+        print(f"{100.0 * score / total_conflicts:6.2f}%  {score:9d}  ({pair_sets[(fa, fb)]:3d} sets)  {fa}  <->  {fb}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("samples")
     ap.add_argument("symbols")
     ap.add_argument("--top", type=int, default=25)
+    ap.add_argument("--icache-conflicts", action="store_true")
     args = ap.parse_args()
 
     starts, names = load_symbols(args.symbols)
+    if args.icache_conflicts:
+        icache_conflicts(args.samples, starts, names, args.top)
+        return
     counted = totals(args.samples, starts, names)
     total = sum(counted.values()) or 1
     for name, n in counted.most_common(args.top):

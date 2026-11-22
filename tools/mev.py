@@ -7,8 +7,11 @@
                                 per-function CPU profile plus D-cache misses,
                                 I-cache misses, D-cache writebacks and missed
                                 lines by function (clock-weighted, stalls included)
-  mev check                     full public grading of /task/game (same grader,
-                                same gates, public workloads only)
+  mev check [WORKLOAD ...] [--fast]
+                                full public grading of /task/game (same grader,
+                                same gates). Pass workload IDs (e.g. `mev check jrb`)
+                                and/or `--fast` (incremental build, skips PLAY=1)
+                                for a ~5s gate-verified inner loop.
   mev workloads                 list public workloads
 
 All costs are measured by the emulator (ares N64 model), never by the ROM.
@@ -120,6 +123,7 @@ def summarize(out_dir, workload):
         ("TMEM loads", "rdp_tmem_loads"),
         ("TMEM bytes", "rdp_tmem_bytes"),
         ("RDP pixels", "rdp_pixels"),
+        ("RDP Z-rejected pixels", "rdp_z_rejected_pixels"),
         ("RDRAM footprint bytes*", "footprint_bytes"),
     ]
     frames = len(run["rows"])
@@ -130,6 +134,13 @@ def summarize(out_dir, workload):
         ratio = f"{m[key] / b:8.3f}" if b else ""
         sp = f"{b / m[key]:7.2f}x" if (b and m[key]) else ""
         print(f"{label:30s} {m[key]:14.3f} {b if b is not None else float('nan'):14.3f} {ratio} {sp}")
+    rdp_cpm = 62_500.0
+    z_pct = (100.0 * m.get("rdp_z_rejected_pixels", 0.0) / max(m.get("rdp_pixels", 0.0), 1.0))
+    print(f"  RDP breakdown: fill={m.get('rdp_fill_cycles',0)/rdp_cpm:.2f}ms  "
+          f"page_miss={m.get('rdp_page_miss_cycles',0)/rdp_cpm:.2f}ms ({m.get('rdp_rdram_page_misses',0):.0f})  "
+          f"tmem={m.get('rdp_tmem_cycles',0)/rdp_cpm:.2f}ms ({m.get('rdp_tmem_loads',0):.0f})  "
+          f"sync={m.get('rdp_sync_cycles',0)/rdp_cpm:.2f}ms  "
+          f"z_rej={z_pct:.1f}%  tris={m.get('rdp_triangles',0):.0f}")
     print()
     for label, key in detail:
         b = base.get(key)
@@ -183,41 +194,69 @@ def run(args, profile=False):
                 print(title + ":")
                 sh([sys.executable, symbolize, str(path), str(nm), "--top", str(args.top)])
                 print()
+            imiss = pathlib.Path(str(samples) + ".imiss")
+            if imiss.exists() and imiss.stat().st_size:
+                print("Top 16 KB I-cache set conflict pairs (same addr mod 0x4000):")
+                sh([sys.executable, symbolize, str(imiss), str(nm), "--icache-conflicts", "--top", "12"])
+                print()
     summarize(out / "run", args.workload)
     print(f"\nraw output: {out}/run  (frames.jsonl, video.bin, audio.bin, obs.bin)")
 
 
-def check(_args):
+def check(args):
+    import shutil
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-check-"))
-    r = sh([sys.executable, "-m", "grader.grade", "grade", str(GAME), "--corpus", str(CORPUS),
-            "--cache", str(CACHE), "--out", str(out)], cwd="/opt/mario-eval")
-    summary_path = out / "summary.json"
-    # Update stable symlink atomically after grading writes summary.json so agents
-    # can always inspect /tmp/mev-last-check/summary.json without polling temp names.
-    last_link = pathlib.Path("/tmp/mev-last-check")
-    tmp_link = pathlib.Path(f"/tmp/.mev-last-check.{os.getpid()}")
+    partial = bool(args.workloads) or bool(args.fast)
+    cmd = [sys.executable, "-m", "grader.grade", "grade", str(GAME), "--corpus", str(CORPUS),
+           "--cache", str(CACHE), "--out", str(out)]
+    handoff = None
     try:
-        tmp_link.unlink(missing_ok=True)
-        tmp_link.symlink_to(out)
-        tmp_link.replace(last_link)
-    except OSError:
-        pass
+        if args.fast:
+            cfg = config()
+            rom = build()
+            handoff = pathlib.Path(tempfile.mkdtemp(prefix="mev-fast-handoff-"))
+            shutil.copy2(rom, handoff / "built.z64")
+            elf = find_elf(cfg)
+            sys.path.insert(0, "/opt/mario-eval")
+            from grader.grade import idle_ranges
+            idle = idle_ranges(elf, cfg.get("idle_symbols", [])) if (elf and cfg.get("idle_symbols")) else []
+            (handoff / "built.idle.json").write_text(json.dumps(idle))
+            cmd += ["--built", str(handoff)]
+        if args.workloads:
+            cmd += ["--workloads", ",".join(args.workloads)]
+        r = sh(cmd, cwd="/opt/mario-eval")
+    finally:
+        if handoff is not None:
+            shutil.rmtree(handoff, ignore_errors=True)
+    summary_path = out / "summary.json"
+    if not partial:
+        # Update stable symlink atomically after full grading writes summary.json so agents
+        # can always inspect /tmp/mev-last-check/summary.json without polling temp names.
+        last_link = pathlib.Path("/tmp/mev-last-check")
+        tmp_link = pathlib.Path(f"/tmp/.mev-last-check.{os.getpid()}")
+        try:
+            tmp_link.unlink(missing_ok=True)
+            tmp_link.symlink_to(out)
+            tmp_link.replace(last_link)
+        except OSError:
+            pass
     if summary_path.exists():
         try:
             s = json.loads(summary_path.read_text())
-            head = subprocess.run(["git", "-C", str(GAME), "rev-parse", "--short", "HEAD"],
-                                  capture_output=True, text=True).stdout.strip()
-            rec = {
-                "ts": round(time.time(), 2),
-                "git_head": head,
-                "status": s.get("status"),
-                "reason": s.get("reason"),
-                "rewards": s.get("rewards", {}),
-                "speedups": s.get("speedups", {}),
-                "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
-            }
-            with open("/task/.mev-history.jsonl", "a") as hf:
-                hf.write(json.dumps(rec) + "\n")
+            if not partial:
+                head = subprocess.run(["git", "-C", str(GAME), "rev-parse", "--short", "HEAD"],
+                                      capture_output=True, text=True).stdout.strip()
+                rec = {
+                    "ts": round(time.time(), 2),
+                    "git_head": head,
+                    "status": s.get("status"),
+                    "reason": s.get("reason"),
+                    "rewards": s.get("rewards", {}),
+                    "speedups": s.get("speedups", {}),
+                    "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
+                }
+                with open("/task/.mev-history.jsonl", "a") as hf:
+                    hf.write(json.dumps(rec) + "\n")
             wls = s.get("workloads", {})
             if wls:
                 print("\nPer-course breakdown (ms; bn = dominant bottleneck):")
@@ -241,7 +280,10 @@ def check(_args):
                                 print(f"  {wk}: {json.dumps(wv)}")
         except Exception:
             pass
-    print(f"\nfull report: {summary_path} (symlink: /tmp/mev-last-check/summary.json)")
+    if partial:
+        print(f"\npartial/fast report: {summary_path}  (run plain `mev check` for full clean + PLAY=1 verification)")
+    else:
+        print(f"\nfull report: {summary_path} (symlink: /tmp/mev-last-check/summary.json)")
     sys.exit(r.returncode)
 
 
@@ -259,7 +301,9 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("build")
     sub.add_parser("workloads")
-    sub.add_parser("check")
+    p_chk = sub.add_parser("check")
+    p_chk.add_argument("workloads", nargs="*", help="optional subset of public workloads (e.g. bob jrb)")
+    p_chk.add_argument("--fast", action="store_true", help="reuse incremental build and skip PLAY=1 rebuild")
     sub.add_parser("restore-assets", help="restore missing SM64 assets from the offline archive")
     for name in ("run", "profile"):
         p = sub.add_parser(name)

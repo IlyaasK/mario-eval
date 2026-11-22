@@ -129,10 +129,11 @@ Your working directory is `/task/game` (the SM64 git repository).
 mev build                 build /task/game
 mev run jrb               run a public course; prints est_console_ms / est_console_p99_ms
                           (console & stutter), cpu/rsp/rdp/rdram ms and vs-baseline speedups
-mev profile bob           per-function CPU profile plus D-cache misses, I-cache misses
-                          and D-cache writebacks by function (stalls included)
-mev check                 run the full grader on all 6 public courses; prints per-course
-                          timings and updates /tmp/mev-last-check/summary.json
+mev profile bob           per-function CPU profile plus D/I-cache misses, writebacks,
+                          top 16 KB I-cache conflict pairs, and RDP cycle breakdown
+mev check                 full clean + PLAY=1 grader on all 6 public courses; prints
+                          per-course timings and updates /tmp/mev-last-check/summary.json
+mev check jrb --fast      fast incremental gate check on 1+ courses (skips PLAY=1 rebuild)
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
 mev restore-assets        restore missing extracted SM64 assets offline without overwriting edits
 ```

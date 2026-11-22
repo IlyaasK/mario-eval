@@ -282,7 +282,7 @@ index b71c407..e0ade1c 100644
  
  namespace ares::Nintendo64 {
  
-@@ -60,7 +61,253 @@ auto RDP::power(bool reset) -> void {
+@@ -60,7 +61,305 @@ auto RDP::power(bool reset) -> void {
    fillRectangle_ = {};
    io.bist = {};
    io.test = {};
@@ -337,17 +337,23 @@ index b71c407..e0ade1c 100644
 +  };
 +
 +  auto rasterize = [&](s32 xh, s32 xm, s32 xl, s32 yh, s32 ym, s32 yl,
-+                       s32 dxhdy, s32 dxmdy, s32 dxldy, bool flip) {
++                       s32 dxhdy, s32 dxmdy, s32 dxldy, bool flip,
++                       bool hasZ, s32 zInit, s32 dzdx, s32 dzde) {
 +    s32 yloSub = std::max(yh, state.scissorYLo);
 +    s32 yhiSub = std::min(yl, state.scissorYHi);
 +    if(yhiSub <= yloSub) return;
 +    s32 minY = std::max(0, yloSub >> 2);
 +    s32 maxY = std::min(1023, (yhiSub - 1) >> 2);
 +    s32 yhBase = yh & ~3;
++    s32 yhInt = yh >> 2;
 +    s32 loScissor = state.scissorXLo << 1;
 +    s32 hiScissor = state.scissorXHi << 1;
 +    bool fillOrCopy = state.cycleType >= 2;
 +    u32 bpp = (state.colorSize == 3) ? 4 : (state.colorSize == 2 ? 2 : 1);
++    bool doEarlyZ = (!fillOrCopy) && hasZ && state.zCompare && state.colorWidth <= 640;
++    bool clearingZ = fillOrCopy && state.colorAddr == state.zAddr && state.colorWidth <= 640;
++    u16 rawFill = (u16)((state.fillColor >> 16) & 0xffffu);
++    u16 zClearVal = (rawFill >= 0xfffcu) ? 0x7fffu : (u16)(rawFill >> 1);
 +
 +    for(s32 y = minY; y <= maxY; y++) {
 +      if(state.interlace && ((y & 1) != (state.keepOdd ? 1 : 0))) continue;
@@ -379,26 +385,57 @@ index b71c407..e0ade1c 100644
 +      u32 cAddr = state.colorAddr + ((u32)y * state.colorWidth + (u32)startX) * bpp;
 +      u32 cBytes = px * bpp;
 +      if(fillOrCopy) {
++        if(clearingZ && (u32)y < 480) {
++          u16* zRowPtr = shadowZ.data() + (u32)y * state.colorWidth;
++          for(s32 x = startX; x <= endX; x++) zRowPtr[x] = zClearVal;
++        }
 +        u32 pxPerCycle = (bpp == 4) ? 2 : 4;
 +        u64 sc = 2 + (px + pxPerCycle - 1) / pxPerCycle;
 +        fillCycles += sc;
 +        cycles += sc;
 +        markRdram(cAddr, cBytes, RBusDevice::DP_DRAW, true);
 +      } else {
++        u32 passed = px;
++        if(doEarlyZ && (u32)y < 480) {
++          passed = 0;
++          s64 zRow = (s64)zInit + (s64)(y - yhInt) * (s64)dzde;
++          s32 xMajor = sext27((s64)xh + (s64)((y << 2) - yhBase) * dxhdy) >> 15;
++          u16* zRowPtr = shadowZ.data() + (u32)y * state.colorWidth;
++          bool decal = (state.zMode == 3);
++          for(s32 x = startX; x <= endX; x++) {
++            s64 zPx = zRow + (s64)(x - xMajor) * (s64)dzdx;
++            u16 z15 = (u16)std::clamp<s64>(zPx >> 16, 0, 0x7fff);
++            u16 oldZ = zRowPtr[x];
++            bool ok = decal ? (z15 <= (u32)oldZ + 64u) : (z15 < oldZ || (z15 == 0 && oldZ == 0));
++            if(ok) {
++              passed++;
++              if(state.zUpdate) zRowPtr[x] = z15;
++            }
++          }
++          zRejectedPixels += (px - passed);
++        }
++        u32 rejected = px - passed;
 +        u64 sc = 4 + (u64)px * (state.cycleType == 1 ? 2 : 1);
 +        if(state.imageRead) {
 +          sc += px;
 +          markRdram(cAddr, cBytes, RBusDevice::DP_DRAW, false);
 +        }
-+        markRdram(cAddr, cBytes, RBusDevice::DP_DRAW, true);
++        // Early-Z rejection skips color framebuffer write & Z write (and
++        // eliminates color-write RDRAM page misses when a span is fully occluded).
++        if(passed > 0) {
++          markRdram(cAddr, passed * bpp, RBusDevice::DP_DRAW, true);
++        }
++        if(rejected > 0 && sc > (u64)(rejected / 2)) {
++          sc -= (u64)(rejected / 2);
++        }
 +        u32 zAddr = state.zAddr + ((u32)y * state.colorWidth + (u32)startX) * 2;
 +        if(state.zCompare) {
 +          sc += px;
 +          markRdram(zAddr, px * 2, RBusDevice::DP_DRAW, false);
 +        }
-+        if(state.zUpdate) {
-+          sc += (px + 1) / 2;
-+          markRdram(zAddr, px * 2, RBusDevice::DP_DRAW, true);
++        if(state.zUpdate && passed > 0) {
++          sc += (passed + 1) / 2;
++          markRdram(zAddr, passed * 2, RBusDevice::DP_DRAW, true);
 +        }
 +        fillCycles += sc;
 +        cycles += sc;
@@ -421,7 +458,17 @@ index b71c407..e0ade1c 100644
 +    s32 dxhdy = sext28(words[5] >> 2) >> 1;
 +    s32 xm = sext28(words[6]) >> 1;
 +    s32 dxmdy = sext28(words[7] >> 2) >> 1;
-+    rasterize(xh, xm, xl, yh, ym, yl, dxhdy, dxmdy, dxldy, flip);
++    bool hasZ = (code & 1) != 0;
++    u32 zOff = 8 + ((code & 4) ? 16 : 0) + ((code & 2) ? 16 : 0);
++    s32 zInit = 0, dzdx = 0, dzde = 0;
++    if(hasZ && zOff + 4 <= length * 2) {
++      zInit = (s32)words[zOff + 0];
++      dzdx  = (s32)words[zOff + 1];
++      dzde  = (s32)words[zOff + 2];
++    } else {
++      hasZ = false;
++    }
++    rasterize(xh, xm, xl, yh, ym, yl, dxhdy, dxmdy, dxldy, flip, hasZ, zInit, dzdx, dzde);
 +  } break;
 +
 +  case 0x24: case 0x25: case 0x36: {
@@ -432,7 +479,7 @@ index b71c407..e0ade1c 100644
 +    s32 xh = (s32)((words[1] >> 12) & 0xfff);
 +    s32 yh = (s32)((words[1] >>  0) & 0xfff);
 +    if(state.cycleType >= 2) yl |= 3;
-+    rasterize(xh << 13, xl << 13, xl << 13, yh, yl, yl, 0, 0, 0, true);
++    rasterize(xh << 13, xl << 13, xl << 13, yh, yl, yl, 0, 0, 0, true, false, 0, 0, 0);
 +  } break;
 +
 +  case 0x26: case 0x27: case 0x28: case 0x29: {
@@ -453,6 +500,7 @@ index b71c407..e0ade1c 100644
 +
 +  case 0x2f: {
 +    state.cycleType = (words[0] >> 20) & 3;
++    state.zMode     = (words[1] >> 10) & 3;
 +    state.imageRead = (words[1] & (1u << 6)) != 0;
 +    state.zUpdate   = (words[1] & (1u << 5)) != 0;
 +    state.zCompare  = (words[1] & (1u << 4)) != 0;
@@ -517,6 +565,10 @@ index b71c407..e0ade1c 100644
 +    }
 +  } break;
 +
++  case 0x37: {
++    state.fillColor = words[1];
++  } break;
++
 +  case 0x3d: {
 +    state.texSize   = (words[0] >> 19) & 3;
 +    state.texWidth  = (words[0] & 0x3ff) + 1;
@@ -540,7 +592,7 @@ diff --git i/ares/n64/rdp/rdp.hpp w/ares/n64/rdp/rdp.hpp
 index d0b5773..34661fa 100644
 --- i/ares/n64/rdp/rdp.hpp
 +++ w/ares/n64/rdp/rdp.hpp
-@@ -354,6 +354,44 @@ struct RDP : Thread, Memory::RCP<RDP> {
+@@ -354,6 +354,48 @@ struct RDP : Thread, Memory::RCP<RDP> {
  
    } io{*this};
  
@@ -556,22 +608,26 @@ index d0b5773..34661fa 100644
 +    u64 triangles = 0;       // Triangle primitives (0x08..0x0f)
 +    u64 rectangles = 0;      // Fill/Texture rectangle primitives (0x24, 0x25, 0x36)
 +    u64 pixels = 0;          // Scissor-clipped covered pixels across all spans
++    u64 zRejectedPixels = 0; // Pixels rejected by hardware Z-compare (skips color/Z writes)
 +    u64 rdramPageMisses = 0; // 2 KB RDRAM row misses across the four 1 MB banks
 +    u64 tmemLoads = 0;       // LoadBlock + LoadTile + LoadTLUT count
 +    u64 tmemBytes = 0;       // RDRAM bytes loaded into TMEM
 +    u64 syncs = 0;           // Sync commands executed
 +    u32 openRow[4] = {~0u, ~0u, ~0u, ~0u};
++    std::vector<u16> shadowZ = std::vector<u16>(640 * 480, 0x7fffu);
 +
 +    struct State {
 +      u32 colorSize = 2;
 +      u32 colorWidth = 320;
 +      u32 colorAddr = 0;
 +      u32 zAddr = 0;
++      u32 fillColor = 0xffff'ffffu;
 +      u32 texSize = 2;
 +      u32 texWidth = 1;
 +      u32 texAddr = 0;
 +      s32 scissorXLo = 0, scissorYLo = 0, scissorXHi = 1280, scissorYHi = 960;
 +      u32 cycleType = 0;
++      u32 zMode = 0;
 +      bool imageRead = false;
 +      bool zCompare = false;
 +      bool zUpdate = false;

@@ -26,13 +26,14 @@ This repository contains **no Nintendo code or assets** (`sm64/decomp/`,
 ## Evaluation targets
 
 1. **Super Mario 64 (`--game sm64`, default 24h target)** — Full US
-   decompilation (`n64decomp/sm64`) evaluated across a **12-course suite**:
+   decompilation (`n64decomp/sm64`) evaluated across a **14-course suite**:
    6 public courses (`bob` Bob-omb Battlefield, `wf` Whomp's Fortress, `jrb`
    Jolly Roger Bay, `ddd` Dire, Dire Docks Area 2 / Bowser's Sub lag room,
    `bitfs` Bowser in the Fire Sea, `rr` Rainbow Ride) and private held-out
-   routes: 6 scripted courses (`ccm` Cool, Cool Mountain, `lll` Lethal Lava
-   Land, `ssl` Shifting Sand Land, `bob2`, `jrb2`, `ddd2`) plus, with
-   `--mash-seed S`, seeded random button mashing on all 9 courses
+   routes: 8 scripted courses (`ccm` Cool, Cool Mountain, `lll` Lethal Lava
+   Land, `ssl` Shifting Sand Land, `hmc` Hazy Maze Cave, `wdw` Wet-Dry World,
+   `bob2`, `jrb2`, `ddd2`) plus, with
+   `--mash-seed S`, seeded random button mashing on all 11 courses
    (`mash-<course>`), which catches route-specific special cases and crashes
    on unscripted input. Prepared locally from a legally dumped US
    `.z64` ROM via [`sm64/setup.sh`](sm64/setup.sh). See

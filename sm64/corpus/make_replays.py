@@ -11,6 +11,8 @@ Frame 0 selects the target course via mev_select_boot_level():
   'l' -> Cool, Cool Mountain    (LEVEL_CCM)
   'r' -> Shifting Sand Land     (LEVEL_SSL)
   '8' -> Lethal Lava Land       (LEVEL_LLL)
+  '2' -> Hazy Maze Cave         (LEVEL_HMC)
+  '4' -> Wet-Dry World          (LEVEL_WDW)
 
 With --heldout DIR --mash-seed S, DIR also gets seeded random button mashing
 (mash-<course>.txt) on every public and held-out course. Mashing has no route
@@ -242,8 +244,47 @@ def gen_lll(frames=240):
     return out
 
 
+def gen_hmc(frames=240):
+    """Held-out Hazy Maze Cave: cavern fog, heavy overdraw, rolling rocks & swoops."""
+    out = [("2", 0, 0)]
+    for i in range(1, frames):
+        btn = ""
+        ang = -0.25 + 0.30 * math.sin(i * 0.05)
+        x, y = 72 * math.sin(ang), 72 * math.cos(ang)
+        if i in (24, 25, 26, 60, 61, 104, 105, 106, 158, 159, 208, 209):
+            btn += "A"
+        if i in (82, 83, 172, 173):
+            btn += "B"
+        if i == 20:
+            btn += "2"
+        if i in (70, 145):
+            btn += "6"
+        out.append((btn, x, y))
+    return out
+
+
+def gen_wdw(frames=240):
+    """Held-out Wet-Dry World: dynamic water plane, crystal switches, elevators & Chuckya."""
+    out = [("4", 0, 0)]
+    for i in range(1, frames):
+        btn = ""
+        ang = 0.20 + 0.28 * math.cos(i * 0.055)
+        x, y = 68 * math.sin(ang), 68 * math.cos(ang)
+        if i in (22, 23, 56, 57, 58, 96, 97, 142, 143, 192, 193):
+            btn += "A"
+        if i in (118, 119):
+            btn += "B"
+        if i == 22:
+            btn += "2"
+        if i in (65, 150):
+            btn += "4"
+        out.append((btn, x, y))
+    return out
+
+
 COURSE_KEY = {"bob": ".", "wf": "L", "jrb": "R", "rr": "Z", "ddd": "u",
-              "bitfs": "d", "ccm": "l", "ssl": "r", "lll": "8"}
+              "bitfs": "d", "ccm": "l", "ssl": "r", "lll": "8",
+              "hmc": "2", "wdw": "4"}
 
 
 def gen_mash(rng, course, frames=240):
@@ -294,6 +335,8 @@ def main():
             ("ccm", gen_ccm),
             ("lll", gen_lll),
             ("ssl", gen_ssl),
+            ("hmc", gen_hmc),
+            ("wdw", gen_wdw),
             ("bob2", lambda n: gen_bob(n, heldout=True)),
             ("jrb2", lambda n: gen_jrb(n, heldout=True)),
             ("ddd2", lambda n: gen_ddd(n, heldout=True)),

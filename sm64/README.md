@@ -79,16 +79,17 @@ inside `mario-eval-task`, asserting at Docker build time that zero `heldout`
 files, zero `calibration` patches, and zero `.z64` ROM binaries exist inside the
 container.
 
-## Harness, 12-Course Suite & Gate Design
+## Harness, 14-Course Suite & Gate Design
 
-- **12-course lag torture + generalization suite**:
+- **14-course lag torture + generalization suite**:
   - **Public (6)**: `bob` (Bob-omb Battlefield), `wf` (Whomp's Fortress), `jrb`
     (Jolly Roger Bay fog/water fillrate wall), `ddd` (Dire, Dire Docks Area 2 —
     Bowser's Sub room, SM64's most infamous retail lag spot), `bitfs` (Bowser in
     the Fire Sea dynamic platforms & lava), and `rr` (Rainbow Ride).
-  - **Held-out (6)**: `ccm` (Cool, Cool Mountain snow & cabin), `lll` (Lethal
-    Lava Land), `ssl` (Shifting Sand Land), plus alternate trajectories `bob2`,
-    `jrb2`, and `ddd2`.
+  - **Held-out (8)**: `ccm` (Cool, Cool Mountain snow & cabin), `lll` (Lethal
+    Lava Land), `ssl` (Shifting Sand Land), `hmc` (Hazy Maze Cave fog/overdraw),
+    `wdw` (Wet-Dry World dynamic water & elevators), plus alternate trajectories
+    `bob2`, `jrb2`, and `ddd2` (plus seeded `mash-*` runs across all 11 courses).
 - **Deterministic logical frames (`#ifndef PLAY`)**: `thread5_game_loop` reads
   controller input synchronously per logical frame (`mev_read_pad_sync()`),
   waits for both `MESG_SP_COMPLETE` and `MESG_DP_COMPLETE` on `M_GFXTASK`, runs

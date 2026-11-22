@@ -59,6 +59,7 @@ Every RDP command emitted to the command buffer is profiled deterministically:
   - `+1 cycle/pixel` + `DP Draw` framebuffer read when `IM_RD` is enabled in `other_modes` (e.g. alpha blending or `AA_OPA_SURF` read-modify-write);
   - `+1 cycle/pixel` + `DP Draw` Z-buffer read (2 B/px) when `Z_CMP` is enabled;
   - `+0.5 cycle/pixel` + `DP Draw` Z-buffer write (2 B/px) when `Z_UPD` is enabled.
+  - **Early-Z rejection**: when `Z_CMP` rejects a pixel against the shadow Z-buffer (`rdp_z_rejected_pixels`), color framebuffer writes, Z-buffer writes, and occluded-span color-write RDRAM page misses are skipped (rewarding front-to-back opaque ordering and overdraw reduction).
 - **TMEM uploads (`LoadBlock`, `LoadTile`, `LoadTLUT`)**: `24 + ceil(bytes / 8)`
   cycles (`rdp_tmem_cycles`) + `DP DMA` RDRAM reads (`rdp_tmem_bytes`).
   Uploading the same texture repeatedly instead of batching by material pays

@@ -4,7 +4,7 @@
   "contract": "sm64",
   "rom": "build/us/sm64.us.z64",
   "elf": "build/us/sm64.us.elf",
-  "build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "-j4"],
+  "build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1"],
   "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "check-play"],
   "play_rom": "build_play/us/sm64.us.z64",
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
