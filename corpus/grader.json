@@ -8,6 +8,17 @@
   "play_build_cmd": ["make", "PLAY=1"],
   "o2_reference_patch": "../calibration/r1-o2-ieee.patch",
   "protected_files": ["src/mev.c", "src/mev.h"],
+  "allowed_play_guards": {
+    "src/main.c": 2
+  },
+  "elf_harness_check": {
+    "required_text_symbols": [
+      "mev_init",
+      "mev_read_pad",
+      "mev_end_frame"
+    ],
+    "forbid_wrap_prefix": "__wrap_mev_"
+  },
   "frames": 240,
   "build_timeout_s": 600,
   "max_fields_factor": 4.0,
@@ -30,7 +41,8 @@
     "silence_max_abs": 256
   },
   "hardware": {
-    "rdram_bytes": 4194304
+    "rdram_bytes": 4194304,
+    "max_dcache_coherence_errors": 0
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },

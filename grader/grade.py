@@ -30,6 +30,7 @@ import itertools
 import math
 import os
 import pathlib
+import re
 import resource
 import shutil
 import signal
@@ -203,6 +204,14 @@ def build(src, cfg, log_path, keep_play=False):
             shutil.rmtree(work, ignore_errors=True)
             return None, "build failed; see build.log"
 
+        # Verify the compiled ELF actually retains the unmodified harness symbols
+        # and that no other code touches the ISViewer MMIO port or wraps mev_*.
+        elf_err = verify_elf_harness(work / "src" / cfg["elf"], cfg, src_root=work / "src") if cfg.get("elf") else None
+        if elf_err:
+            pathlib.Path(log_path).write_text("".join(logs) + f"\n--- ELF harness check ---\n{elf_err}\n")
+            shutil.rmtree(work, ignore_errors=True)
+            return None, elf_err
+
         shutil.copy2(rom, out_rom)
         # The ELF is only used to scope the idle-time exclusion to the idle
         # function; the emulator credits only a genuine halt loop inside that
@@ -244,6 +253,10 @@ def build_submission(args):
     out = pathlib.Path(args.out)
     if args.play_smoke and not cfg.get("play_rom"):
         raise GraderError("PLAY runtime smoke is not supported for this target")
+    audit_errs = audit_submission_integrity(args.source, cfg)
+    if audit_errs:
+        (out / "error.txt").write_text("integrity audit failed: " + "; ".join(audit_errs[:4]))
+        return
     rom, error = build(args.source, cfg, out / "build.log", keep_play=args.play_smoke)
     if rom is None:
         (out / "error.txt").write_text(error)
@@ -323,6 +336,151 @@ def measurement_artifacts(corpus, cache, items):
         paths += sorted(str(p) for p in run.glob("video*.z"))
         paths.append(str(w["replay"]))
     return _digest(paths)
+
+
+_SOURCE_EXTS = {".c", ".h", ".s", ".S", ".inc", ".cc", ".cpp"}
+_BUILD_EXTS = {".mk", ".ld", ".sh"}
+_RE_ISV_ADDR = re.compile(r"0x(?:b3ff|13ff)[0-9a-f]{4}\b", re.IGNORECASE)
+_RE_MEV_MACRO = re.compile(r"^\s*#\s*(?:define|undef)\s+(?:mev_|MEV_|sMev|ISV_)", re.MULTILINE)
+_RE_PLAY_COND = re.compile(r"^\s*#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\bPLAY\b", re.MULTILINE)
+_RE_GCC_INJECT = re.compile(r"(?:=|:=|\+=|\s)(?:-include|--include|-imacros)(?:\s|=)")
+_RE_LD_WRAP = re.compile(r"(?:--wrap|-Wl,--wrap)(?:=|\s)")
+_RE_LD_DEFSYM = re.compile(r"--defsym(?:=|\s)[^\n]*(?:mev_|MEV_|sMev|thread1_idle)")
+_RE_CC_MEV_DEF = re.compile(r"(?:^|\s)-D\s*(?:mev_|MEV_|sMev|ISV_)")
+
+
+def audit_submission_integrity(src, cfg):
+    """Static anti-reward-hacking audit over submission source and build scripts.
+
+    Blocks harness spoofing (direct ISViewer/MMIO writes or '@mev ' strings outside
+    protected files), macro/header shadowing of mev_* / MEV_*, Makefile/linker
+    flag subversion (-include/--wrap/--defsym/-Dmev_*), and unauthorized #ifdef PLAY
+    conditionals that could split benchmark vs real-console behavior.
+    """
+    root = pathlib.Path(src).resolve()
+    protected = {pathlib.PurePosixPath(f).as_posix() for f in cfg.get("protected_files", [])}
+    allowed_play = cfg.get("allowed_play_guards")
+    errors = []
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        cur = pathlib.Path(dirpath)
+        rel_dir = cur.relative_to(root)
+        dirnames[:] = [
+            d for d in dirnames
+            if d != ".git" and not (rel_dir == pathlib.PurePosixPath(".") and (d == "build" or d.startswith("build_")))
+        ]
+        for fname in filenames:
+            p = cur / fname
+            rel = p.relative_to(root).as_posix()
+            if rel in protected:
+                continue
+            ext = p.suffix
+            is_build = (fname == "Makefile" or ext in _BUILD_EXTS)
+            is_src = (ext in _SOURCE_EXTS or fname.endswith(".inc.c"))
+            if not is_build and not is_src:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+
+            if _RE_ISV_ADDR.search(text):
+                errors.append(f"{rel}: direct ISViewer MMIO address outside protected harness")
+            if '"@mev ' in text or "'@mev " in text:
+                errors.append(f"{rel}: raw '@mev ' protocol string outside protected harness")
+            if is_src and _RE_MEV_MACRO.search(text):
+                errors.append(f"{rel}: preprocessor #define/#undef of protected mev/ISV symbol")
+
+            if is_build:
+                # Inspect build/linker lines while ignoring GNU Make's top-level `-include dep.d`.
+                for lineno, line in enumerate(text.splitlines(), 1):
+                    stripped = line.lstrip()
+                    if stripped.startswith("#"):
+                        continue
+                    if not (stripped.startswith("-include ") or stripped.startswith("-include\t")):
+                        if _RE_GCC_INJECT.search(line):
+                            errors.append(f"{rel}:{lineno}: disallowed compiler header-injection flag (-include/-imacros)")
+                    if _RE_LD_WRAP.search(line):
+                        errors.append(f"{rel}:{lineno}: disallowed linker --wrap flag")
+                    if _RE_LD_DEFSYM.search(line):
+                        errors.append(f"{rel}:{lineno}: disallowed linker --defsym targeting harness/idle symbol")
+                    if _RE_CC_MEV_DEF.search(line):
+                        errors.append(f"{rel}:{lineno}: disallowed -D override of mev/ISV symbol")
+
+            if is_src and allowed_play is not None:
+                n_play = len(_RE_PLAY_COND.findall(text))
+                max_allowed = int(allowed_play.get(rel, 0))
+                if n_play > max_allowed:
+                    errors.append(f"{rel}: unauthorized PLAY preprocessor conditional ({n_play} > allowed {max_allowed})")
+            if len(errors) >= 16:
+                return errors
+    return errors
+
+
+def verify_elf_harness(elf, cfg, src_root=None):
+    """Post-build ELF verification that protected harness code/data survived intact."""
+    spec = cfg.get("elf_harness_check")
+    if not spec or not pathlib.Path(elf).is_file():
+        return None
+    proc = subprocess.run(["mips64-elf-nm", "-S", "--defined-only", str(elf)], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return f"ELF harness check failed: mips64-elf-nm returned {proc.returncode}"
+    text_syms = {}
+    data_syms = {}
+    wrap_syms = []
+    wrap_prefix = spec.get("forbid_wrap_prefix", "__wrap_mev_")
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 4:
+            _addr, size_hex, stype, name = parts
+            size = int(size_hex, 16)
+        elif len(parts) == 3:
+            _addr, stype, name = parts
+            size = 0
+        else:
+            continue
+        if wrap_prefix and name.startswith(wrap_prefix):
+            wrap_syms.append(name)
+        if stype in "tT":
+            text_syms[name] = size
+        else:
+            data_syms[name] = size
+
+    if wrap_syms:
+        return f"ELF harness check failed: forbidden wrapped symbols {wrap_syms[:5]}"
+    for sym in spec.get("required_text_symbols", []):
+        if sym not in text_syms:
+            return f"ELF harness check failed: missing harness symbol '{sym}'"
+    for sym, expected in spec.get("required_data_sizes", {}).items():
+        if sym in data_syms and data_syms[sym] != 0 and data_syms[sym] != expected:
+            return f"ELF harness check failed: '{sym}' size {data_syms[sym]} != expected {expected}"
+    for sym, minimum in spec.get("min_data_sizes", {}).items():
+        if sym in data_syms and data_syms[sym] != 0 and data_syms[sym] < minimum:
+            return f"ELF harness check failed: '{sym}' size {data_syms[sym]} < minimum {minimum}"
+
+    isv_imm = spec.get("isv_upper_imm")
+    if isv_imm:
+        pat = re.compile(rf"\blui\b[^\n]*\b{re.escape(isv_imm)}\b", re.IGNORECASE)
+        od_elf = subprocess.run(["mips64-elf-objdump", "-d", str(elf)], capture_output=True, text=True)
+        if od_elf.returncode != 0:
+            return f"ELF harness check failed: mips64-elf-objdump returned {od_elf.returncode}"
+        elf_hits = len(pat.findall(od_elf.stdout))
+        mev_obj_rel = spec.get("mev_object")
+        mev_obj = (pathlib.Path(src_root) / mev_obj_rel) if (src_root and mev_obj_rel) else None
+        if mev_obj is not None:
+            if not mev_obj.is_file():
+                return f"ELF harness check failed: missing compiled harness object '{mev_obj_rel}'"
+            od_mev = subprocess.run(["mips64-elf-objdump", "-d", str(mev_obj)], capture_output=True, text=True)
+            if od_mev.returncode != 0:
+                return f"ELF harness check failed: mips64-elf-objdump on {mev_obj_rel} returned {od_mev.returncode}"
+            mev_hits = len(pat.findall(od_mev.stdout))
+            if mev_hits == 0:
+                return f"ELF harness check failed: harness ISViewer write ({isv_imm}) missing from {mev_obj_rel}"
+            if elf_hits != mev_hits:
+                return f"ELF harness check failed: ISViewer MMIO ({isv_imm}) count in ELF ({elf_hits}) != harness ({mev_hits})"
+        elif elf_hits == 0:
+            return f"ELF harness check failed: harness ISViewer write ({isv_imm}) missing from compiled ELF"
+    return None
 
 
 def idle_ranges(elf, symbols):
@@ -1188,9 +1346,13 @@ def grade(args):
     changed = [f for f in cfg["protected_files"]
                if not (pathlib.Path(args.source) / f).exists()
                or sha256(pathlib.Path(args.source) / f) != index["protected"][f]]
-    summary["gates"]["integrity"] = {"pass": not changed, "modified": changed}
+    audit_errs = audit_submission_integrity(args.source, cfg)
+    summary["gates"]["integrity"] = {"pass": not changed and not audit_errs, "modified": changed,
+                                     **({"violations": audit_errs} if audit_errs else {})}
     if changed:
         return finish("invalid", f"protected files modified: {changed}")
+    if audit_errs:
+        return finish("invalid", f"integrity audit failed: {audit_errs[0]}")
 
     # 2. build. Private measurements require a separate build container.
     # Public local checks can build in-process with an artifact integrity check.
@@ -1269,11 +1431,17 @@ def grade(args):
                            cand["video_path"], ref["rows"], cand["rows"], cfg, max_threads=vid_threads)
         au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
         m = metrics(cand)
+        max_coh = cfg["hardware"].get("max_dcache_coherence_errors")
+        if max_coh is None and "max_dcache_coherence_errors_per_frame" in cfg["hardware"]:
+            max_coh = int(cfg["hardware"]["max_dcache_coherence_errors_per_frame"] * cfg["frames"])
+        coh_ok = True if max_coh is None else (m.get("dcache_coherence_errors", 0) <= max_coh)
         hw = {"pass": (m["highest_byte"] <= cfg["hardware"]["rdram_bytes"]
-                       and m.get("cache_uncached_ops", 0) == 0),
+                       and m.get("cache_uncached_ops", 0) == 0
+                       and coh_ok),
               "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"],
               "cache_uncached_ops": m.get("cache_uncached_ops", 0),
-              "dcache_coherence_errors": m.get("dcache_coherence_errors", 0)}
+              "dcache_coherence_errors": m.get("dcache_coherence_errors", 0),
+              **({"max_dcache_coherence_errors": max_coh} if max_coh is not None else {})}
         base = index["workloads"][wid]["metrics"]
         wl_entry = {
             "metrics": m,

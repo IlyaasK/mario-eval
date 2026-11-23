@@ -9,6 +9,33 @@
   "play_rom": "build_play/us/sm64.us.z64",
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
   "protected_files": ["src/game/mev.c", "src/game/mev.h"],
+  "allowed_play_guards": {
+    "src/audio/external.c": 1,
+    "src/audio/heap.c": 1,
+    "src/game/game_init.c": 6,
+    "src/game/level_update.c": 1,
+    "src/game/main.c": 7,
+    "src/game/sound_init.c": 1
+  },
+  "elf_harness_check": {
+    "required_text_symbols": [
+      "mev_init",
+      "mev_entry_script",
+      "mev_select_boot_level",
+      "mev_read_pad_sync",
+      "mev_step_audio",
+      "mev_observe_and_end_frame"
+    ],
+    "required_data_sizes": {
+      "sMevObs": 4224
+    },
+    "min_data_sizes": {
+      "sMevAudioStorage": 4096
+    },
+    "forbid_wrap_prefix": "__wrap_mev_",
+    "isv_upper_imm": "0xb3ff",
+    "mev_object": "build/us/src/game/mev.o"
+  },
   "idle_symbols": ["thread1_idle"],
   "reward_log2_scale": 4.0,
   "frames": 240,
@@ -70,7 +97,8 @@
     "silence_max_abs": 256
   },
   "hardware": {
-    "rdram_bytes": 4194304
+    "rdram_bytes": 4194304,
+    "max_dcache_coherence_errors_per_frame": 1.05
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
