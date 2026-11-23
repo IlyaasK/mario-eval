@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Generate 3-panel (Reference | Candidate | Difference) MP4 clips and per-frame
-telemetry JSON for the Mario Eval homepage using open-source Pip's Garden.
+telemetry JSON for the Mario Eval homepage using Super Mario 64 public routes.
 
-Zero Nintendo assets are ever touched or exported.
+Captures only rendered gameplay video (MP4) and emulator timing telemetry — no
+ROMs, Nintendo source code, or extracted assets are ever written to the site.
 """
 import concurrent.futures
 import json
 import pathlib
 import shutil
 import subprocess
-import sys
 import tempfile
 import zlib
 
@@ -17,48 +17,61 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "site" / "assets" / "clips"
-REF_CACHE = ROOT / "cache" / "reference" / "runs"
+REF_CACHE = ROOT / "cache" / "sm64-reference" / "runs"
+KIMI_BUNDLE = ROOT / "results" / "kimi-k3.1-pro-cerebras-24h-v2-cont" / "game.bundle"
 
 CLIPS = [
     {
-        "id": "r1-o2-storm",
-        "slug": "r1-o2-ieee",
-        "route": "storm",
-        "tab": "Valid · 1.69× faster",
-        "title": "Valid optimization (-O2 IEEE) on Storm",
-        "badge": "VALID · 1.69×",
+        "id": "sm64-kimi-bob",
+        "kind": "bundle",
+        "commit": "4b54858",
+        "slug": "kimi-k3.1-pro (4b54858)",
+        "route": "bob",
+        "ref_variant": "ra-zb-opa+f3dex2",
+        "tab": "Kimi K3.1 Pro · 1.73× (BoB)",
+        "title": "Kimi K3.1 Pro Trial (best valid 25-route checkpoint) on Bob-omb Battlefield",
+        "badge": "VALID · 1.695× (25 ROUTES)",
         "badge_cls": "valid",
-        "caption": "Real hardware speedup (116.8 ms → 68.3 ms on Storm) with zero pixel, gameplay, or audio change. The difference panel stays pitch black across all 240 frames.",
+        "caption": "Autonomous Kimi K3.1 Pro trial run (4b54858) on Bob-omb Battlefield: cuts frame time from 30.3 ms → 17.5 ms (57.1 FPS) while matching the accepted F3DEX2 + RA_ZB_OPA visual reference.",
     },
     {
-        "id": "r7-lod-meadow",
-        "slug": "r7-full-detail",
-        "route": "meadow",
-        "tab": "Valid Variant · Full-Detail LOD",
-        "title": "Accepted visual variant (full-detail Pip) on Meadow",
-        "badge": "ACCEPTED VARIANT",
+        "id": "sm64-kaze-jrb",
+        "kind": "patch",
+        "patch": "r10-kaze-master.patch",
+        "slug": "r10-kaze-master",
+        "route": "jrb",
+        "ref_variant": "ra-zb-opa+f3dex2+no-lod",
+        "tab": "Kaze Master · 1.72× (JRB)",
+        "title": "Kaze Master Reference (R10) on Jolly Roger Bay",
+        "badge": "EXPERT REF · 1.68×",
         "badge_cls": "ref",
-        "caption": "Mirrors Kaze Emanuar's high-poly Mario LOD change: always draws Pip at full detail. Extra silhouette detail glows vs vanilla, and passes against the accepted visual variant.",
+        "caption": "Reconstructed Kaze Emanuar expert reference on fill-heavy Jolly Roger Bay: cuts console frame time from 38.5 ms → 22.4 ms (44.6 FPS) with zero gameplay drift and pixel-faithful rendering.",
     },
     {
-        "id": "i2-particles-storm",
-        "slug": "i2-no-particles",
-        "route": "storm",
-        "tab": "Caught Cheat · No Particles",
-        "title": "Rejected shortcut (skip particles) on Storm",
-        "badge": "REJECTED · VIDEO",
+        "id": "sm64-cheat-lowpoly-jrb",
+        "kind": "patch",
+        "patch": "i2-low-poly-mario.patch",
+        "slug": "i2-low-poly-mario",
+        "route": "jrb",
+        "ref_variant": "",
+        "tab": "Caught Cheat · Low-Poly Mario",
+        "title": "Rejected shortcut (force low-poly Mario) on Jolly Roger Bay",
+        "badge": "REJECTED · VIDEO GATE",
         "badge_cls": "invalid",
-        "caption": "Drops rain & dash particles to shave ~33 ms/frame. Every missing particle lights up red in the difference panel (2.38% bad pixels > 0.20% limit) → reward −1.0.",
+        "caption": "Forces Mario's distant low-poly mesh at all distances: Mario's degraded silhouette lights up red in the difference panel (1.42% bad pixels > 0.20% limit) → reward −1.0.",
     },
     {
-        "id": "i3-physics-storm",
-        "slug": "i3-physics",
-        "route": "storm",
+        "id": "sm64-cheat-physics-bob",
+        "kind": "patch",
+        "patch": "i3-half-physics-step.patch",
+        "slug": "i3-half-physics-step",
+        "route": "bob",
+        "ref_variant": "",
         "tab": "Caught Cheat · Half Physics",
-        "title": "Rejected shortcut (2 physics substeps vs 4) on Storm",
+        "title": "Rejected shortcut (2 quarter-steps vs 4) on Bob-omb Battlefield",
         "badge": "REJECTED · GAMEPLAY + VIDEO",
         "badge_cls": "invalid",
-        "caption": "Cuts physics substeps in half: Pip drifts off the recorded trajectory within frames, creating a double-image divergence (4.42% bad pixels) → reward −1.0.",
+        "caption": "Halves Mario's physics quarter-steps in mario_step.c: Mario diverges completely from the recorded Bob-omb Battlefield trajectory (10.44% bad pixels) → reward −1.0.",
     },
 ]
 
@@ -75,7 +88,6 @@ def decode_rgba16_rgb(buf, frames, w, h):
 
 
 def frame_console_ms(rows):
-    """Per-frame est_console_ms matching grader/grade.py."""
     HW = ["VR4300 ICache", "VR4300 DCache", "VR4300 Uncached", "SP DMA",
           "PI DMA", "SI DMA", "VI DMA", "AI DMA", "DP DMA", "DP Draw"]
     RCP = ("SP DMA", "PI DMA", "SI DMA", "DP DMA", "DP Draw")
@@ -95,41 +107,77 @@ def frame_console_ms(rows):
     return out
 
 
+def copy_sm64_assets(dst):
+    ignored = subprocess.check_output(
+        ["git", "-C", str(ROOT / "sm64/decomp"), "ls-files", "-z", "--others", "--ignored", "--exclude-standard"]
+    )
+    for raw in ignored.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", "surrogateescape")
+        if rel == "build" or rel.startswith(("build/", "build_")):
+            continue
+        sp, dp = ROOT / "sm64/decomp" / rel, dst / rel
+        if sp.is_file() and not dp.exists():
+            dp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sp, dp)
+
+
 def run_candidate(spec, work_root):
     cid = spec["id"]
-    slug = spec["slug"]
     route = spec["route"]
     wdir = work_root / cid
     src = wdir / "src"
-    shutil.copytree(ROOT / "workload", src, ignore=shutil.ignore_patterns(".git", "build", "*.z64"))
-    patch = ROOT / "calibration" / f"{slug}.patch"
-    subprocess.run(["patch", "-s", "-p1", "-d", str(src), "-i", str(patch)], check=True)
+    if spec["kind"] == "bundle":
+        repo_tmp = wdir / "repo"
+        subprocess.run(["git", "clone", "-q", str(KIMI_BUNDLE), str(repo_tmp)], check=True)
+        src.mkdir(parents=True)
+        arch = subprocess.Popen(["git", "-C", str(repo_tmp), "archive", spec["commit"]], stdout=subprocess.PIPE)
+        subprocess.run(["tar", "-x", "-C", str(src)], stdin=arch.stdout, check=True)
+        arch.wait()
+        copy_sm64_assets(src)
+        shutil.rmtree(repo_tmp, ignore_errors=True)
+    else:
+        shutil.copytree(ROOT / "sm64/decomp", src, ignore=shutil.ignore_patterns(".git", "build", "build_*", "*.z64"))
+        patch = ROOT / "sm64/calibration" / spec["patch"]
+        subprocess.run(["patch", "-s", "-p1", "-d", str(src), "-i", str(patch)], check=True)
 
     run_out = wdir / "run"
-    # Build and run the single route inside mario-eval:latest (let n64run create /work/run)
+    uid = subprocess.check_output(["id", "-u"], text=True).strip()
+    gid = subprocess.check_output(["id", "-g"], text=True).strip()
     script = f"""
 set -euo pipefail
 cd /work/src
-make -j$(nproc) >/dev/null
-ROM=$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("/repo/corpus/grader.json").read_text())["rom"])')
+make -j$(nproc) VERSION=us COMPARE=0 NOEXTRACT=1 >/dev/null
 IDLE=$(python3 -c '
 import json, pathlib, sys
 sys.path.insert(0, "/opt/mario-eval")
 from grader.grade import idle_ranges
-cfg = json.loads(pathlib.Path("/repo/corpus/grader.json").read_text())
+cfg = json.loads(pathlib.Path("/repo/sm64/corpus/grader.json").read_text())
 for r in idle_ranges("/work/src/" + cfg["elf"], cfg.get("idle_symbols", [])):
     print("--idle-range " + r)
 ')
-n64run --rom "/work/src/$ROM" --replay /repo/corpus/replays/public/{route}.txt --out /work/run --frames 240 $IDLE >/dev/null
+n64run --rom /work/src/build/us/sm64.us.z64 --replay /repo/sm64/corpus/replays/public/{route}.txt --out /work/run --frames 240 $IDLE >/dev/null
 """
     subprocess.run([
         "docker", "run", "--rm",
-        "-u", f"{subprocess.check_output(['id', '-u'], text=True).strip()}:{subprocess.check_output(['id', '-g'], text=True).strip()}",
+        "-u", f"{uid}:{gid}",
         "-v", f"{wdir}:/work",
         "-v", f"{ROOT}:/repo:ro",
         "mario-eval:latest", "bash", "-c", script,
     ], check=True)
     return spec, run_out
+
+
+def resolve_ref_video_path(route, ref_variant):
+    ref_dir = REF_CACHE / route
+    if not ref_variant:
+        return ref_dir / "video.bin.z"
+    idx = json.loads((ROOT / "cache/sm64-reference/index.json").read_text())
+    vmap = idx["workloads"][route].get("variants", {})
+    stored = vmap.get(ref_variant, ref_variant)
+    cand = ref_dir / f"video.{stored}.bin.z" if stored else ref_dir / "video.bin.z"
+    return cand if cand.is_file() else (ref_dir / "video.bin.z")
 
 
 def encode_clip(spec, cand_run_dir):
@@ -140,37 +188,38 @@ def encode_clip(spec, cand_run_dir):
     frames = min(len(ref_rows), len(cand_rows))
     w, h, _bpp = ref_rows[0]["fb"]
 
-    ref_raw = zlib.decompress((ref_dir / "video.bin.z").read_bytes())[:frames * w * h * 2]
+    # Left panel: always the original 1996 retail US baseline video
+    orig_raw = zlib.decompress((ref_dir / "video.bin.z").read_bytes())[:frames * w * h * 2]
+    # Diff reference: exact accepted variant video for valid variant builds, or baseline for cheats
+    diff_ref_path = resolve_ref_video_path(route, spec.get("ref_variant", ""))
+    diff_ref_raw = zlib.decompress(diff_ref_path.read_bytes())[:frames * w * h * 2]
     cand_raw = (cand_run_dir / "video.bin").read_bytes()[:frames * w * h * 2]
 
-    ref_rgb = decode_rgba16_rgb(ref_raw, frames, w, h)
+    orig_rgb = decode_rgba16_rgb(orig_raw, frames, w, h)
+    diff_ref_rgb = decode_rgba16_rgb(diff_ref_raw, frames, w, h)
     cand_rgb = decode_rgba16_rgb(cand_raw, frames, w, h)
 
-    # Compute vivid amplified difference panel (crimson -> amber -> white)
-    diff = np.abs(ref_rgb.astype(np.int16) - cand_rgb.astype(np.int16))
-    max_d = diff.max(axis=-1)  # 0..255
+    # Compute vivid amplified difference panel against the grader's reference
+    diff = np.abs(diff_ref_rgb.astype(np.int16) - cand_rgb.astype(np.int16))
+    max_d = diff.max(axis=-1)
     diff_pct = [round(float((max_d[i] > 16).mean() * 100.0), 3) for i in range(frames)]
 
-    diff_rgb = np.zeros_like(ref_rgb)
-    # Dark slate floor so pitch-black = exact match
+    diff_rgb = np.zeros_like(orig_rgb)
     diff_rgb[:, :, 0] = 6
     diff_rgb[:, :, 1] = 6
     diff_rgb[:, :, 2] = 10
-    nz = max_d > 0
-    # Subtle indigo for tiny 1-2 LSB rounding diffs, vivid red/amber/white for visible diffs
     small = (max_d > 0) & (max_d <= 16)
     big = max_d > 16
-    diff_rgb[small, 0] = 90
-    diff_rgb[small, 1] = 75
-    diff_rgb[small, 2] = 190
-    mag = np.clip((max_d[big].astype(np.float32) - 16.0) / 96.0, 0.0, 1.0)
+    diff_rgb[small, 0] = 72
+    diff_rgb[small, 1] = 62
+    diff_rgb[small, 2] = 165
+    mag = np.clip((max_d[big].astype(np.float32) - 16.0) / 88.0, 0.0, 1.0)
     diff_rgb[big, 0] = 255
-    diff_rgb[big, 1] = (48 + mag * 185).astype(np.uint8)
-    diff_rgb[big, 2] = (68 + np.maximum(0.0, mag - 0.5) * 340).clip(0, 255).astype(np.uint8)
+    diff_rgb[big, 1] = (46 + mag * 188).astype(np.uint8)
+    diff_rgb[big, 2] = (64 + np.maximum(0.0, mag - 0.45) * 340).clip(0, 255).astype(np.uint8)
 
-    # Composite 962 x 240 (1px dark bezel dividers between the 3 screens)
     sep = np.full((frames, h, 1, 3), (46, 42, 58), dtype=np.uint8)
-    comp = np.concatenate([ref_rgb, sep, cand_rgb, sep, diff_rgb], axis=2)  # (frames, 240, 962, 3)
+    comp = np.concatenate([orig_rgb, sep, cand_rgb, sep, diff_rgb], axis=2)  # (frames, 240, 962, 3)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     mp4_path = OUT_DIR / f"{spec['id']}.mp4"
@@ -178,7 +227,7 @@ def encode_clip(spec, cand_run_dir):
         "ffmpeg", "-y", "-loglevel", "error",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{comp.shape[2]}x{comp.shape[1]}", "-r", "30",
         "-i", "-",
-        "-c:v", "libx264", "-preset", "slow", "-crf", "20",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "23",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(mp4_path),
     ], stdin=subprocess.PIPE)
@@ -191,7 +240,14 @@ def encode_clip(spec, cand_run_dir):
     base_ms = frame_console_ms(ref_rows[:frames])
     cand_ms = frame_console_ms(cand_rows[:frames])
     return {
-        **spec,
+        "id": spec["id"],
+        "slug": spec["slug"],
+        "route": route,
+        "tab": spec["tab"],
+        "title": spec["title"],
+        "badge": spec["badge"],
+        "badge_cls": spec["badge_cls"],
+        "caption": spec["caption"],
         "video": f"{spec['id']}.mp4",
         "frames": frames,
         "fps": 30,
@@ -200,13 +256,18 @@ def encode_clip(spec, cand_run_dir):
         "max_diff_pct": round(max(diff_pct), 2),
         "base_ms": base_ms,
         "cand_ms": cand_ms,
-        "diff_pct": diff_pct[1:],  # align with frames 1..239
+        "diff_pct": diff_pct[1:],
         "bytes": mp4_path.stat().st_size,
     }
 
 
 def main():
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="mev-clips-"))
+    # Clean old clips before generating the SM64 set
+    if OUT_DIR.exists():
+        shutil.rmtree(OUT_DIR)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="mev-sm64-clips-"))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(CLIPS)) as pool:
             runs = list(pool.map(lambda sp: run_candidate(sp, tmp), CLIPS))

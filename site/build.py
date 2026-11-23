@@ -808,12 +808,14 @@ def trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="trial-traj")
 
 
 def export_clips(out):
-    """Copy pre-rendered Pip's Garden 3-panel comparison clips into out/assets/clips/."""
+    """Copy pre-rendered Super Mario 64 3-panel comparison clips into out/assets/clips/."""
     meta_path = CLIPS_SRC / "clips.json"
+    dst = out / "assets" / "clips"
+    if dst.exists():
+        shutil.rmtree(dst)
     if not meta_path.is_file():
         return []
     clips = json.loads(meta_path.read_text())
-    dst = out / "assets" / "clips"
     dst.mkdir(parents=True, exist_ok=True)
     kept = []
     for c in clips:
@@ -836,16 +838,16 @@ def comparison_monitor_html(clips):
     return f"""
 <div class="monitor" id="cmp-monitor">
   <div class="monitor-head">
-    <div class="panel-title">Live N64 Gate Replay &mdash; Reference vs Candidate vs Difference</div>
+    <div class="panel-title">Live Super Mario 64 Gate Replay &mdash; 1996 Baseline vs Candidate vs Difference</div>
     <span class="tag {esc(c0["badge_cls"])}" id="cmp-badge">{esc(c0["badge"])}</span>
   </div>
   <div class="pill-bar" id="cmp-tabs" style="margin-bottom:12px">{tabs}</div>
   <div class="monitor-screen">
     <video id="cmp-vid" src="{BASE}/assets/clips/{esc(c0["video"])}" autoplay muted loop playsinline preload="metadata"></video>
     <div class="screen-labels">
-      <span>Reference (Baseline)</span>
+      <span>1996 Retail US Baseline</span>
       <span id="cmp-cand-lbl">Candidate ({esc(c0["slug"])})</span>
-      <span>Pixel Difference (Amplified)</span>
+      <span>Gate Pixel Difference</span>
     </div>
   </div>
   <div class="monitor-controls">
@@ -856,14 +858,14 @@ def comparison_monitor_html(clips):
   </div>
   <div class="timeline-wrap">
     <div class="timeline-hdr">
-      <span>Per-frame console ms (dim = baseline, bright = candidate; red ticks = pixel diff &gt; 0.2%)</span>
+      <span>Per-frame console ms (dim = 1996 baseline, bright = candidate; red = pixel diff &gt; 0.2%)</span>
       <span id="cmp-tl-stat">click timeline to seek</span>
     </div>
     <svg id="cmp-tl" viewBox="0 0 239 44" preserveAspectRatio="none" role="img" aria-label="Per-frame console timing and diff timeline"></svg>
   </div>
   <div class="monitor-cap">
     <span id="cmp-cap">{esc(c0["caption"])}</span>
-    <span class="small muted">Captured directly from <code>ares</code> N64 on open-source Pip's Garden (240 frames @ 30 fps)</span>
+    <span class="small muted">Captured directly from <code>ares</code> N64 on public Super Mario 64 routes (240 frames @ 30 fps)</span>
   </div>
 </div>
 <script>(function(){{
