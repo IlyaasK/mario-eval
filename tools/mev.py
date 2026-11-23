@@ -201,6 +201,25 @@ def run(args, profile=False):
                 print()
     summarize(out / "run", args.workload)
     print(f"\nraw output: {out}/run  (frames.jsonl, video.bin, audio.bin, obs.bin)")
+    print_time_remaining()
+
+
+def print_time_remaining():
+    raw = os.environ.get("MEV_DEADLINE_EPOCH", "").strip()
+    if not raw:
+        return
+    try:
+        deadline = int(raw)
+    except ValueError:
+        return
+    rem = deadline - int(time.time())
+    if rem <= 0:
+        print("time remaining: 0m (deadline reached — leave a clean, mev-check-passing tree)")
+        return
+    hrs, mins = divmod((rem + 59) // 60, 60)
+    span = f"{hrs}h {mins:02d}m" if hrs else f"{mins}m"
+    note = " — wrap up soon, commit your best passing tree, and verify with plain `mev check`" if rem <= 1200 else ""
+    print(f"time remaining: {span}{note}")
 
 
 def check(args):
@@ -284,6 +303,7 @@ def check(args):
         print(f"\npartial/fast report: {summary_path}  (run plain `mev check` for full clean + PLAY=1 verification)")
     else:
         print(f"\nfull report: {summary_path} (symlink: /tmp/mev-last-check/summary.json)")
+    print_time_remaining()
     sys.exit(r.returncode)
 
 

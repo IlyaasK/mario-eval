@@ -12,6 +12,7 @@
  "workloads": {},
  "rewards": {
   "console": -1.0,
+  "stutter": -1.0,
   "speed": -1.0,
   "rdp": -1.0,
   "rsp": -1.0,
@@ -20,6 +21,7 @@
  },
  "speedups": {
   "console": 0.0,
+  "stutter": 0.0,
   "speed": 0.0,
   "rdp": 0.0,
   "rsp": 0.0,
@@ -28,5 +30,13 @@
  },
  "status": "invalid",
  "reason": "protected files modified: ['src/game/mev.h']",
+ "failures": [
+  {
+   "gate": "integrity",
+   "modified": [
+    "src/game/mev.h"
+   ]
+  }
+ ],
  "grader_seconds": 0.0
 }

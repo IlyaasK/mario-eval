@@ -17,88 +17,44 @@
      "status": "completed",
      "failure": "",
      "frames": 240,
-     "vi_fields": 1384,
-     "footprint_lines": 62135,
-     "footprint_bytes": 994160,
+     "vi_fields": 1425,
+     "footprint_lines": 62137,
+     "footprint_bytes": 994192,
      "highest_line": 262142,
-     "host_seconds": 11.5745
+     "host_seconds": 11.5236
     },
     "fortress": {
      "pass": true,
      "status": "completed",
      "failure": "",
      "frames": 240,
-     "vi_fields": 1603,
-     "footprint_lines": 63391,
-     "footprint_bytes": 1014256,
+     "vi_fields": 1652,
+     "footprint_lines": 63393,
+     "footprint_bytes": 1014288,
      "highest_line": 262142,
-     "host_seconds": 13.3074
+     "host_seconds": 13.2175
     },
     "storm": {
      "pass": true,
      "status": "completed",
      "failure": "",
      "frames": 240,
-     "vi_fields": 1784,
+     "vi_fields": 1851,
      "footprint_lines": 63375,
      "footprint_bytes": 1014000,
      "highest_line": 262142,
-     "host_seconds": 14.3336
+     "host_seconds": 14.2375
     },
     "concert": {
      "pass": true,
      "status": "completed",
      "failure": "",
      "frames": 240,
-     "vi_fields": 1479,
+     "vi_fields": 1512,
      "footprint_lines": 60866,
      "footprint_bytes": 973856,
      "highest_line": 262142,
-     "host_seconds": 12.0989
-    },
-    "heldout-concert": {
-     "pass": true,
-     "status": "completed",
-     "failure": "",
-     "frames": 240,
-     "vi_fields": 1501,
-     "footprint_lines": 61086,
-     "footprint_bytes": 977376,
-     "highest_line": 262142,
-     "host_seconds": 10.3334
-    },
-    "heldout-fortress": {
-     "pass": true,
-     "status": "completed",
-     "failure": "",
-     "frames": 240,
-     "vi_fields": 1618,
-     "footprint_lines": 63403,
-     "footprint_bytes": 1014448,
-     "highest_line": 262142,
-     "host_seconds": 11.433
-    },
-    "heldout-meadow": {
-     "pass": true,
-     "status": "completed",
-     "failure": "",
-     "frames": 240,
-     "vi_fields": 1427,
-     "footprint_lines": 62298,
-     "footprint_bytes": 996768,
-     "highest_line": 262142,
-     "host_seconds": 9.89783
-    },
-    "heldout-storm": {
-     "pass": true,
-     "status": "completed",
-     "failure": "",
-     "frames": 240,
-     "vi_fields": 1735,
-     "footprint_lines": 63400,
-     "footprint_bytes": 1014400,
-     "highest_line": 262142,
-     "host_seconds": 11.9993
+     "host_seconds": 12.1143
     }
    }
   },
@@ -132,34 +88,6 @@
      "field": "player_vel[2]",
      "ref": 5.879802703857422,
      "cand": 5.87980318069458
-    },
-    "heldout-concert": {
-     "pass": false,
-     "frame": 27,
-     "field": "player_vel[0]",
-     "ref": -5.217708587646484,
-     "cand": -5.217709541320801
-    },
-    "heldout-fortress": {
-     "pass": false,
-     "frame": 95,
-     "field": "player_pos[0]",
-     "ref": -12.679011344909668,
-     "cand": -12.679008483886719
-    },
-    "heldout-meadow": {
-     "pass": false,
-     "frame": 4,
-     "field": "player_vel[2]",
-     "ref": 4.199999809265137,
-     "cand": 4.200000286102295
-    },
-    "heldout-storm": {
-     "pass": false,
-     "frame": 2,
-     "field": "player_pos[2]",
-     "ref": 0.011653169058263302,
-     "cand": 0.011653169989585876
     }
    }
   },
@@ -170,48 +98,32 @@
      "pass": true,
      "worst_bad_fraction": 3.90625e-05,
      "worst_frame": 230,
+     "max_bad_fraction": 0.002,
+     "failed_frames": 0,
      "variant_frames": 0
     },
     "fortress": {
      "pass": true,
      "worst_bad_fraction": 0.0,
      "worst_frame": -1,
+     "max_bad_fraction": 0.002,
+     "failed_frames": 0,
      "variant_frames": 0
     },
     "storm": {
      "pass": true,
      "worst_bad_fraction": 0.0,
      "worst_frame": -1,
+     "max_bad_fraction": 0.002,
+     "failed_frames": 0,
      "variant_frames": 0
     },
     "concert": {
      "pass": true,
      "worst_bad_fraction": 0.0,
      "worst_frame": -1,
-     "variant_frames": 0
-    },
-    "heldout-concert": {
-     "pass": true,
-     "worst_bad_fraction": 0.0,
-     "worst_frame": -1,
-     "variant_frames": 0
-    },
-    "heldout-fortress": {
-     "pass": true,
-     "worst_bad_fraction": 9.114583333333334e-05,
-     "worst_frame": 155,
-     "variant_frames": 0
-    },
-    "heldout-meadow": {
-     "pass": true,
-     "worst_bad_fraction": 0.0,
-     "worst_frame": -1,
-     "variant_frames": 0
-    },
-    "heldout-storm": {
-     "pass": true,
-     "worst_bad_fraction": 0.0,
-     "worst_frame": -1,
+     "max_bad_fraction": 0.002,
+     "failed_frames": 0,
      "variant_frames": 0
     }
    }
@@ -223,49 +135,33 @@
      "pass": true,
      "snr_db": 91.96819413507805,
      "worst_frame_snr_db": 67.4109460874057,
-     "worst_frame": 21
+     "worst_frame": 21,
+     "min_snr_db": 40.0,
+     "min_frame_snr_db": 20.0
     },
     "fortress": {
      "pass": true,
      "snr_db": 93.71096444995366,
      "worst_frame_snr_db": 68.24711443464734,
-     "worst_frame": 109
+     "worst_frame": 109,
+     "min_snr_db": 40.0,
+     "min_frame_snr_db": 20.0
     },
     "storm": {
      "pass": true,
      "snr_db": 92.54544648159657,
      "worst_frame_snr_db": 67.4109460874057,
-     "worst_frame": 21
+     "worst_frame": 21,
+     "min_snr_db": 40.0,
+     "min_frame_snr_db": 20.0
     },
     "concert": {
      "pass": true,
      "snr_db": 91.28425913060579,
      "worst_frame_snr_db": 65.68056974245533,
-     "worst_frame": 143
-    },
-    "heldout-concert": {
-     "pass": true,
-     "snr_db": 91.3430717904771,
-     "worst_frame_snr_db": 68.23412341057698,
-     "worst_frame": 110
-    },
-    "heldout-fortress": {
-     "pass": true,
-     "snr_db": 92.10809279894697,
-     "worst_frame_snr_db": 67.4109460874057,
-     "worst_frame": 21
-    },
-    "heldout-meadow": {
-     "pass": true,
-     "snr_db": 91.44046294756907,
-     "worst_frame_snr_db": 68.21721651659983,
-     "worst_frame": 45
-    },
-    "heldout-storm": {
-     "pass": true,
-     "snr_db": 92.98185179078219,
-     "worst_frame_snr_db": 67.4109460874057,
-     "worst_frame": 21
+     "worst_frame": 143,
+     "min_snr_db": 40.0,
+     "min_frame_snr_db": 20.0
     }
    }
   },
@@ -274,35 +170,23 @@
    "workloads": {
     "meadow": {
      "pass": true,
-     "highest_byte": 4194288
+     "highest_byte": 4194288,
+     "limit_bytes": 4194304
     },
     "fortress": {
      "pass": true,
-     "highest_byte": 4194288
+     "highest_byte": 4194288,
+     "limit_bytes": 4194304
     },
     "storm": {
      "pass": true,
-     "highest_byte": 4194288
+     "highest_byte": 4194288,
+     "limit_bytes": 4194304
     },
     "concert": {
      "pass": true,
-     "highest_byte": 4194288
-    },
-    "heldout-concert": {
-     "pass": true,
-     "highest_byte": 4194288
-    },
-    "heldout-fortress": {
-     "pass": true,
-     "highest_byte": 4194288
-    },
-    "heldout-meadow": {
-     "pass": true,
-     "highest_byte": 4194288
-    },
-    "heldout-storm": {
-     "pass": true,
-     "highest_byte": 4194288
+     "highest_byte": 4194288,
+     "limit_bytes": 4194304
     }
    }
   }
@@ -310,522 +194,278 @@
  "workloads": {
   "meadow": {
    "metrics": {
-    "frame_ticks": 4471093.560669456,
-    "frame_ticks_p99": 5342678.66,
-    "cpu_busy_cycles": 4471093.560669456,
-    "cpu_effective_cycles": 5157750.732217574,
+    "frame_ticks": 4605017.6066945605,
+    "frame_ticks_p99": 5485094.76,
+    "cpu_busy_cycles": 4605017.6066945605,
+    "cpu_effective_cycles": 4934217.1339721,
     "cpu_idle_cycles": 0.0,
-    "frame_ms": 47.69166464714086,
-    "cpu_ms": 55.01600781032078,
-    "cpu_cycles": 5157750.732217574,
-    "rsp_busy": 710854.1548117155,
-    "rsp_ms": 3.7912221589958164,
-    "rdp_busy": 299856.7656903766,
-    "rdp_ms": 4.797708251046024,
-    "mem_ms": 3.577858451882845,
+    "frame_ms": 49.12018780474198,
+    "cpu_ms": 52.63164942903573,
+    "cpu_cycles": 4934217.1339721,
+    "rsp_busy": 710899.7949790795,
+    "rsp_ms": 3.7914655732217573,
+    "rdp_busy": 255930.53556485355,
+    "rdp_ms": 4.094888569037657,
+    "mem_ms": 7.277015347280334,
     "bottleneck_share": {
      "cpu": 1.0,
      "rsp": 0.0,
      "rdp": 0.0,
      "rdram": 0.0
     },
-    "rdp_fill_cycles": 279690.11715481174,
+    "rdp_fill_cycles": 210552.23849372385,
+    "rdp_page_miss_cycles": 25211.648535564855,
+    "rdp_rdram_page_misses": 1050.4853556485355,
     "rdp_tmem_cycles": 7945.020920502092,
     "rdp_sync_cycles": 4507.221757322176,
     "rdp_triangles": 210.1673640167364,
     "rdp_pixels": 148392.98326359832,
+    "rdp_z_rejected_pixels": 69427.8410041841,
     "rdp_tmem_loads": 104.5397489539749,
     "rdp_tmem_bytes": 53524.351464435145,
     "rdp_syncs": 240.3305439330544,
-    "est_console_ms": 55.01600781032078,
-    "est_console_p99_ms": 65.40099093333333,
-    "est_fps": 18.176527883442755,
-    "est_fps_30hz": 15.3862660944206,
+    "est_console_ms": 52.63164942903573,
+    "est_console_p99_ms": 62.4971310220416,
+    "est_fps": 18.999974556152175,
+    "est_fps_30hz": 16.1123595505618,
     "frames_over_33ms": 1.0,
     "frames_under_16ms": 0.0,
-    "rdram_bytes": 1788929.2259414226,
+    "rdram_bytes": 1512053.8368200837,
     "rdram_bytes_by_device": {
-     "VR4300 ICache": 725269.5564853556,
-     "VR4300 DCache": 95136.66945606694,
+     "VR4300 ICache": 725267.4142259414,
+     "VR4300 DCache": 95128.30125523012,
      "VR4300 Uncached": 53550.610878661086,
-     "SP DMA": 232771.28033472804,
+     "SP DMA": 232715.58158995816,
      "PI DMA": 521.0,
      "SI DMA": 128.0,
      "VI DMA": 0.0,
      "AI DMA": 0.0,
      "DP DMA": 98394.20920502092,
-     "DP Draw": 583157.89958159
+     "DP Draw": 306348.719665272
     },
-    "dcache_misses": 5281.539748953975,
-    "icache_misses": 22664.673640167362,
-    "footprint_bytes": 994160,
+    "dcache_misses": 5281.242677824268,
+    "icache_misses": 22664.60669456067,
+    "footprint_bytes": 994192,
     "highest_byte": 4194288
    },
    "ratios": {
-    "est_console_ms": 0.5855554390168305,
-    "cpu_effective_cycles": 0.5855554390168306,
-    "cpu_busy_cycles": 0.5735781992850258,
-    "frame_ticks": 0.5735781992850258,
-    "frame_ticks_p99": 0.6050931352559135,
-    "rdp_busy": 1.0000004186100813,
-    "rsp_busy": 0.9937690637390004,
-    "rdram_bytes": 0.8227618680283444,
-    "footprint_bytes": 0.9893478122412586
+    "est_console_ms": 0.5897977226608012,
+    "est_console_p99_ms": 0.619491476938315,
+    "cpu_effective_cycles": 0.5897977226608011,
+    "cpu_busy_cycles": 0.5807812250499806,
+    "frame_ticks": 0.5807812250499806,
+    "frame_ticks_p99": 0.610733414804617,
+    "rdp_busy": 0.9993287205306793,
+    "rsp_busy": 0.993557360934203,
+    "rdram_bytes": 0.7968590128104779,
+    "footprint_bytes": 0.9893796573466658
    }
   },
   "fortress": {
    "metrics": {
-    "frame_ticks": 5191561.209205021,
-    "frame_ticks_p99": 5976309.54,
-    "cpu_busy_cycles": 5191561.209205021,
-    "cpu_effective_cycles": 5956512.305439331,
+    "frame_ticks": 5351265.928870293,
+    "frame_ticks_p99": 6157701.36,
+    "cpu_busy_cycles": 5351265.928870293,
+    "cpu_effective_cycles": 5764972.3916016985,
     "cpu_idle_cycles": 0.0,
-    "frame_ms": 55.37665289818689,
-    "cpu_ms": 63.536131258019516,
-    "cpu_cycles": 5956512.305439331,
-    "rsp_busy": 825025.2426778242,
-    "rsp_ms": 4.4001346276150635,
-    "rdp_busy": 463052.34728033474,
-    "rdp_ms": 7.408837556485357,
-    "mem_ms": 4.378017782426778,
+    "frame_ms": 57.080169907949795,
+    "cpu_ms": 61.49303884375146,
+    "cpu_cycles": 5764972.3916016985,
+    "rsp_busy": 825266.8117154812,
+    "rsp_ms": 4.4014229958159,
+    "rdp_busy": 395702.04184100416,
+    "rdp_ms": 6.3312326694560666,
+    "mem_ms": 8.236595966527197,
     "bottleneck_share": {
      "cpu": 1.0,
      "rsp": 0.0,
      "rdp": 0.0,
      "rdram": 0.0
     },
-    "rdp_fill_cycles": 439967.4769874477,
+    "rdp_fill_cycles": 330800.6359832636,
+    "rdp_page_miss_cycles": 41816.535564853555,
+    "rdp_rdram_page_misses": 1742.3556485355648,
     "rdp_tmem_cycles": 8741.589958158997,
     "rdp_sync_cycles": 5053.832635983264,
     "rdp_triangles": 255.7866108786611,
     "rdp_pixels": 192230.53974895398,
+    "rdp_z_rejected_pixels": 109377.71966527197,
     "rdp_tmem_loads": 115.02092050209205,
     "rdp_tmem_bytes": 58890.71129707113,
     "rdp_syncs": 269.1757322175732,
-    "est_console_ms": 63.536131258019516,
-    "est_console_p99_ms": 73.07461589333333,
-    "est_fps": 15.73907602178375,
-    "est_fps_30hz": 14.183976261127597,
+    "est_console_ms": 61.49303884375146,
+    "est_console_p99_ms": 70.97763745189334,
+    "est_fps": 16.26200329017589,
+    "est_fps_30hz": 14.63265306122449,
     "frames_over_33ms": 1.0,
     "frames_under_16ms": 0.0,
-    "rdram_bytes": 2189008.891213389,
+    "rdram_bytes": 1751948.9916317991,
     "rdram_bytes_by_device": {
-     "VR4300 ICache": 815413.4225941423,
-     "VR4300 DCache": 102260.68619246862,
+     "VR4300 ICache": 815409.539748954,
+     "VR4300 DCache": 102252.11715481171,
      "VR4300 Uncached": 63890.828451882844,
-     "SP DMA": 247900.35146443514,
+     "SP DMA": 247963.5481171548,
      "PI DMA": 521.0,
      "SI DMA": 128.0,
      "VI DMA": 0.0,
      "AI DMA": 0.0,
      "DP DMA": 112711.3640167364,
-     "DP Draw": 846183.2384937238
+     "DP Draw": 409072.5941422594
     },
-    "dcache_misses": 5714.9748953974895,
-    "icache_misses": 25481.669456066946,
-    "footprint_bytes": 1014256,
+    "dcache_misses": 5714.690376569038,
+    "icache_misses": 25481.548117154813,
+    "footprint_bytes": 1014288,
     "highest_byte": 4194288
    },
    "ratios": {
-    "est_console_ms": 0.5482569776414544,
-    "cpu_effective_cycles": 0.5482569776414545,
-    "cpu_busy_cycles": 0.5411223973298571,
-    "frame_ticks": 0.5411223973298571,
-    "frame_ticks_p99": 0.5654373744918934,
-    "rdp_busy": 1.0,
-    "rsp_busy": 0.9937302341046429,
-    "rdram_bytes": 0.7911103292278732,
-    "footprint_bytes": 0.9897266155599619
+    "est_console_ms": 0.5569407385605043,
+    "est_console_p99_ms": 0.5824892714164956,
+    "cpu_effective_cycles": 0.5569407385605043,
+    "cpu_busy_cycles": 0.5486329139447361,
+    "frame_ticks": 0.5486329139447361,
+    "frame_ticks_p99": 0.5727457885219094,
+    "rdp_busy": 1.0001258871480092,
+    "rsp_busy": 0.9938491218771182,
+    "rdram_bytes": 0.7519348441361403,
+    "footprint_bytes": 0.9897578416524848
    }
   },
   "storm": {
    "metrics": {
-    "frame_ticks": 5793452.071129707,
-    "frame_ticks_p99": 6699764.14,
-    "cpu_busy_cycles": 5793452.071129707,
-    "cpu_effective_cycles": 6721364.071129707,
+    "frame_ticks": 6012619.49372385,
+    "frame_ticks_p99": 6941778.58,
+    "cpu_busy_cycles": 6012619.49372385,
+    "cpu_effective_cycles": 6537693.337835565,
     "cpu_idle_cycles": 0.0,
-    "frame_ms": 61.796822092050206,
-    "cpu_ms": 71.6945500920502,
-    "cpu_cycles": 6721364.071129707,
-    "rsp_busy": 1190221.7322175733,
-    "rsp_ms": 6.347849238493724,
-    "rdp_busy": 365844.26359832636,
-    "rdp_ms": 5.853508217573222,
-    "mem_ms": 4.624311757322176,
+    "frame_ms": 64.1346079330544,
+    "cpu_ms": 69.73539560357936,
+    "cpu_cycles": 6537693.337835565,
+    "rsp_busy": 1190337.0251046026,
+    "rsp_ms": 6.348464133891214,
+    "rdp_busy": 316569.330543933,
+    "rdp_ms": 5.065109288702928,
+    "mem_ms": 9.146567046025103,
     "bottleneck_share": {
      "cpu": 1.0,
      "rsp": 0.0,
      "rdp": 0.0,
      "rdram": 0.0
     },
-    "rdp_fill_cycles": 332323.50627615064,
+    "rdp_fill_cycles": 249213.89539748954,
+    "rdp_page_miss_cycles": 33834.67782426778,
+    "rdp_rdram_page_misses": 1409.7782426778242,
     "rdp_tmem_cycles": 13072.953974895398,
     "rdp_sync_cycles": 7961.313807531381,
     "rdp_triangles": 330.36401673640165,
     "rdp_pixels": 162196.4769874477,
+    "rdp_z_rejected_pixels": 83353.39330543933,
     "rdp_tmem_loads": 172.01255230125523,
     "rdp_tmem_bytes": 88070.42677824268,
     "rdp_syncs": 426.4728033472803,
-    "est_console_ms": 71.6945500920502,
-    "est_console_p99_ms": 82.51805056,
-    "est_fps": 13.948061585100653,
-    "est_fps_30hz": 12.362068965517242,
+    "est_console_ms": 69.73539560357936,
+    "est_console_p99_ms": 80.44027210865409,
+    "est_fps": 14.339920084265962,
+    "est_fps_30hz": 12.545931758530184,
     "frames_over_33ms": 1.0,
     "frames_under_16ms": 0.0,
-    "rdram_bytes": 2312155.8786610877,
+    "rdram_bytes": 1979441.7615062762,
     "rdram_bytes_by_device": {
      "VR4300 ICache": 992871.4979079498,
-     "VR4300 DCache": 122172.2510460251,
+     "VR4300 DCache": 122173.79079497908,
      "VR4300 Uncached": 87649.62343096234,
-     "SP DMA": 281333.42259414226,
+     "SP DMA": 281307.71548117156,
      "PI DMA": 521.0,
      "SI DMA": 128.0,
      "VI DMA": 0.0,
      "AI DMA": 0.0,
      "DP DMA": 161501.22175732217,
-     "DP Draw": 665978.8619246862
+     "DP Draw": 333288.9121338912
     },
-    "dcache_misses": 6439.569037656904,
+    "dcache_misses": 6439.602510460251,
     "icache_misses": 31027.234309623433,
     "footprint_bytes": 1014000,
     "highest_byte": 4194288
    },
    "ratios": {
-    "est_console_ms": 0.5930341561343563,
-    "cpu_effective_cycles": 0.5930341561343564,
-    "cpu_busy_cycles": 0.5746230496198481,
-    "frame_ticks": 0.5746230496198481,
-    "frame_ticks_p99": 0.5933663420538572,
-    "rdp_busy": 1.0,
-    "rsp_busy": 0.994313179894591,
-    "rdram_bytes": 0.8614669979675729,
+    "est_console_ms": 0.5972974712072644,
+    "est_console_p99_ms": 0.615966614620701,
+    "cpu_effective_cycles": 0.5972974712072642,
+    "cpu_busy_cycles": 0.583674375157569,
+    "frame_ticks": 0.583674375157569,
+    "frame_ticks_p99": 0.6017906713003541,
+    "rdp_busy": 0.9903354034893125,
+    "rsp_busy": 0.9942495518363005,
+    "rdram_bytes": 0.8418282581319655,
     "footprint_bytes": 0.9896158650843223
    }
   },
   "concert": {
    "metrics": {
-    "frame_ticks": 4785454.221757323,
-    "frame_ticks_p99": 5868756.16,
-    "cpu_busy_cycles": 4785454.221757323,
-    "cpu_effective_cycles": 5461129.334728033,
+    "frame_ticks": 4893851.125523012,
+    "frame_ticks_p99": 5991109.82,
+    "cpu_busy_cycles": 4893851.125523012,
+    "cpu_effective_cycles": 5189932.484209247,
     "cpu_idle_cycles": 0.0,
-    "frame_ms": 51.04484503207811,
-    "cpu_ms": 58.252046237099016,
-    "cpu_cycles": 5461129.334728033,
-    "rsp_busy": 591782.4853556486,
-    "rsp_ms": 3.1561732552301254,
-    "rdp_busy": 273308.9874476987,
-    "rdp_ms": 4.3729437991631785,
-    "mem_ms": 3.406595338912134,
+    "frame_ms": 52.201078672245465,
+    "cpu_ms": 55.359279831565296,
+    "cpu_cycles": 5189932.484209247,
+    "rsp_busy": 591835.6443514645,
+    "rsp_ms": 3.1564567698744774,
+    "rdp_busy": 233232.9079497908,
+    "rdp_ms": 3.731726527196652,
+    "mem_ms": 7.042313322175731,
     "bottleneck_share": {
      "cpu": 1.0,
      "rsp": 0.0,
      "rdp": 0.0,
      "rdram": 0.0
     },
-    "rdp_fill_cycles": 256259.10041841003,
+    "rdp_fill_cycles": 193878.08368200838,
+    "rdp_page_miss_cycles": 22304.937238493723,
+    "rdp_rdram_page_misses": 929.3723849372385,
     "rdp_tmem_cycles": 6903.280334728033,
     "rdp_sync_cycles": 3986.686192468619,
     "rdp_triangles": 166.9539748953975,
     "rdp_pixels": 142231.18828451884,
+    "rdp_z_rejected_pixels": 62855.86610878661,
     "rdp_tmem_loads": 90.8326359832636,
     "rdp_tmem_bytes": 46506.30962343096,
     "rdp_syncs": 211.7112970711297,
-    "est_console_ms": 58.252046237099016,
-    "est_console_p99_ms": 71.09695829333333,
-    "est_fps": 17.16677893047351,
-    "est_fps_30hz": 14.953076120959333,
+    "est_console_ms": 55.359279831565296,
+    "est_console_p99_ms": 67.64513406675499,
+    "est_fps": 18.06381880404828,
+    "est_fps_30hz": 15.58695652173913,
     "frames_over_33ms": 1.0,
     "frames_under_16ms": 0.0,
-    "rdram_bytes": 1703297.669456067,
+    "rdram_bytes": 1453378.330543933,
     "rdram_bytes_by_device": {
-     "VR4300 ICache": 725034.7112970711,
-     "VR4300 DCache": 87932.71966527197,
+     "VR4300 ICache": 725036.1841004185,
+     "VR4300 DCache": 87923.88284518829,
      "VR4300 Uncached": 43324.03347280335,
-     "SP DMA": 217772.71966527196,
+     "SP DMA": 217725.589958159,
      "PI DMA": 521.0,
      "SI DMA": 128.0,
      "VI DMA": 0.0,
      "AI DMA": 0.0,
      "DP DMA": 82397.35564853557,
-     "DP Draw": 546187.129707113
+     "DP Draw": 296322.28451882844
     },
-    "dcache_misses": 4835.573221757322,
-    "icache_misses": 22657.33472803347,
+    "dcache_misses": 4835.276150627615,
+    "icache_misses": 22657.380753138077,
     "footprint_bytes": 973856,
     "highest_byte": 4194288
    },
    "ratios": {
-    "est_console_ms": 0.6861896451410443,
-    "cpu_effective_cycles": 0.6861896451410444,
-    "cpu_busy_cycles": 0.6668489083210902,
-    "frame_ticks": 0.6668489083210902,
-    "frame_ticks_p99": 0.7003674710742959,
-    "rdp_busy": 1.0,
-    "rsp_busy": 0.9934966213243919,
-    "rdram_bytes": 0.9377532282450147,
+    "est_console_ms": 0.6815255167020058,
+    "est_console_p99_ms": 0.7141551535321683,
+    "cpu_effective_cycles": 0.681525516702006,
+    "cpu_busy_cycles": 0.6718107284303215,
+    "frame_ticks": 0.6718107284303215,
+    "frame_ticks_p99": 0.7043546062262128,
+    "rdp_busy": 0.9990453962877004,
+    "rsp_busy": 0.9933689546236119,
+    "rdram_bytes": 0.9277865482991419,
     "footprint_bytes": 0.9890477738056549
-   }
-  },
-  "heldout-concert": {
-   "metrics": {
-    "frame_ticks": 4857843.175732218,
-    "frame_ticks_p99": 6005990.260000001,
-    "cpu_busy_cycles": 4857843.175732218,
-    "cpu_effective_cycles": 5544747.175732218,
-    "cpu_idle_cycles": 0.0,
-    "frame_ms": 51.81699387447699,
-    "cpu_ms": 59.143969874476994,
-    "cpu_cycles": 5544747.175732218,
-    "rsp_busy": 597949.8577405858,
-    "rsp_ms": 3.189065907949791,
-    "rdp_busy": 280388.95815899584,
-    "rdp_ms": 4.4862233305439325,
-    "mem_ms": 3.471434619246862,
-    "bottleneck_share": {
-     "cpu": 1.0,
-     "rsp": 0.0,
-     "rdp": 0.0,
-     "rdram": 0.0
-    },
-    "rdp_fill_cycles": 263081.62761506275,
-    "rdp_tmem_cycles": 6713.121338912134,
-    "rdp_sync_cycles": 4048.3765690376567,
-    "rdp_triangles": 179.69037656903765,
-    "rdp_pixels": 143974.5481171548,
-    "rdp_tmem_loads": 88.33054393305439,
-    "rdp_tmem_bytes": 45225.238493723846,
-    "rdp_syncs": 214.35983263598325,
-    "est_console_ms": 59.143969874476994,
-    "est_console_p99_ms": 72.64718186666667,
-    "est_fps": 16.907894450141406,
-    "est_fps_30hz": 14.829369183040331,
-    "frames_over_33ms": 1.0,
-    "frames_under_16ms": 0.0,
-    "rdram_bytes": 1735717.309623431,
-    "rdram_bytes_by_device": {
-     "VR4300 ICache": 742105.9748953974,
-     "VR4300 DCache": 86883.01255230125,
-     "VR4300 Uncached": 45288.0,
-     "SP DMA": 220959.3640167364,
-     "PI DMA": 521.0,
-     "SI DMA": 128.0,
-     "VI DMA": 0.0,
-     "AI DMA": 0.0,
-     "DP DMA": 83184.66945606694,
-     "DP Draw": 556647.2887029289
-    },
-    "dcache_misses": 4795.94560669456,
-    "icache_misses": 23190.81171548117,
-    "footprint_bytes": 977376,
-    "highest_byte": 4194288
-   },
-   "ratios": {
-    "est_console_ms": 0.6828657839729048,
-    "cpu_effective_cycles": 0.6828657839729049,
-    "cpu_busy_cycles": 0.6649055926786417,
-    "frame_ticks": 0.6649055926786417,
-    "frame_ticks_p99": 0.687705415541908,
-    "rdp_busy": 0.9999998656976404,
-    "rsp_busy": 0.9934062536956867,
-    "rdram_bytes": 0.9253689509304533,
-    "footprint_bytes": 0.9892950264790192
-   }
-  },
-  "heldout-fortress": {
-   "metrics": {
-    "frame_ticks": 5239598.682008368,
-    "frame_ticks_p99": 6344025.840000001,
-    "cpu_busy_cycles": 5239598.682008368,
-    "cpu_effective_cycles": 6010584.623430963,
-    "cpu_idle_cycles": 0.0,
-    "frame_ms": 55.88905260808926,
-    "cpu_ms": 64.11290264993025,
-    "cpu_cycles": 6010584.623430963,
-    "rsp_busy": 841931.2970711297,
-    "rsp_ms": 4.490300251046025,
-    "rdp_busy": 437141.2343096234,
-    "rdp_ms": 6.994259748953975,
-    "mem_ms": 4.320305849372384,
-    "bottleneck_share": {
-     "cpu": 1.0,
-     "rsp": 0.0,
-     "rdp": 0.0,
-     "rdram": 0.0
-    },
-    "rdp_fill_cycles": 413618.3891213389,
-    "rdp_tmem_cycles": 8785.790794979079,
-    "rdp_sync_cycles": 5197.397489539749,
-    "rdp_triangles": 263.5271966527197,
-    "rdp_pixels": 185242.67364016737,
-    "rdp_tmem_loads": 115.60251046025104,
-    "rdp_tmem_bytes": 59188.48535564853,
-    "rdp_syncs": 276.2510460251046,
-    "est_console_ms": 64.11290264993025,
-    "est_console_p99_ms": 76.82055936,
-    "est_fps": 15.597484416829596,
-    "est_fps_30hz": 14.017595307917889,
-    "frames_over_33ms": 1.0,
-    "frames_under_16ms": 0.0,
-    "rdram_bytes": 2160152.9246861925,
-    "rdram_bytes_by_device": {
-     "VR4300 ICache": 821792.2677824268,
-     "VR4300 DCache": 103094.49372384937,
-     "VR4300 Uncached": 65564.23430962343,
-     "SP DMA": 250405.32217573223,
-     "PI DMA": 521.0,
-     "SI DMA": 128.0,
-     "VI DMA": 0.0,
-     "AI DMA": 0.0,
-     "DP DMA": 114391.56485355648,
-     "DP Draw": 804256.0418410042
-    },
-    "dcache_misses": 5754.585774058577,
-    "icache_misses": 25681.008368200837,
-    "footprint_bytes": 1014448,
-    "highest_byte": 4194288
-   },
-   "ratios": {
-    "est_console_ms": 0.5474204540515771,
-    "cpu_effective_cycles": 0.5474204540515772,
-    "cpu_busy_cycles": 0.5405650060287526,
-    "frame_ticks": 0.5405650060287526,
-    "frame_ticks_p99": 0.5624512467401013,
-    "rdp_busy": 1.000007207396776,
-    "rsp_busy": 0.9937120182959307,
-    "rdram_bytes": 0.7845382258631994,
-    "footprint_bytes": 0.9896358499695631
-   }
-  },
-  "heldout-meadow": {
-   "metrics": {
-    "frame_ticks": 4614389.953974895,
-    "frame_ticks_p99": 5549537.54,
-    "cpu_busy_cycles": 4614389.953974895,
-    "cpu_effective_cycles": 5326994.439330544,
-    "cpu_idle_cycles": 0.0,
-    "frame_ms": 49.220159509065546,
-    "cpu_ms": 56.821274019525795,
-    "cpu_cycles": 5326994.439330544,
-    "rsp_busy": 738919.6192468619,
-    "rsp_ms": 3.940904635983263,
-    "rdp_busy": 310853.6569037657,
-    "rdp_ms": 4.973658510460251,
-    "mem_ms": 3.704136962343096,
-    "bottleneck_share": {
-     "cpu": 1.0,
-     "rsp": 0.0,
-     "rdp": 0.0,
-     "rdram": 0.0
-    },
-    "rdp_fill_cycles": 289804.410041841,
-    "rdp_tmem_cycles": 7866.476987447699,
-    "rdp_sync_cycles": 4805.330543933054,
-    "rdp_triangles": 230.9539748953975,
-    "rdp_pixels": 150915.74058577407,
-    "rdp_tmem_loads": 103.50627615062761,
-    "rdp_tmem_bytes": 52995.21338912134,
-    "rdp_syncs": 254.9163179916318,
-    "est_console_ms": 56.821274019525795,
-    "est_console_p99_ms": 67.87428629333334,
-    "est_fps": 17.599042211837148,
-    "est_fps_30hz": 14.968684759916492,
-    "frames_over_33ms": 1.0,
-    "frames_under_16ms": 0.0,
-    "rdram_bytes": 1852068.4811715481,
-    "rdram_bytes_by_device": {
-     "VR4300 ICache": 760819.2803347281,
-     "VR4300 DCache": 94660.01673640167,
-     "VR4300 Uncached": 57426.99581589958,
-     "SP DMA": 238712.3347280335,
-     "PI DMA": 521.0,
-     "SI DMA": 128.0,
-     "VI DMA": 0.0,
-     "AI DMA": 0.0,
-     "DP DMA": 101506.41004184101,
-     "DP Draw": 598294.4435146444
-    },
-    "dcache_misses": 5253.322175732217,
-    "icache_misses": 23775.602510460252,
-    "footprint_bytes": 996768,
-    "highest_byte": 4194288
-   },
-   "ratios": {
-    "est_console_ms": 0.5914349025015906,
-    "cpu_effective_cycles": 0.5914349025015908,
-    "cpu_busy_cycles": 0.57922360935802,
-    "frame_ticks": 0.57922360935802,
-    "frame_ticks_p99": 0.6053116203857444,
-    "rdp_busy": 1.0,
-    "rsp_busy": 0.9934166003767497,
-    "rdram_bytes": 0.8266372983245209,
-    "footprint_bytes": 0.9895011038930097
-   }
-  },
-  "heldout-storm": {
-   "metrics": {
-    "frame_ticks": 5630322.046025105,
-    "frame_ticks_p99": 6723783.0200000005,
-    "cpu_busy_cycles": 5630322.046025105,
-    "cpu_effective_cycles": 6536793.309623431,
-    "cpu_idle_cycles": 0.0,
-    "frame_ms": 60.05676849093445,
-    "cpu_ms": 69.72579530264993,
-    "cpu_cycles": 6536793.309623431,
-    "rsp_busy": 1168954.0920502092,
-    "rsp_ms": 6.234421824267782,
-    "rdp_busy": 310558.4560669456,
-    "rdp_ms": 4.968935297071129,
-    "mem_ms": 4.3711481087866115,
-    "bottleneck_share": {
-     "cpu": 1.0,
-     "rsp": 0.0,
-     "rdp": 0.0,
-     "rdram": 0.0
-    },
-    "rdp_fill_cycles": 277568.76150627615,
-    "rdp_tmem_cycles": 13174.393305439331,
-    "rdp_sync_cycles": 7933.531380753138,
-    "rdp_triangles": 310.72803347280336,
-    "rdp_pixels": 147765.2719665272,
-    "rdp_tmem_loads": 173.34728033472803,
-    "rdp_tmem_bytes": 88753.80753138075,
-    "rdp_syncs": 425.54811715481173,
-    "est_console_ms": 69.72579530264993,
-    "est_console_p99_ms": 83.23268629333334,
-    "est_fps": 14.341894497716758,
-    "est_fps_30hz": 12.735346358792185,
-    "frames_over_33ms": 1.0,
-    "frames_under_16ms": 0.0,
-    "rdram_bytes": 2185574.0543933054,
-    "rdram_bytes_by_device": {
-     "VR4300 ICache": 963805.9916317991,
-     "VR4300 DCache": 122411.179916318,
-     "VR4300 Uncached": 84204.3179916318,
-     "SP DMA": 276194.2092050209,
-     "PI DMA": 521.0,
-     "SI DMA": 128.0,
-     "VI DMA": 0.0,
-     "AI DMA": 0.0,
-     "DP DMA": 158917.72384937239,
-     "DP Draw": 579391.6317991632
-    },
-    "dcache_misses": 6431.548117154812,
-    "icache_misses": 30118.937238493723,
-    "footprint_bytes": 1014400,
-    "highest_byte": 4194288
-   },
-   "ratios": {
-    "est_console_ms": 0.5954469504231418,
-    "cpu_effective_cycles": 0.5954469504231419,
-    "cpu_busy_cycles": 0.5750470748125289,
-    "frame_ticks": 0.5750470748125289,
-    "frame_ticks_p99": 0.6046242261016519,
-    "rdp_busy": 1.0,
-    "rsp_busy": 0.9945519929608879,
-    "rdram_bytes": 0.8746567777780961,
-    "footprint_bytes": 0.9900990099009901
    }
   }
  },
@@ -845,9 +485,44 @@
   "traffic": 0.0,
   "memory": 0.0
  },
+ "workload_set": "8bbeb7008fd056b9d7e59299728be1148d4037f986a83e95d2fe3a5408f61354",
  "rom_sha256": "b05c2aa871102dbc963a60efc84e807a83eebdff2d509f3615c40649fccb79be",
  "rom_bytes": 196608,
  "status": "invalid",
  "reason": "failed gates: ['gameplay']",
- "grader_seconds": 32.4
+ "failures": [
+  {
+   "gate": "gameplay",
+   "workload": "meadow",
+   "frame": 54,
+   "field": "player_vel[0]",
+   "ref": 0.393291711807251,
+   "cand": 0.39329177141189575
+  },
+  {
+   "gate": "gameplay",
+   "workload": "fortress",
+   "frame": 137,
+   "field": "player_vel[0]",
+   "ref": -3.170910596847534,
+   "cand": -3.170910358428955
+  },
+  {
+   "gate": "gameplay",
+   "workload": "storm",
+   "frame": 10,
+   "field": "player_vel[0]",
+   "ref": 4.902315139770508,
+   "cand": 4.902315616607666
+  },
+  {
+   "gate": "gameplay",
+   "workload": "concert",
+   "frame": 70,
+   "field": "player_vel[2]",
+   "ref": 5.879802703857422,
+   "cand": 5.87980318069458
+  }
+ ],
+ "grader_seconds": 14.6
 }

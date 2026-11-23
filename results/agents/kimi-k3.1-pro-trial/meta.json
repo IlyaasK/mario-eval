@@ -1,0 +1,8 @@
+{
+ "title": "Kimi K3.1 Pro (Cerebras, Trial Run)",
+ "model": "Kimi K3.1 Pro (trial)",
+ "kind": "trial",
+ "hours": "~26",
+ "repo_url": "https://github.com/IlyaasK/mario-eval-attempt-kimi-k3.1-pro-trial",
+ "notes": "Bring-up trial run (omp) used to iron out v2 harness, profiler & held-out bugs; migrated mid-run from v1 to v2. Best 100%-valid 25-route checkpoint (4b54858) beat Kaze master (1.646x) at 1.695x (+2.9%) with PLAY=1 runtime smoke passing. Final commit d6af2f6 reached 1.82x public / 1.79x raw 25-route before Cerebras deactivated the trial model (404), but tripped 7/19 held-out video gates due to a 1-line 4-vert shadow LUT typo (253312a; fixing that typo alone makes d6af2f6 pass all 25 routes + PLAY=1 at 1.792x)."
+}

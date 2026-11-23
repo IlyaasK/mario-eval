@@ -1,0 +1,332 @@
+{
+ "run": "kimi-k3.1-pro-trial",
+ "game": "sm64",
+ "primary_profile": "console",
+ "note": "Trial bring-up run migrated from v1 (first 7.65h) to v2 (25-route split, hours 7.65-26.17). Checkpoints plotted are 25-route v2 host grades.",
+ "host_checkpoints": [
+  {
+   "name": "v2-checkpoint-1",
+   "elapsed_hours": 9.6519,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "valid",
+   "rewards": {
+    "console": 0.17806675,
+    "stutter": 0.18288425,
+    "speed": 0.17848325,
+    "rdp": 0.0508185,
+    "rsp": 0.2086095,
+    "traffic": 0.0867055,
+    "memory": 0.01040675
+   },
+   "speedups": {
+    "console": 1.638376,
+    "stutter": 1.660407,
+    "speed": 1.640269,
+    "rdp": 1.151308,
+    "rsp": 1.783163,
+    "traffic": 1.271756,
+    "memory": 1.029274
+   },
+   "vs_o2_speedups": {
+    "console": 1.19536,
+    "stutter": 1.206022,
+    "speed": 1.181221,
+    "rdp": 1.152428,
+    "rsp": 1.783163,
+    "traffic": 1.145076,
+    "memory": 1.006882
+   }
+  },
+  {
+   "name": "v2-checkpoint-2",
+   "elapsed_hours": 11.6786,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "valid",
+   "rewards": {
+    "console": 0.18474175,
+    "stutter": 0.19026625,
+    "speed": 0.18532525,
+    "rdp": 0.0508185,
+    "rsp": 0.2086095,
+    "traffic": 0.0877215,
+    "memory": 0.0104055
+   },
+   "speedups": {
+    "console": 1.668981,
+    "stutter": 1.694741,
+    "speed": 1.671682,
+    "rdp": 1.151308,
+    "rsp": 1.783163,
+    "traffic": 1.275344,
+    "memory": 1.02927
+   },
+   "vs_o2_speedups": {
+    "console": 1.217689,
+    "stutter": 1.23096,
+    "speed": 1.203843,
+    "rdp": 1.152428,
+    "rsp": 1.783163,
+    "traffic": 1.148306,
+    "memory": 1.006879
+   }
+  },
+  {
+   "name": "v2-checkpoint-3",
+   "elapsed_hours": 13.7078,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "valid",
+   "rewards": {
+    "console": 0.189056,
+    "stutter": 0.19496425,
+    "speed": 0.189758,
+    "rdp": 0.0508185,
+    "rsp": 0.2086095,
+    "traffic": 0.088709,
+    "memory": 0.010413
+   },
+   "speedups": {
+    "console": 1.689064,
+    "stutter": 1.716961,
+    "speed": 1.692354,
+    "rdp": 1.151308,
+    "rsp": 1.783163,
+    "traffic": 1.27884,
+    "memory": 1.029291
+   },
+   "vs_o2_speedups": {
+    "console": 1.232342,
+    "stutter": 1.247099,
+    "speed": 1.21873,
+    "rdp": 1.152428,
+    "rsp": 1.783163,
+    "traffic": 1.151455,
+    "memory": 1.006899
+   }
+  },
+  {
+   "name": "v2-checkpoint-4",
+   "elapsed_hours": 15.7333,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "valid",
+   "rewards": {
+    "console": 0.19022125,
+    "stutter": 0.19621025,
+    "speed": 0.19096325,
+    "rdp": 0.0508185,
+    "rsp": 0.2086095,
+    "traffic": 0.0891435,
+    "memory": 0.01041
+   },
+   "speedups": {
+    "console": 1.69453,
+    "stutter": 1.722902,
+    "speed": 1.698019,
+    "rdp": 1.151308,
+    "rsp": 1.783163,
+    "traffic": 1.280382,
+    "memory": 1.029283
+   },
+   "vs_o2_speedups": {
+    "console": 1.23633,
+    "stutter": 1.251415,
+    "speed": 1.222809,
+    "rdp": 1.152428,
+    "rsp": 1.783163,
+    "traffic": 1.152843,
+    "memory": 1.006891
+   }
+  },
+  {
+   "name": "v2-checkpoint-5",
+   "elapsed_hours": 17.7619,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "invalid",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "last_valid": {
+    "git_head": "cec7905",
+    "status": "invalid",
+    "rewards": {
+     "console": -1.0,
+     "stutter": -1.0,
+     "speed": -1.0,
+     "rdp": -1.0,
+     "rsp": -1.0,
+     "traffic": -1.0,
+     "memory": -1.0
+    },
+    "speedups": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    },
+    "vs_o2_speedups": {}
+   }
+  },
+  {
+   "name": "v2-cont-checkpoint-1",
+   "elapsed_hours": 20.7619,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "invalid",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "last_valid": {
+    "git_head": "91b324d",
+    "status": "invalid",
+    "rewards": {
+     "console": -1.0,
+     "stutter": -1.0,
+     "speed": -1.0,
+     "rdp": -1.0,
+     "rsp": -1.0,
+     "traffic": -1.0,
+     "memory": -1.0
+    },
+    "speedups": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    },
+    "vs_o2_speedups": {}
+   }
+  },
+  {
+   "name": "v2-cont-checkpoint-2",
+   "elapsed_hours": 22.7919,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "invalid",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "last_valid": {
+    "git_head": "17f7b35",
+    "status": "invalid",
+    "rewards": {
+     "console": -1.0,
+     "stutter": -1.0,
+     "speed": -1.0,
+     "rdp": -1.0,
+     "rsp": -1.0,
+     "traffic": -1.0,
+     "memory": -1.0
+    },
+    "speedups": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    },
+    "vs_o2_speedups": {}
+   }
+  },
+  {
+   "name": "v2-cont-checkpoint-3",
+   "elapsed_hours": 24.8483,
+   "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+   "status": "invalid",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "last_valid": {
+    "git_head": "b38c832",
+    "status": "invalid",
+    "rewards": {
+     "console": -1.0,
+     "stutter": -1.0,
+     "speed": -1.0,
+     "rdp": -1.0,
+     "rsp": -1.0,
+     "traffic": -1.0,
+     "memory": -1.0
+    },
+    "speedups": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    },
+    "vs_o2_speedups": {}
+   }
+  }
+ ]
+}

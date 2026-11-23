@@ -28,5 +28,13 @@
  },
  "status": "invalid",
  "reason": "protected files modified: ['src/mev.c']",
+ "failures": [
+  {
+   "gate": "integrity",
+   "modified": [
+    "src/mev.c"
+   ]
+  }
+ ],
  "grader_seconds": 0.0
 }

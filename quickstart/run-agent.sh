@@ -75,7 +75,19 @@ if [ -n "${MEV_INITIAL_PROMPT:-}" ]; then
 else
   PROMPT="$(in_task cat /task/TASK.md)"$'\n\n'"Your primary profile for this run: $PROFILE (also in /task/PROFILE). You have ${HOURS} hours."
 fi
-CONTINUE_PROMPT="Continue working on the 24h optimization task in /task/TASK.md (profile: $PROFILE). Run 'mev check' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further. Check \$MEV_DEADLINE_EPOCH (seconds since epoch) and leave a clean, mev-check-passing tree before the deadline."
+format_remaining() {
+  local rem=$(( DEADLINE - $(now) ))
+  [ "$rem" -lt 0 ] && rem=0
+  local mins=$(( (rem + 59) / 60 ))
+  local h=$(( mins / 60 )) m=$(( mins % 60 ))
+  if [ "$h" -gt 0 ]; then printf '%dh %02dm' "$h" "$m"; else printf '%dm' "$m"; fi
+}
+continue_prompt() {
+  local rem
+  rem="$(format_remaining)"
+  printf 'Continue working on the %sh optimization task in /task/TASK.md (profile: %s; time remaining: %s). Run '\''mev check'\'' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further. Check $MEV_DEADLINE_EPOCH (seconds since epoch) and leave a clean, mev-check-passing tree before the deadline.' \
+    "$HOURS" "$PROFILE" "$rem"
+}
 
 # Snapshot /task/game onto refs/mev/checkpoints using a temporary index so we
 # preserve full 30-minute history in game.bundle without ever mutating the
@@ -212,17 +224,17 @@ PY
   fi
 }
 
-AGENT_PID=""; AGENT_LOG=""; AGENT_STARTED=0; N=0
+AGENT_PID=""; AGENT_LOG=""; AGENT_STARTED=0; N=0; RAPID_FAILS=0; FATAL_FAILS=0
 start_agent() {
   N=$((N + 1)); AGENT_LOG="$RUN_DIR/agent-$(printf %03d $N).log"; AGENT_STARTED=$(now)
-  local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$CONTINUE_PROMPT"
-  log "starting agent invocation $N"
-  # Drop omp's high-volume streaming delta lines (`tool_execution_update` and
-  # `message_update` balloon logs to 100-800 MB) while preserving every full
-  # message (`message_start`/`message_end`), tool call, and tool result.
+  local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$(continue_prompt)"
+  log "starting agent invocation $N (remaining $(format_remaining))"
+  # Drop omp's high-volume streaming delta lines (`tool_execution_update`,
+  # `tool_stream_update`, and `message_update` balloon logs to 100-800 MB) while
+  # preserving every full message (`message_start`/`message_end`), tool call, and tool result.
   dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" task setsid --wait bash -lc \
     "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
-    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
+    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
 }
 stop_agent() {
@@ -247,11 +259,30 @@ while [ "$(now)" -lt "$DEADLINE" ]; do
   sleep 10
   if ! kill -0 "$AGENT_PID" 2>/dev/null; then
     stop_agent
-    [ $(( $(now) - AGENT_STARTED )) -lt 60 ] && sleep 30
+    elapsed=$(( $(now) - AGENT_STARTED ))
+    if [ "$elapsed" -lt 60 ]; then
+      RAPID_FAILS=$((RAPID_FAILS + 1))
+      if tail -c 8192 "$AGENT_LOG" 2>/dev/null | grep -qiE 'Model does not exist|do not have access to it|404[^0-9].*model|invalid_api_key|401[^0-9].*unauthorized'; then
+        FATAL_FAILS=$((FATAL_FAILS + 1))
+      else
+        FATAL_FAILS=0
+      fi
+      if [ "$FATAL_FAILS" -ge 5 ]; then
+        log "aborting restart loop after $FATAL_FAILS consecutive fatal API/model errors (see $AGENT_LOG)"
+        break
+      fi
+      backoff=$(( 30 * (1 << (RAPID_FAILS > 4 ? 4 : RAPID_FAILS - 1)) ))
+      [ "$backoff" -gt 300 ] && backoff=300
+      log "agent exited in ${elapsed}s (rapid failure #$RAPID_FAILS); backing off ${backoff}s"
+      sleep "$backoff"
+    else
+      RAPID_FAILS=0
+      FATAL_FAILS=0
+    fi
     [ "$(now)" -lt "$DEADLINE" ] && start_agent
   elif [ "$STALL_S" -gt 0 ]; then
     m=$(stat -c %Y "$AGENT_LOG" 2>/dev/null || echo "$AGENT_STARTED")
-    if [ $(( $(now) - m )) -gt "$STALL_S" ]; then log "agent stalled; restarting"; stop_agent; start_agent; fi
+    if [ $(( $(now) - m )) -gt "$STALL_S" ]; then log "agent stalled; restarting"; stop_agent; RAPID_FAILS=0; FATAL_FAILS=0; start_agent; fi
   fi
   if [ "$(now)" -ge "$NEXT_COMMIT" ]; then commit; NEXT_COMMIT=$(( $(now) + COMMIT_S )); fi
   if [ "$(now)" -ge "$NEXT_GRADE" ]; then G=$((G + 1)); grade_checkpoint "checkpoint-$G"; NEXT_GRADE=$(( $(now) + GRADE_S )); fi

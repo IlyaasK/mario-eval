@@ -276,6 +276,8 @@ def load_agent_runs():
             "slug": d.name,
             "title": meta.get("title", d.name),
             "model": meta.get("model", d.name),
+            "kind": meta.get("kind", "agent"),
+            "repo_url": meta.get("repo_url", ""),
             "hours": meta.get("hours", 24),
             "notes": meta.get("notes", "24h autonomous agent run"),
             "summary": summary,
@@ -769,6 +771,8 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
 
     public_set = by_slug.get("r0-unchanged", (None, None, {}))[2].get("workload_set")
     for ar in agent_runs:
+        if ar.get("kind") == "trial":
+            continue
         if not public_set or ar["summary"].get("workload_set") != public_set:
             continue
         s = ar["summary"]
@@ -783,7 +787,7 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
         ram_saved_kb = ((base_foot - foot) / 1024.0) if (base_foot and valid) else 0.0
         entries.append({
             "name": f"{ar['title']} ({ar['hours']}h)",
-            "href": "",
+            "href": ar.get("repo_url", ""),
             "kind": "agent",
             "note": ar["notes"],
             "reward": rew,
@@ -829,6 +833,47 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
         )
     rows_html.append("</table></div>")
 
+    trial_runs = [ar for ar in agent_runs if ar.get("kind") == "trial"]
+    trial_html = ""
+    if trial_runs:
+        t_rows = [
+            '<div class="prose"><h2>Trial runs (harness &amp; grader bring-up)</h2>'
+            '<p>Early bring-up runs used to stress-test the v2 hardware cost model, profiler, '
+            'and private held-out gates and iron out harness bugs. Kept separate from standardized '
+            'leaderboard entries because the environment evolved mid-run.</p></div>',
+            '<div class="table-wrap"><table>',
+            '<tr><th>trial run</th><th>type</th><th class="num">routes</th>'
+            '<th class="num">best valid&times;</th><th class="num">console</th>'
+            '<th class="num">vs -O2</th><th class="num">mean FPS</th><th class="num">attempt repo</th></tr>',
+        ]
+        for ar in trial_runs:
+            s = ar["summary"]
+            p = primary_profile(s)
+            valid = s["status"] == "valid" and p.get("valid", True)
+            sp = float(p.get("speedup", 0.0)) if valid else 0.0
+            rew = float(p.get("reward", -1.0))
+            vs_o2 = p.get("vs_o2_speedup")
+            fps = (mean_fps(s) or 0.0) if valid else 0.0
+            n_routes = len(s.get("workloads", {}))
+            repo_link = f'<a href="{esc(ar["repo_url"])}">GitHub</a>' if ar.get("repo_url") else "&mdash;"
+            nm = f'<a href="{esc(ar["repo_url"])}"><b>{esc(ar["title"])}</b></a>' if ar.get("repo_url") else f'<b>{esc(ar["title"])}</b>'
+            sp_txt = f'{sp:.2f}&times;' if valid else "invalid"
+            vs_txt = f'{vs_o2:.2f}&times;' if (valid and vs_o2) else "&mdash;"
+            rew_txt = f'{rew:+.3f}' if valid else "&minus;1.000"
+            fps_txt = f'{fps:.1f}' if valid else "&mdash;"
+            t_rows.append(
+                f'<tr><td>{nm} ({esc(ar["hours"])}h)<br><span class="small muted">{esc(ar["notes"])}</span></td>'
+                f'<td><span class="tag trial">trial</span></td>'
+                f'<td class="num">{n_routes}</td>'
+                f'<td class="num"><b>{sp_txt}</b></td>'
+                f'<td class="num {"pos" if rew > 0.0005 else ""}">{rew_txt}</td>'
+                f'<td class="num">{vs_txt}</td>'
+                f'<td class="num">{fps_txt}</td>'
+                f'<td class="num">{repo_link}</td></tr>'
+            )
+        t_rows.append("</table></div>")
+        trial_html = "\n".join(t_rows)
+
     charts = [trajectory_svg(sm64_rows, [])]
     cohorts = {}
     for run in agent_runs:
@@ -837,7 +882,9 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
     for cohort, runs in cohorts.items():
         refs = [row for row in [*sm64_rows, *trial_rows] if row[3].get("workload_set") == cohort]
         count = max(len(run["summary"].get("workloads", {})) for run in runs)
-        charts.append(f'<h2>Agent checkpoints ({count} routes)</h2>' + trajectory_svg(refs, runs))
+        all_trial = all(r.get("kind") == "trial" for r in runs)
+        heading = f"Trial run checkpoints ({count} routes)" if all_trial else f"Agent checkpoints ({count} routes)"
+        charts.append(f'<h2>{heading}</h2>' + trajectory_svg(refs, runs))
     b_svg = sm64_bottleneck_svg(sm64_rows)
     t_box = "".join(f'<div class="chart-box">{chart}</div>' for chart in charts if chart)
     b_box = f'<div class="chart-box">{b_svg}</div>' if b_svg else ""
@@ -852,6 +899,8 @@ The human-expert yardstick is the <a href="{BASE}/blog/kaze-master-reference/">K
 </div>
 
 {"".join(rows_html)}
+
+{trial_html}
 
 {t_box}
 {b_box}
