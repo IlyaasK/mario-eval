@@ -3,14 +3,19 @@
 
     python3 site/build.py <out_dir>
 
-Reads the calibration summaries (results/calibration/*/summary.json and
-results/sm64-calibration/*/summary.json when present), optional 24-hour agent
-and trial runs (results/agents/*/summary.json + trajectory.json + meta.json),
-Pip's Garden public reference frames (cache/reference/runs/*/video.bin.z when
-present, never any Nintendo SM64 assets), and the hand-written posts in
-site/posts/.
+Pages follow Mechanize's gbaeval.com: About (speedup-over-time chart, featured replay), Leaderboard
+(ranked cards with per-unit bars), one page per agent run under model/<slug>/, Watch (replay player),
+Blog, and Calibration.
+
+Reads the calibration summaries (results/calibration/*/summary.json, results/sm64-calibration/ and
+results/sm64-trial-calibration/ for references graded on the agents' routes), agent and trial runs
+(results/agents/<slug>/summary.json + trajectory.json + meta.json with title, model, kind,
+provider, graded, commit, harness, repo_url, notes), the replay clips in site/assets/clips/
+(site/make_clips.py), Pip's Garden public reference frames (cache/reference/runs/*/video.bin.z when
+present, never any Nintendo SM64 assets), and the hand-written posts in site/posts/.
 """
 import html
+from collections import Counter
 import json
 import math
 import re
@@ -119,77 +124,46 @@ SM64_COURSE_SHORT = {
     "rr": "RR",
 }
 
-PIP_SVG = """<svg viewBox="0 0 200 220" role="img" aria-label="Pip, a small round robot">
-  <line x1="100" y1="44" x2="100" y2="18" stroke="#7b68ee" stroke-width="4" stroke-linecap="round"/>
-  <polygon points="100,4 110,16 100,28 90,16" fill="#38bdf8" stroke="#e8e4f4" stroke-width="2.5"/>
-  <ellipse cx="100" cy="76" rx="52" ry="38" fill="#252230" stroke="#7b68ee" stroke-width="3.5"/>
-  <rect x="62" y="62" width="76" height="28" rx="14" fill="#0a0a0d" stroke="#4a4560" stroke-width="2.5"/>
-  <circle cx="84" cy="76" r="6" fill="#2ed573"/>
-  <circle cx="116" cy="76" r="6" fill="#2ed573"/>
-  <ellipse cx="100" cy="150" rx="62" ry="50" fill="#ffb000" stroke="#e8e4f4" stroke-width="3.5"/>
-  <ellipse cx="100" cy="150" rx="26" ry="20" fill="#ffd166" stroke="#1a1820" stroke-width="2.5"/>
-  <path d="M40 140 q-22 6 -26 26" fill="none" stroke="#8a849f" stroke-width="6" stroke-linecap="round"/>
-  <path d="M160 140 q22 6 26 26" fill="none" stroke="#8a849f" stroke-width="6" stroke-linecap="round"/>
-  <ellipse cx="74" cy="204" rx="20" ry="9" fill="#4a4560" stroke="#e8e4f4" stroke-width="2.5"/>
-  <ellipse cx="126" cy="204" rx="20" ry="9" fill="#4a4560" stroke="#e8e4f4" stroke-width="2.5"/>
-</svg>"""
-
-PIPELINE_SVG = """<svg viewBox="0 0 960 156" role="img" aria-label="Grading pipeline">
-  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-    <path d="M0 0 L10 5 L0 10 z" fill="#7b68ee"/></marker></defs>
-  <g font-family="IBM Plex Mono, monospace" font-size="12" fill="#e8e4f4">
-    <g stroke="#4a4560" stroke-width="1.5" fill="#0a0a0d">
-      <rect x="4" y="42" width="132" height="68" rx="6"/>
-      <rect x="168" y="42" width="136" height="68" rx="6"/>
-      <rect x="336" y="38" width="176" height="76" rx="6" stroke="#7b68ee"/>
-      <rect x="544" y="14" width="202" height="124" rx="6" stroke="#ffb000"/>
-      <rect x="778" y="38" width="178" height="76" rx="6" stroke="#2ed573"/>
-    </g>
-    <g stroke="#7b68ee" stroke-width="1.6">
-      <line x1="136" y1="76" x2="166" y2="76" marker-end="url(#arr)"/>
-      <line x1="304" y1="76" x2="334" y2="76" marker-end="url(#arr)"/>
-      <line x1="512" y1="76" x2="542" y2="76" marker-end="url(#arr)"/>
-      <line x1="746" y1="76" x2="776" y2="76" marker-end="url(#arr)"/>
-    </g>
-    <text x="70" y="70" text-anchor="middle" font-weight="600">source</text>
-    <text x="70" y="89" text-anchor="middle" fill="#8a849f">SM64 / Pip</text>
-    <text x="236" y="70" text-anchor="middle" font-weight="600">trusted build</text>
-    <text x="236" y="89" text-anchor="middle" fill="#8a849f">bench + PLAY=1</text>
-    <text x="424" y="63" text-anchor="middle" font-weight="600" fill="#7b68ee">ares N64</text>
-    <text x="424" y="81" text-anchor="middle" fill="#8a849f">93.75MHz CPU + I/D$</text>
-    <text x="424" y="99" text-anchor="middle" fill="#8a849f">62.5MHz RSP/RDP + Bus</text>
-    <text x="645" y="36" text-anchor="middle" font-weight="600" fill="#ffb000">6 gates (6–25 routes)</text>
-    <text x="645" y="57" text-anchor="middle" fill="#8a849f">player-equiv / exact</text>
-    <text x="645" y="75" text-anchor="middle" fill="#8a849f">video + 40 dB audio</text>
-    <text x="645" y="93" text-anchor="middle" fill="#8a849f">integrity + 4 MB RAM</text>
-    <text x="645" y="111" text-anchor="middle" fill="#8a849f">cross-budget caps</text>
-    <text x="645" y="128" text-anchor="middle" fill="#ff5a63">any fail &rarr; &minus;1.0</text>
-    <text x="867" y="64" text-anchor="middle" font-weight="600" fill="#2ed573">console score</text>
-    <text x="867" y="82" text-anchor="middle" fill="#8a849f">max(CPU,RSP,RDP,RAM)</text>
-    <text x="867" y="100" text-anchor="middle" fill="#8a849f">FPS &amp; vs -O2</text>
-  </g>
-</svg>"""
-
 
 def esc(s):
     return html.escape(str(s))
 
 
+NAV = [("", "About"), ("leaderboard/", "Leaderboard"), ("watch/", "Watch"), ("blog/", "Blog")]
+AUTHOR = "Ilyaas Kapadia"
+
+# Toggles shared by every page: chart views, leaderboard card expansion and tab strips.
+SITE_JS = """<script>(function(){
+document.querySelectorAll(".chart").forEach(function(c){
+  var btns=c.querySelectorAll("[data-view]");
+  btns.forEach(function(b){b.addEventListener("click",function(){
+    btns.forEach(function(x){x.classList.toggle("on",x===b);});
+    c.querySelectorAll("[data-pane]").forEach(function(p){p.hidden=p.getAttribute("data-pane")!==b.getAttribute("data-view");});
+  });});
+});
+document.querySelectorAll(".lb-exp").forEach(function(b){b.addEventListener("click",function(){
+  var d=b.closest(".lb-card").querySelector(".lb-detail");d.hidden=!d.hidden;b.textContent=d.hidden?"Expand":"Collapse";
+});});
+document.querySelectorAll("[data-tabs]").forEach(function(t){
+  var btns=t.querySelectorAll("[data-tab]");
+  btns.forEach(function(b){b.addEventListener("click",function(){
+    btns.forEach(function(x){x.classList.toggle("on",x===b);});
+    document.querySelectorAll("[data-tabpane]").forEach(function(p){p.hidden=p.getAttribute("data-tabpane")!==b.getAttribute("data-tab");});
+  });});
+});
+})();</script>"""
+
+
 def page(title, body, active="", desc=""):
-    nav = [
-        ("", "About"),
-        ("leaderboard/", "Leaderboard"),
-        ("calibration/", "Calibration"),
-        ("blog/", "Blog"),
-    ]
     links = "".join(
-        f'<a href="{BASE}/{href}"{" class=on" if href == active else ""}>{name}</a>' for href, name in nav)
+        f'<a href="{BASE}/{href}"{" class=on" if href == active else ""}>{name}</a>' for href, name in NAV)
     links += f'<a class="cta" href="{REPO}" target="_blank" rel="noreferrer noopener">GitHub &rarr;</a>'
-    desc = desc or "A 24h RLVR environment: super-optimize Super Mario 64 or Pip's Garden on original 4 MB N64 hardware without changing the game."
+    desc = desc or ("AI coding agents get 24 hours to make Super Mario 64 run faster on an original 4 MB "
+                    "Nintendo 64 without changing the game.")
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0a0a0d">
+<meta name="theme-color" content="#141318">
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(desc)}">
 <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(desc)}">
@@ -197,21 +171,22 @@ def page(title, body, active="", desc=""):
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{BASE}/style.css">
 </head><body>
-<header class="site"><div class="wrap">
+<header class="site"><div class="bar">
   <div class="brand">
-    <span class="n64-leds" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    <a class="logo" href="{BASE}/">MARIO<span>EVAL</span></a>
-    <span class="brand-sep" aria-hidden="true">&middot;</span>
-    <span class="brand-sub">By <a href="https://ilya.as/">Ilyaas Kapadia</a></span>
+    <a class="logo" href="{BASE}/">Mario Eval</a>
+    <span class="sep">&middot;</span><span class="by">BY</span>
+    <span class="leds" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <a class="org" href="https://ilya.as/">{AUTHOR}</a>
   </div>
   <nav class="site">{links}</nav>
 </div></header>
-<main class="wrap">{body}</main>
-<footer class="site"><div class="wrap">
-Built by <a href="https://ilya.as/">Ilyaas Kapadia</a>, inspired by Mechanize's
-<a href="https://gbaeval.com/">GBA Eval</a>. Not affiliated with or endorsed by Nintendo.
-No Nintendo code or assets are distributed; Super Mario 64 support requires your own legally obtained ROM.
-</div></footer>
+<main>{body}</main>
+<footer class="site">
+  <div><span>Mario Eval &mdash; by {AUTHOR}</span><span class="sep">&middot;</span>
+  <a href="{BASE}/calibration/">Calibration</a><a href="{REPO}">Repo</a><a href="{BASE}/#acknowledgements">Acknowledgements</a></div>
+  <p>Not affiliated with or endorsed by Nintendo. No Nintendo code or assets are distributed; running Super Mario 64 requires your own legally obtained ROM.</p>
+</footer>
+{SITE_JS}
 </body></html>
 """
 
@@ -298,27 +273,11 @@ def load_agent_runs():
             "repo_url": meta.get("repo_url", ""),
             "hours": meta.get("hours", 24),
             "notes": meta.get("notes", "24h autonomous agent run"),
+            "meta": meta,
             "summary": summary,
             "trajectory": traj,
         })
     return runs
-
-
-def checkpoint_points(run):
-    cohort = run["summary"].get("workload_set")
-    if not cohort:
-        return []
-    samples = []
-    for point in (run["trajectory"] or {}).get("host_checkpoints", []):
-        speedup = point.get("speedups", {}).get("console", 0)
-        if point.get("workload_set") == cohort and point.get("status") == "valid" and speedup > 0:
-            samples.append((point["elapsed_hours"], speedup, point.get("name", ""), point.get("vs_o2_speedups", {}).get("console")))
-    best = 1.0
-    points = []
-    for hours, speedup, name, vs_o2 in sorted(samples):
-        best = max(best, speedup)
-        points.append((hours, best, name, vs_o2))
-    return [(0.0, 1.0, "baseline", None), *points] if points else []
 
 
 def mean_fps(s):
@@ -352,7 +311,7 @@ def reward_cell(s, profile):
     cls = "pos" if r > 0.0005 else ("neg" if r < -0.0005 else "")
     sp = p.get("speedup")
     tip = f' title="speedup: {sp:.3f}x"' if sp else ""
-    return f'<td class="num {cls}"{tip}>{r:+.3f}</td>'
+    return f'<td class="num {cls}"{tip}>{r if abs(r) >= 0.0005 else 0.0:+.3f}</td>'
 
 
 def speedup_cell(s):
@@ -495,7 +454,10 @@ def sm64_bottleneck_svg(sm64_rows):
     return "\n".join(parts)
 
 
-def trajectory_svg(sm64_rows, agent_runs, chart_id="traj"):
+def trajectory_svg(sm64_rows, chart_id="ladder"):
+    """Console speedup of each reference rung on the 6 public courses."""
+    w, h, left, right, top, bot = 920, 285, 68, 44, 38, 52
+    pw, ph = w - left - right, h - top - bot
     by_slug = {slug: (title, s) for slug, title, _p, s in sm64_rows if s["status"] == "valid"}
     rungs = [
         ("r0-unchanged", "1996 IDO"),
@@ -515,81 +477,6 @@ def trajectory_svg(sm64_rows, agent_runs, chart_id="traj"):
             sp = primary_profile(s).get("speedup", 1.0)
             fps = mean_fps(s) or 0.0
             pts.append((slug, label, float(sp), float(fps)))
-
-    traj_runs = [(r, points) for r in agent_runs if (points := checkpoint_points(r))]
-    if traj_runs:
-        cohorts = {r["summary"]["workload_set"] for r, _ in traj_runs}
-        assert len(cohorts) == 1, "cannot plot different workload sets on one agent curve"
-        cohort = next(iter(cohorts))
-        by_slug = {slug: data for slug, data in by_slug.items()
-                   if data[1].get("workload_set") == cohort and primary_profile(data[1]).get("valid")}
-    w, h, left, right, top, bot = 920, 285, 68, 44, 38, 52
-    pw, ph = w - left - right, h - top - bot
-
-    if traj_runs:
-        max_y = max(
-            [1.30]
-            + [primary_profile(data[1])["speedup"] for data in by_slug.values()]
-            + [speedup for _, points in traj_runs for _, speedup, _, _ in points]
-        ) * 1.05
-        min_y = 0.98
-
-        def xy(hr, sp):
-            x = left + (min(max(hr, 0.0), 24.0) / 24.0) * pw
-            y = top + (1.0 - (sp - min_y) / (max_y - min_y)) * ph
-            return x, y
-
-        parts = [
-            f'<div class="svg-tip" id="{chart_id}-tip"></div>',
-            f'<svg id="{chart_id}" viewBox="0 0 {w} {h}" role="img" aria-label="24-hour optimization scaling curve">',
-            '<g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="#e8e4f4">',
-            f'<text x="{left}" y="20" font-weight="600">Best valid host-graded console speedup vs wall-clock hours</text>',
-        ]
-        for tick in [1.0, 1.2, 1.4, 1.6, 1.8]:
-            if tick > max_y:
-                continue
-            _, ty = xy(0, tick)
-            parts.append(f'<line x1="{left}" y1="{ty:.1f}" x2="{w - right}" y2="{ty:.1f}" stroke="#2e2a3a" stroke-width="1"/>')
-            parts.append(f'<text x="{left - 10}" y="{ty + 4:.1f}" text-anchor="end" font-size="10.5" fill="#8a849f">{tick:.1f}&times;</text>')
-        for hr in [0, 4, 8, 12, 16, 20, 24]:
-            x, _ = xy(hr, 1.0)
-            parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{h - bot}" stroke="#2e2a3a" stroke-width="1"/>')
-            parts.append(f'<text x="{x:.1f}" y="{h - bot + 20}" text-anchor="middle" font-size="10.5" fill="#8a849f">{hr}h</text>')
-        for ref_slug, ref_lbl, col in [("r1-gcc-o2", "GCC -O2", "#ffb000"), (EXPERT_REF, "Kaze master", "#2ed573")]:
-            if ref_slug in by_slug:
-                rsp = primary_profile(by_slug[ref_slug][1]).get("speedup", 1.0)
-                _, ry = xy(0, rsp)
-                parts.append(f'<line x1="{left}" y1="{ry:.1f}" x2="{w - right}" y2="{ry:.1f}" stroke="{col}" stroke-dasharray="5,4" stroke-width="1.5"/>')
-                parts.append(f'<text x="{w - right - 4}" y="{ry - 6:.1f}" text-anchor="end" fill="{col}" font-size="11">{ref_lbl} ({rsp:.2f}&times;)</text>')
-
-        palette = ["#38bdf8", "#7b68ee", "#ff5a63", "#2ed573"]
-        for i, (r, points) in enumerate(traj_runs):
-            col = palette[i % len(palette)]
-            coords = [xy(hr, speedup) for hr, speedup, _, _ in points]
-            poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
-            parts.append(f'<polyline fill="none" stroke="{col}" stroke-width="2.5" points="{poly}"/>')
-            for (hr, sp, cpname, vs_o2), (px, py) in zip(points, coords):
-                vo_txt = f" ({vs_o2:.2f}x vs -O2)" if vs_o2 else ""
-                tip = f"{r['model']} @ {hr:.1f}h: {sp:.3f}x{vo_txt} [{cpname}]"
-                parts.append(f'<circle class="pt" cx="{px:.1f}" cy="{py:.1f}" r="4.5" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" data-tip="{esc(tip)}"/>')
-            lx, ly = coords[-1]
-            parts.append(f'<text x="{lx + 10:.1f}" y="{ly + 4:.1f}" text-anchor="start" fill="{col}" font-weight="600">{esc(r["model"])} ({points[-1][1]:.2f}&times;)</text>')
-        parts.append("</g></svg>")
-        parts.append(f"""<script>(function(){{
-var svg=document.getElementById("{chart_id}"),tip=document.getElementById("{chart_id}-tip");
-if(!svg||!tip)return;
-svg.querySelectorAll("circle.pt").forEach(function(c){{
-  c.style.cursor="pointer";
-  c.addEventListener("mouseenter",function(e){{
-    tip.textContent=c.getAttribute("data-tip");tip.style.display="block";
-    var box=svg.parentElement.getBoundingClientRect();
-    tip.style.left=Math.min(box.width-220,Math.max(8,e.clientX-box.left+12))+"px";
-    tip.style.top=Math.max(8,e.clientY-box.top-34)+"px";
-  }});
-  c.addEventListener("mouseleave",function(){{tip.style.display="none";}});
-}});
-}})();</script>""")
-        return "\n".join(parts)
 
     if len(pts) < 2:
         return ""
@@ -755,58 +642,6 @@ def pips_gallery_html(exported_frames, rows):
     return '<div class="frame-grid">' + "".join(cards) + "</div>"
 
 
-def trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="trial-traj"):
-    trial_runs = [ar for ar in agent_runs if ar.get("kind") == "trial"]
-    if not trial_runs:
-        return ""
-    t_rows = [
-        '<div class="prose"><h2>Trial runs (harness &amp; grader bring-up)</h2>'
-        '<p>Bring-up runs used to stress-test the v2 hardware cost model, profiler, and 25-route held-out split '
-        'and iron out bugs. Kept separate from standardized leaderboard entries because the environment evolved mid-run.</p></div>',
-        '<div class="table-wrap"><table><thead>'
-        '<tr><th>trial run</th><th>type</th><th class="num">routes</th>'
-        '<th class="num">best valid&times;</th><th class="num">console</th>'
-        '<th class="num">vs -O2</th><th class="num">mean FPS</th><th class="num">attempt repo</th></tr></thead><tbody>',
-    ]
-    for ar in trial_runs:
-        s = ar["summary"]
-        p = primary_profile(s)
-        valid = s["status"] == "valid" and p.get("valid", True)
-        sp = float(p.get("speedup", 0.0)) if valid else 0.0
-        rew = float(p.get("reward", -1.0))
-        vs_o2 = p.get("vs_o2_speedup")
-        fps = (mean_fps(s) or 0.0) if valid else 0.0
-        n_routes = len(s.get("workloads", {}))
-        repo_link = f'<a href="{esc(ar["repo_url"])}" target="_blank" rel="noreferrer noopener">GitHub &rarr;</a>' if ar.get("repo_url") else "&mdash;"
-        nm = f'<a href="{esc(ar["repo_url"])}" target="_blank" rel="noreferrer noopener"><b>{esc(ar["title"])}</b></a>' if ar.get("repo_url") else f'<b>{esc(ar["title"])}</b>'
-        sp_txt = f'{sp:.2f}&times;' if valid else "invalid"
-        vs_txt = f'{vs_o2:.2f}&times;' if (valid and vs_o2) else "&mdash;"
-        rew_txt = f'{rew:+.3f}' if valid else "&minus;1.000"
-        fps_txt = f'{fps:.1f}' if valid else "&mdash;"
-        t_rows.append(
-            f'<tr class="trial-row"><td>{nm} ({esc(ar["hours"])}h)<br><span class="small muted">{esc(ar["notes"])}</span></td>'
-            f'<td><span class="tag trial">trial</span></td>'
-            f'<td class="num">{n_routes}</td>'
-            f'<td class="num pos"><b>{sp_txt}</b></td>'
-            f'<td class="num {"pos" if rew > 0.0005 else ""}">{rew_txt}</td>'
-            f'<td class="num">{vs_txt}</td>'
-            f'<td class="num">{fps_txt}</td>'
-            f'<td class="num">{repo_link}</td></tr>'
-        )
-    t_rows.append("</tbody></table></div>")
-
-    cohorts = {}
-    for run in trial_runs:
-        if checkpoint_points(run):
-            cohorts.setdefault(run["summary"]["workload_set"], []).append(run)
-    for cohort, runs in cohorts.items():
-        refs = [row for row in [*sm64_rows, *trial_rows] if row[3].get("workload_set") == cohort]
-        count = max(len(run["summary"].get("workloads", {})) for run in runs)
-        t_rows.append(f'<div class="chart-box"><div class="panel-title" style="margin-bottom:8px">Trial run checkpoints ({count} routes &mdash; hover points for details)</div>'
-                      + trajectory_svg(refs, runs, chart_id=chart_id) + '</div>')
-    return "\n".join(t_rows)
-
-
 def export_clips(out):
     """Copy pre-rendered Super Mario 64 3-panel comparison clips into out/assets/clips/."""
     meta_path = CLIPS_SRC / "clips.json"
@@ -826,434 +661,555 @@ def export_clips(out):
     return kept
 
 
-def comparison_monitor_html(clips):
-    """Interactive 3-panel (Reference | Candidate | Difference) CRT monitor widget."""
-    if not clips:
-        return ""
-    tabs = "".join(
-        f'<button class="pill{" on" if i == 0 else ""}" data-idx="{i}">{esc(c["tab"])}</button>'
-        for i, c in enumerate(clips)
-    )
-    c0 = clips[0]
-    return f"""
-<div class="monitor" id="cmp-monitor">
-  <div class="monitor-head">
-    <div class="panel-title">Live Super Mario 64 Gate Replay &mdash; 1996 Baseline vs Candidate vs Difference</div>
-    <span class="tag {esc(c0["badge_cls"])}" id="cmp-badge">{esc(c0["badge"])}</span>
-  </div>
-  <div class="pill-bar" id="cmp-tabs" style="margin-bottom:12px">{tabs}</div>
-  <div class="monitor-screen">
-    <video id="cmp-vid" src="{BASE}/assets/clips/{esc(c0["video"])}" autoplay muted loop playsinline preload="metadata"></video>
-    <div class="screen-labels">
-      <span>1996 Retail US Baseline</span>
-      <span id="cmp-cand-lbl">Candidate ({esc(c0["slug"])})</span>
-      <span>Gate Pixel Difference</span>
-    </div>
-  </div>
-  <div class="monitor-controls">
-    <button type="button" id="cmp-play">Pause</button>
-    <button type="button" id="cmp-speed">1&times;</button>
-    <input class="monitor-scrub" id="cmp-scrub" type="range" min="0" max="{c0["frames"] - 1}" value="0" aria-label="Frame scrubber">
-    <span class="monitor-readout" id="cmp-readout">frame <b>000</b>/{c0["frames"]} &middot; <b>{c0["base_mean_ms"]:.1f}ms</b> &rarr; <b>{c0["cand_mean_ms"]:.1f}ms</b></span>
-  </div>
-  <div class="timeline-wrap">
-    <div class="timeline-hdr">
-      <span>Per-frame console ms (dim = 1996 baseline, bright = candidate; red = pixel diff &gt; 0.2%)</span>
-      <span id="cmp-tl-stat">click timeline to seek</span>
-    </div>
-    <svg id="cmp-tl" viewBox="0 0 239 44" preserveAspectRatio="none" role="img" aria-label="Per-frame console timing and diff timeline"></svg>
-  </div>
-  <div class="monitor-cap">
-    <span id="cmp-cap">{esc(c0["caption"])}</span>
-    <span class="small muted">Captured directly from <code>ares</code> N64 on public Super Mario 64 routes (240 frames @ 30 fps)</span>
-  </div>
-</div>
-<script>(function(){{
-var CLIPS={json.dumps(clips)};
-var BASE="{BASE}/assets/clips/";
-var vid=document.getElementById("cmp-vid"),
-    tabs=document.querySelectorAll("#cmp-tabs .pill"),
-    badge=document.getElementById("cmp-badge"),
-    candLbl=document.getElementById("cmp-cand-lbl"),
-    cap=document.getElementById("cmp-cap"),
-    btnPlay=document.getElementById("cmp-play"),
-    btnSpd=document.getElementById("cmp-speed"),
-    scrub=document.getElementById("cmp-scrub"),
-    readout=document.getElementById("cmp-readout"),
-    tlSvg=document.getElementById("cmp-tl"),
-    tlStat=document.getElementById("cmp-tl-stat");
-var cur=0, slow=false, playhead=null;
-
-function drawTimeline(c){{
-  var n=c.base_ms.length;
-  var maxMs=Math.max.apply(null,c.base_ms.concat(c.cand_ms).concat([40]))*1.08;
-  var col=c.badge_cls==="invalid"?"#ff5a63":(c.badge_cls==="ref"?"#7b68ee":"#2ed573");
-  var parts=[];
-  for(var i=0;i<n;i++){{
-    var bh=(c.base_ms[i]/maxMs)*40;
-    var ch=(c.cand_ms[i]/maxMs)*40;
-    parts.push('<rect x="'+i+'" y="'+(44-bh).toFixed(1)+'" width="0.85" height="'+bh.toFixed(1)+'" fill="#38344a"/>');
-    var barCol=(c.diff_pct[i]>0.2 && c.badge_cls==="invalid")?"#ff5a63":col;
-    parts.push('<rect x="'+i+'" y="'+(44-ch).toFixed(1)+'" width="0.85" height="'+ch.toFixed(1)+'" fill="'+barCol+'" opacity="0.88"/>');
-  }}
-  parts.push('<rect id="cmp-head" x="0" y="0" width="1.4" height="44" fill="#ffffff" opacity="0.9"/>');
-  tlSvg.setAttribute("viewBox","0 0 "+n+" 44");
-  tlSvg.innerHTML=parts.join("");
-  playhead=document.getElementById("cmp-head");
-}}
-
-function selectClip(idx){{
-  cur=idx;
-  var c=CLIPS[idx];
-  tabs.forEach(function(b,i){{b.classList.toggle("on",i===idx);}});
-  badge.textContent=c.badge;
-  badge.className="tag "+c.badge_cls;
-  candLbl.textContent="Candidate ("+c.slug+")";
-  cap.textContent=c.caption;
-  scrub.max=c.frames-1;
-  vid.src=BASE+c.video;
-  vid.playbackRate=slow?0.5:1.0;
-  vid.play().catch(function(){{}});
-  btnPlay.textContent="Pause";
-  drawTimeline(c);
-}}
-
-function tick(){{
-  var c=CLIPS[cur];
-  if(c && vid.duration>0){{
-    var f=Math.min(c.frames-1,Math.max(0,Math.floor(vid.currentTime*c.fps)));
-    var fi=Math.min(c.base_ms.length-1,Math.max(0,f-1));
-    if(document.activeElement!==scrub) scrub.value=f;
-    if(playhead) playhead.setAttribute("x",fi);
-    var bms=c.base_ms[fi], cms=c.cand_ms[fi], dp=c.diff_pct[fi];
-    readout.innerHTML="frame <b>"+String(f).padStart(3,"0")+"</b>/"+c.frames+" &middot; <b>"+bms.toFixed(1)+"ms</b> &rarr; <b>"+cms.toFixed(1)+"ms</b>";
-    tlStat.textContent="diff: "+dp.toFixed(2)+"% px";
-  }}
-  requestAnimationFrame(tick);
-}}
-
-tabs.forEach(function(b){{
-  b.addEventListener("click",function(){{selectClip(parseInt(b.getAttribute("data-idx"),10));}});
-}});
-btnPlay.addEventListener("click",function(){{
-  if(vid.paused){{vid.play();btnPlay.textContent="Pause";}}
-  else{{vid.pause();btnPlay.textContent="Play";}}
-}});
-btnSpd.addEventListener("click",function(){{
-  slow=!slow; vid.playbackRate=slow?0.5:1.0; btnSpd.innerHTML=slow?"0.5&times;":"1&times;";
-}});
-scrub.addEventListener("input",function(){{
-  var c=CLIPS[cur]; vid.currentTime=parseInt(scrub.value,10)/c.fps;
-}});
-tlSvg.addEventListener("click",function(e){{
-  var c=CLIPS[cur], r=tlSvg.getBoundingClientRect();
-  var frac=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
-  vid.currentTime=frac*(c.frames/c.fps);
-}});
-drawTimeline(CLIPS[0]);
-requestAnimationFrame(tick);
-}})();</script>
-"""
+AGENT_KINDS = ("agent", "trial")
+REF_SPECS = [
+    (EXPERT_REF, "Kaze master reference", "Kaze master", "human",
+     "Kaze Emanuar's and ultrasm64's published Super Mario 64 optimizations, reconstructed on the vanilla decompilation."),
+    ("r1-gcc-o2", "GCC -O2 (compiler only)", "GCC -O2", "compiler",
+     "The unmodified game rebuilt with GCC -O2 -fno-fast-math instead of 1996 IDO; no code changes."),
+]
+KIND_TAG = {
+    "agent": ("agent", "valid"), "trial": ("trial run", "trial"), "human": ("human ref", "valid"),
+    "compiler": ("compiler", "ref"), "baseline": ("baseline", "ref"),
+}
+REF_COLORS = {"human": "#2ed573", "compiler": "#ffb000", "baseline": "#8a849f"}
+AGENT_COLORS = ["#7b68ee", "#38bdf8", "#ff5a63", "#e85d04", "#d946ef", "#facc15"]
+# Per-unit speedups shown as bars: the console bottleneck and the four units it is the max of.
+BAR_UNITS = [("est_console_ms", "Console"), ("cpu_effective_cycles", "CPU"), ("rsp_busy", "RSP"),
+             ("rdp_busy", "RDP"), ("rdram_bytes", "RDRAM bus")]
 
 
-def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames, clips):
-    post_links = "".join(
-        f'<li><a href="{BASE}/blog/{slug}/"><b>{esc(m["title"])}</b></a><span class="date">{m["date"]}</span><br>'
-        f'<span class="small muted">{esc(m["summary"])}</span></li>' for slug, m, _ in post_items)
-
-    sm64_by_slug = {slug: s for slug, *_r, s in sm64_rows if s["status"] == "valid"}
-    ceil_kpi = ""
-    if EXPERT_REF in sm64_by_slug and "r0-unchanged" in sm64_by_slug:
-        r0 = sm64_by_slug["r0-unchanged"]
-        r1 = sm64_by_slug.get("r1-gcc-o2", r0)
-        r10 = sm64_by_slug[EXPERT_REF]
-        r0_fps = mean_fps(r0) or 0.0
-        r10_fps = mean_fps(r10) or 0.0
-        r10_sp = primary_profile(r10).get("speedup", 1.0)
-        r1_sp = primary_profile(r1).get("speedup", 1.0)
-        trial_best = next((ar for ar in agent_runs if ar.get("kind") == "trial" and ar["summary"].get("status") == "valid"), None)
-        trial_by_slug = {slug: s for slug, _, _, s in trial_rows}
-        r10_25_sp = primary_profile(trial_by_slug[EXPERT_REF]).get("speedup", r10_sp) if EXPERT_REF in trial_by_slug else r10_sp
-        trial_kpi = ""
-        if trial_best:
-            tsp = primary_profile(trial_best["summary"]).get("speedup", 0.0)
-            cmp_lbl = f"vs Kaze {r10_25_sp:.3f}&times;" if abs(tsp - r10_25_sp) < 0.01 else f"beats Kaze {r10_25_sp:.2f}&times;"
-            trial_kpi = f'<div class="kpi"><div class="val amber">{tsp:.3f}&times;</div><div class="lbl">Kimi K3.1 Pro trial best valid (25 routes, {cmp_lbl})</div></div>'
-        ceil_kpi = f"""
-<div class="kpis">
-  <div class="kpi"><div class="val">{r0_fps:.0f} &rarr; {r10_fps:.0f} FPS</div><div class="lbl">uncapped console throughput (1000 / est. console ms): 1996 IDO vs Kaze master</div></div>
-  <div class="kpi"><div class="val indigo">{r1_sp:.2f}&times;</div><div class="lbl">GCC -O2 compiler-only baseline (zero C edits)</div></div>
-  <div class="kpi"><div class="val pcb">{r10_sp:.2f}&times;</div><div class="lbl">Kaze master reference (6 public courses; {r10_25_sp:.2f}&times; on 25 routes)</div></div>
-  {trial_kpi}
-</div>
-"""
-
-    inspector = telemetry_inspector_html(sm64_rows, agent_runs)
-    monitor = comparison_monitor_html(clips)
-    trial_sec = trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="home-trial-traj")
-    gallery = pips_gallery_html(exported_frames, rows)
-
-    body = f"""
-<div class="hero">
-  <div>
-    <div class="eyebrow"><span class="dot"></span>N64 4 MB Hardware RLVR Benchmark</div>
-    <h1>Super-optimize an N64 game. Don't change it.</h1>
-    <p class="lede">An AI coding agent gets the C decompilation of <b>Super Mario 64</b> (or the open-source <b>Pip's Garden</b>), pinned N64 compilers, an instrumented cycle/cache/RDP-accurate <code>ares</code> emulator, and 24 hours to make original 4 MB console execution faster while preserving gameplay, picture, and 40 dB audio.</p>
-    <div class="hero-links">
-      <a class="btn primary" href="{BASE}/leaderboard/">View Leaderboard &rarr;</a>
-      <a class="btn" href="{BASE}/calibration/">Calibration Suite</a>
-      <a class="btn" href="{REPO}" target="_blank" rel="noreferrer noopener">Source on GitHub</a>
-    </div>
-  </div>
-  {PIP_SVG}
-</div>
-
-{ceil_kpi}
-
-{monitor}
-
-{trial_sec}
-
-{inspector}
-
-<h2>How a submission is graded</h2>
-<div class="diagram">{PIPELINE_SVG}</div>
-
-<div class="cards">
-  <div class="card primary"><h3>console <span>headline</span></h3><p>Per-frame <code>max(CPU_ms, RSP_ms, RDP_ms, RDRAM_ms)</code> within 4 MB RDRAM &mdash; true console frame time.</p></div>
-  <div class="card"><h3>speed <span>diagnostic</span></h3><p>93.75 MHz VR4300 CPU cycles per frame, including 16 KB I$ / 8 KB D$ stalls and RCP bus contention.</p></div>
-  <div class="card"><h3>rdp <span>diagnostic</span></h3><p>62.5 MHz RDP combiner, early-Z rejection, 4-bank 2 KB RDRAM row misses, TMEM loads &amp; syncs.</p></div>
-  <div class="card"><h3>rsp <span>diagnostic</span></h3><p>62.5 MHz RSP Fast3D graphics &amp; ABI1 audio microcode busy cycles per frame.</p></div>
-  <div class="card"><h3>traffic <span>diagnostic</span></h3><p>RDRAM bytes moved per frame across CPU caches, SP, DP, PI, SI &amp; 60 Hz VI scanout.</p></div>
-  <div class="card"><h3>memory <span>diagnostic</span></h3><p>Distinct 16-byte RDRAM lines touched after boot (hard 4,194,304 B retail ceiling).</p></div>
-</div>
-
-<h2>Pip's Garden (open-source zero-ROM target)</h2>
-<p class="muted">Ships complete in-repo (<code>workload/</code>) so anyone can run the full 24-hour harness without an external ROM:</p>
-{gallery}
-
-<h2>Writing</h2>
-<ul class="post-list">{post_links}</ul>
-"""
-    write(out, "index.html", page("Mario Eval — Super-optimize an N64 game on real hardware", body, active=""))
+def geomean(xs):
+    return math.exp(sum(math.log(x) for x in xs) / len(xs))
 
 
-def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
-    sm64_valid = [(slug, title, purpose, s) for slug, title, purpose, s in sm64_rows if s["status"] == "valid"]
-    by_slug = {slug: (title, purpose, s) for slug, title, purpose, s in sm64_valid}
+def score_color(sp):
+    """gbaeval-style red-to-green ramp over console speedup."""
+    for floor, col in ((1.6, "#36c23a"), (1.3, "#a6c13a"), (1.1, "#d6a22c"), (1.0, "#dd6b2c")):
+        if sp >= floor - 1e-9:
+            return col
+    return "#d64545"
 
-    ref_order = [
-        ("r11-beyond-kaze", "Beyond Kaze (R11)", "ref",
-         "Earlier Kaze-style build with additional D-cache experiments; scores below the current expert reference"),
-        ("r10-kaze-master", "Kaze master reference (R10)", "human ref",
-         "Human-expert reference reconstructed from Kaze Emanuar's public SM64 videos & ultrasm64 (not a physical hardware ceiling)"),
-        ("r9-kaze-partial", "Partial Kaze reference (R9)", "ref",
-         "I-cache + 1-ULP trig + 3-line Surface + Sub cache + lazy Mtx + RA_ZB_OPA + coin batch + -304 KB"),
-        ("r8-kaze-collision-objects", "Kaze Rung 2: Collision & Objects (R8)", "ref",
-         "R7 + 3-cache-line struct Surface + Bowser's Sub stationary surface cache + single-floor shadows + watermark pool"),
-        ("r7-kaze-icache-trig", "Kaze Rung 1: I-Cache & Table-Free Math (R7)", "ref",
-         "sm64.ld 16 KB I-cache de-aliasing + 1-ULP polynomial sins/coss + bit-exact 256 B atan2s + IEEE random_float"),
-        ("r6-kaze-super", "Early Multi-Subsystem Rung (R6)", "ref",
-         "GCC -O2 + Kaze matrix math + CACHE 0x0d + skybox cull + double-buffer"),
-        ("r1-gcc-o2", "Compiler Only: GCC -O2 -fno-fast-math (R1)", "compiler",
-         "Zero C edits: switch Makefile from 1996 IDO -O0 to modern mips64-elf-gcc -O2"),
-        ("r4-kaze-rdp-opa", "IDO -O0 + G_RM_RA_ZB_OPA_SURF (R4)", "ref",
-         "Drop per-pixel IM_RD framebuffer reads on opaque surfaces under original IDO compiler"),
-        ("r2-kaze-mtx", "IDO -O0 + Kaze Matrix Math (R2)", "ref",
-         "Stackless mtxf_mul + packed 32-bit mtxf_to_mtx under original IDO compiler"),
-        ("r0-unchanged", "1996 Retail US Baseline (IDO -O0)", "ref",
-         "Unmodified n64decomp/sm64 matching the 8 MB retail US cartridge"),
-    ]
 
+def unit_speedups(s):
+    wls = list(s.get("workloads", {}).values())
+    out = {}
+    for key, _ in BAR_UNITS:
+        ratios = [w["ratios"][key] for w in wls if w.get("ratios", {}).get(key)]
+        if ratios:
+            out[key] = 1.0 / geomean(ratios)
+    return out
+
+
+def baseline_fps(s):
+    """Mean uncapped FPS of the 1996 build over the routes in s (from each route's ratio)."""
+    vals = [1000.0 * w["ratios"]["est_console_ms"] / w["metrics"]["est_console_ms"]
+            for w in s.get("workloads", {}).values()]
+    return sum(vals) / len(vals) if vals else None
+
+
+def route_label(wid):
+    if wid in SM64_COURSE_NAMES:
+        return SM64_COURSE_NAMES[wid]
+    code = wid.removeprefix("heldout-")
+    if code.startswith("mash-"):
+        return f"private &middot; button mash, {esc(code[5:].upper())}"
+    return f"private &middot; {esc(code.upper())}"
+
+
+def build_board(trial_rows, agent_runs):
+    """Every agent run and reference rung graded on the agents' replay set, best first."""
+    cohorts = Counter(r["summary"]["workload_set"] for r in agent_runs if r["summary"].get("workload_set"))
+    if not cohorts:
+        return None
+    cohort = cohorts.most_common(1)[0][0]
     entries = []
-    base_foot = None
-    if "r0-unchanged" in by_slug:
-        w0 = list(by_slug["r0-unchanged"][2]["workloads"].values())
-        base_foot = sum(x["metrics"]["footprint_bytes"] for x in w0) / len(w0)
+    color = iter(AGENT_COLORS * 4)
+    for r in agent_runs:
+        s = r["summary"]
+        if s.get("workload_set") != cohort:
+            continue
+        p = primary_profile(s)
+        valid = s["status"] == "valid" and p.get("valid", False)
+        cps = [c for c in (r["trajectory"] or {}).get("host_checkpoints", []) if c.get("workload_set") == cohort]
+        points = [(c["elapsed_hours"], c["speedups"]["console"], c.get("name", ""))
+                  for c in cps if c.get("status") == "valid" and c.get("speedups", {}).get("console")]
+        entries.append({
+            "slug": r["slug"], "name": r["model"].removesuffix(" (trial)"),
+            "short": r["model"].removesuffix(" (trial)"), "kind": r.get("kind", "agent"),
+            "org": r["meta"].get("provider", ""), "date": r["meta"].get("graded", ""),
+            "commit": r["meta"].get("commit", ""), "harness": r["meta"].get("harness", ""),
+            "repo_url": r["repo_url"], "note": r["notes"], "href": f"{BASE}/model/{r['slug']}/",
+            "valid": valid, "speedup": float(p["speedup"]) if valid else 0.0,
+            "vs_o2": p.get("vs_o2_speedup") if valid else None, "fps": mean_fps(s) if valid else None,
+            "units": unit_speedups(s) if valid else {}, "summary": s, "points": points, "checkpoints": cps,
+            "end_h": max([c["elapsed_hours"] for c in cps] + [0.0]), "color": next(color),
+        })
+    by_slug = {slug: s for slug, _t, _p, s in trial_rows if s.get("workload_set") == cohort}
+    gcc = None
+    for slug, name, short, kind, note in REF_SPECS:
+        s = by_slug.get(slug)
+        if not s or s["status"] != "valid":
+            continue
+        p = primary_profile(s)
+        entries.append({
+            "slug": slug, "name": name, "short": short, "kind": kind, "org": "", "date": "reference",
+            "note": note, "href": f"{BASE}/blog/kaze-master-reference/" if kind == "human" else f"{BASE}/calibration/#sm64-{slug}",
+            "valid": True, "speedup": float(p["speedup"]), "vs_o2": p.get("vs_o2_speedup"),
+            "fps": mean_fps(s), "units": unit_speedups(s), "summary": s, "points": [],
+        })
+        if kind == "compiler":
+            gcc = float(p["speedup"])
+    sample = entries[0]["summary"]
+    entries.append({
+        "slug": "r0-unchanged", "name": "1996 retail build (IDO)", "short": "1996 build", "kind": "baseline",
+        "org": "", "date": "reference", "note": "The unmodified decompilation, which matches the retail US cartridge.",
+        "href": f"{BASE}/calibration/#sm64-r0-unchanged", "valid": True, "speedup": 1.0,
+        "vs_o2": (1.0 / gcc) if gcc else None, "fps": baseline_fps(sample),
+        "units": {key: 1.0 for key, _ in BAR_UNITS}, "summary": None, "points": [],
+    })
+    entries.sort(key=lambda e: (e["valid"], e["speedup"]), reverse=True)
+    wids = list(sample.get("workloads", {}))
+    public = [w for w in wids if w in SM64_COURSES]
+    return {"cohort": cohort, "entries": entries, "gcc": gcc,
+            "routes": len(wids), "public": len(public), "private": len(wids) - len(public)}
 
-    def _entry_profiles(s):
-        out_p = {}
-        for p in PROFILES:
-            pv = s.get("profiles", {}).get(p, {})
-            ok = s["status"] == "valid" and pv.get("valid", False)
-            out_p[p] = {
-                "valid": ok,
-                "speedup": round(float(pv.get("speedup", 0.0)), 3) if ok else 0.0,
-                "reward": round(float(pv.get("reward", -1.0)), 4) if ok else -1.0,
-                "vs_o2": round(float(pv["vs_o2_speedup"]), 3) if (ok and pv.get("vs_o2_speedup")) else None,
-            }
-        return out_p
 
-    for slug, label, kind, note in ref_order:
+def speedup_svg(agents, refs, div):
+    """Best valid console speedup over wall-clock hours, divided by `div`, with reference lines."""
+    W, H, L, R, T, B = 760, 340, 50, 176, 14, 46
+    pw, ph = W - L - R, H - T - B
+    vals = [1.0 / div] + [e["speedup"] / div for e in refs] + [sp / div for e in agents for _, sp, _ in e["points"]]
+    lo, hi = min(vals), max(vals)
+    step = 0.1 if hi - lo <= 0.6 else (0.2 if hi - lo <= 1.4 else 0.5)
+    lo = math.floor(round(lo / step, 6)) * step
+    hi = math.ceil(round((hi + 0.03) / step, 6)) * step
+
+    def x(hr):
+        return L + min(max(hr, 0.0), 24.0) / 24.0 * pw
+
+    def y(v):
+        return T + (1.0 - (v - lo) / (hi - lo)) * ph
+
+    out = [f'<svg viewBox="0 0 {W} {H}" class="speed-chart" role="img" aria-label="Console speedup over wall-clock hours">']
+    t = lo
+    while t <= hi + 1e-9:
+        out.append(f'<line class="grid" x1="{L}" x2="{L + pw}" y1="{y(t):.1f}" y2="{y(t):.1f}"/>'
+                   f'<text class="ax" x="{L - 8}" y="{y(t) + 3:.1f}" text-anchor="end">{t:.1f}&times;</text>')
+        t += step
+    for hr in (0, 6, 12, 18, 24):
+        out.append(f'<text class="ax" x="{x(hr):.1f}" y="{T + ph + 18}" text-anchor="middle">{"0M" if hr == 0 else f"{hr}H"}</text>')
+    out.append(f'<text class="ax" x="{L + pw / 2:.1f}" y="{H - 6}" text-anchor="middle">WALL-CLOCK</text>')
+    labels = []
+    for e in refs:
+        v, col = e["speedup"] / div, REF_COLORS[e["kind"]]
+        out.append(f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
+                   f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.3f}&times;</title></line>')
+        labels.append((y(v), col, f'{e["short"]} {v:.2f}×'))
+    for e in agents:
+        col, samples = e["color"], sorted(e["points"])
+        best, steps = 0.0, []
+        for hr, sp, _ in samples:
+            best = max(best, sp / div)
+            steps.append((hr, best))
+        h0, v0 = steps[0]
+        # Before the first host grade on this replay set nothing is known: dotted lead-in.
+        out.append(f'<line x1="{x(0):.1f}" y1="{y(1.0 / div):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
+                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
+        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4"/>')
+        for hr, sp, name in samples:
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.6" fill="{col}" stroke="#141318" stroke-width="1.5">'
+                       f'<title>{esc(e["name"])} at {hr:.1f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
+        labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.2f}×'))
+    labels.sort()
+    last = -1e9
+    for ly, col, txt in labels:
+        ly = max(ly, last + 14)
+        last = ly
+        out.append(f'<rect x="{L + pw + 8}" y="{ly - 6:.1f}" width="3" height="11" fill="{col}"/>'
+                   f'<text class="lbl" x="{L + pw + 16}" y="{ly + 3.5:.1f}">{esc(txt)}</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def chart_html(views, title=""):
+    """A chart panel with gbaeval-style text toggles between `views` = [(key, label, svg)]."""
+    btns = "".join(f'<button type="button" data-view="{k}"{" class=on" if i == 0 else ""}>{lbl}</button>'
+                   for i, (k, lbl, _svg) in enumerate(views)) if len(views) > 1 else ""
+    panes = "".join(f'<div data-pane="{k}"{"" if i == 0 else " hidden"}>{svg}</div>' for i, (k, _l, svg) in enumerate(views))
+    head = f'<div class="chart-head"><span class="chart-title">{title}</span><div class="toggle">{btns}</div></div>'
+    return f'<div class="chart">{head}{panes}</div>'
+
+
+def speedup_chart(board, only=None, title=""):
+    agents = [e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["points"] and only in (None, e["slug"])]
+    refs = [e for e in board["entries"] if e["kind"] not in AGENT_KINDS and e["valid"]]
+    views = [("vanilla", "vs 1996", speedup_svg(agents, refs, 1.0))]
+    if board["gcc"]:
+        views.append(("o2", "vs GCC -O2", speedup_svg(agents, refs, board["gcc"])))
+    return chart_html(views, title)
+
+
+def bar_pct(sp, top):
+    if sp < 1.0:
+        return 2.0
+    return max(2.0, min(100.0, math.log(sp) / math.log(top) * 100.0))
+
+
+def unit_bars(units, top):
+    rows = []
+    for key, lbl in BAR_UNITS:
+        v = units.get(key)
+        if v is None:
+            continue
+        rows.append(f'<div class="ubar"><span class="lbl">{lbl}</span><div class="track"><div class="fill" '
+                    f'style="width:{bar_pct(v, top):.1f}%;background:{score_color(v)}"></div></div>'
+                    f'<span class="val">{v:.2f}&times;</span></div>')
+    return '<div class="ubars">' + "".join(rows) + "</div>"
+
+
+def course_tiles(wls):
+    tiles = []
+    for c in SM64_COURSES:
+        d = wls.get(c)
+        if not d:
+            continue
+        ratio = d["ratios"]["est_console_ms"]
+        cand = d["metrics"]["est_console_ms"]
+        base, sp = cand / ratio, 1.0 / ratio
+        tiles.append(
+            f'<div class="ct"><div class="ct-head"><b>{SM64_COURSE_NAMES[c]}</b>'
+            f'<span class="ct-badge" style="background:{score_color(sp)}">{sp:.2f}&times;</span></div>'
+            f'<div class="ct-row"><span>{base:.1f} &rarr; {cand:.1f} ms</span><span>{1000 / base:.0f} &rarr; {1000 / cand:.0f} fps</span></div>'
+            f'<div class="ct-track" title="frame time relative to the 1996 build"><div style="width:{100 * ratio:.1f}%"></div></div></div>')
+    return '<div class="ct-grid">' + "".join(tiles) + "</div>"
+
+
+def routes_table(wls, limit=None):
+    rows = sorted(wls.items(), key=lambda kv: kv[1]["ratios"]["est_console_ms"], reverse=True)
+    if limit:
+        rows = rows[:limit]
+    body = "".join(
+        f'<tr><td>{route_label(wid)}</td>'
+        f'<td class="num">{d["metrics"]["est_console_ms"] / d["ratios"]["est_console_ms"]:.1f} &rarr; {d["metrics"]["est_console_ms"]:.1f} ms</td>'
+        f'<td class="num">{d["metrics"]["est_fps"]:.0f}</td>'
+        f'<td class="num" style="color:{score_color(1 / d["ratios"]["est_console_ms"])}">{1 / d["ratios"]["est_console_ms"]:.2f}&times;</td></tr>'
+        for wid, d in rows)
+    return ('<div class="table-wrap"><table><thead><tr><th>route</th><th class="num">frame time</th>'
+            f'<th class="num">uncapped fps</th><th class="num">speedup</th></tr></thead><tbody>{body}</tbody></table></div>')
+
+
+def entry_card(e, rank, top):
+    tag, tag_cls = KIND_TAG[e["kind"]]
+    name = f'<a href="{e["href"]}">{esc(e["name"])}</a>' if e["href"] else esc(e["name"])
+    big = f'{e["speedup"]:.3f}<small>&times;</small>' if e["valid"] else "&minus;1"
+    sub = [esc(e["org"])] if e.get("org") else []
+    if e["valid"] and e["vs_o2"]:
+        sub.append(f'{e["vs_o2"]:.2f}&times; vs GCC -O2')
+    if e["valid"] and e["fps"]:
+        sub.append(f'{e["fps"]:.0f} uncapped FPS')
+    detail = ""
+    if e["summary"]:
+        wls = e["summary"]["workloads"]
+        private = [d["ratios"]["est_console_ms"] for wid, d in wls.items() if wid not in SM64_COURSES]
+        priv = (f'<p class="small muted">{len(private)} private routes: {1 / geomean(private):.2f}&times; geometric mean.</p>'
+                if private else "")
+        detail = (f'<div class="sec-lbl">Public courses</div>{course_tiles(wls)}{priv}'
+                  f'<div class="sec-lbl">Slowest routes</div>{routes_table(wls, limit=5)}'
+                  + (f'<a class="more" href="{e["href"]}">All routes &rarr;</a>' if e["kind"] in AGENT_KINDS else ""))
+    exp = '<button class="lb-exp" type="button">Expand</button>' if detail else ""
+    return f"""<div class="lb-card{"" if e["valid"] else " invalid"}">
+<div class="lb-score"><span class="rank">#{rank}</span><span class="big">{big}</span></div>
+<div class="lb-main">
+  <div class="lb-top"><span class="lb-name">{name}</span><span class="tag {tag_cls}">{tag}</span><span class="lb-date">{esc(e["date"])}</span>{exp}</div>
+  <div class="lb-sub">{" &middot; ".join(sub)}</div>
+  {unit_bars(e["units"], top) if e["valid"] else ""}
+</div>
+{f'<div class="lb-detail" hidden>{detail}</div>' if detail else ""}
+</div>"""
+
+
+def board_cards(board):
+    top = max([2.0] + [v * 1.08 for e in board["entries"] for v in e["units"].values()])
+    return "".join(entry_card(e, i + 1, top) for i, e in enumerate(board["entries"]))
+
+
+PLAYER_JS = """<script>(function(){
+var BASE="{BASE}/assets/clips/";
+document.querySelectorAll("[data-player]").forEach(function(root){
+  var clips=JSON.parse(root.querySelector("script[type='application/json']").textContent);
+  var q=function(s){return root.querySelector(s);};
+  var vid=q("video"),ctx=[].slice.call(root.querySelectorAll("canvas")).map(function(c){return c.getContext("2d");});
+  // The clips are 962x240: 1996 build | candidate | difference with 1px separators.
+  // Panels show reference, difference, candidate (gbaeval order).
+  var OFF=[0,642,321];
+  var stRef=q("[data-stat=ref]"),stDiff=q("[data-stat=diff]"),stCand=q("[data-stat=cand]"),
+      candLbl=q("[data-cand]"),title=q("[data-title]"),badge=q("[data-badge]"),cap=q("[data-cap]"),
+      scrub=q("input[type=range]"),tl=q("svg.tl"),bp=q("[data-play]"),bs=q("[data-speed]");
+  var cur=0,slow=false,head=null;
+  function timeline(c){
+    if(!tl)return;
+    var n=c.base_ms.length,max=Math.max.apply(null,c.base_ms.concat(c.cand_ms))*1.08,p=[];
+    var col=c.badge_cls==="invalid"?"#ff5a63":(c.badge_cls==="ref"?"#2ed573":"#7b68ee");
+    for(var i=0;i<n;i++){
+      var bh=c.base_ms[i]/max*40,ch=c.cand_ms[i]/max*40;
+      p.push('<rect x="'+i+'" y="'+(40-bh).toFixed(1)+'" width=".85" height="'+bh.toFixed(1)+'" fill="#38344a"/>');
+      p.push('<rect x="'+i+'" y="'+(40-ch).toFixed(1)+'" width=".85" height="'+ch.toFixed(1)+'" fill="'+(c.diff_pct[i]>0.2?"#ff5a63":col)+'"/>');
+    }
+    p.push('<rect class="head" x="0" y="0" width="1.2" height="40" fill="#fff"/>');
+    tl.setAttribute("viewBox","0 0 "+n+" 40");tl.innerHTML=p.join("");head=tl.querySelector(".head");
+  }
+  function sel(i){
+    cur=i;var c=clips[i];
+    root.querySelectorAll("[data-clip]").forEach(function(b){b.classList.toggle("on",+b.getAttribute("data-clip")===i);});
+    vid.src=BASE+c.video;vid.playbackRate=slow?0.5:1;vid.play().catch(function(){});
+    if(candLbl)candLbl.textContent=c.name;
+    if(title)title.textContent=c.course+" ("+c.name+")";
+    if(badge){badge.textContent=c.badge;badge.className="tag "+c.badge_cls;}
+    if(cap)cap.textContent=c.caption;
+    if(scrub)scrub.max=c.frames-1;
+    if(bp)bp.textContent="Pause";
+    timeline(c);
+  }
+  function draw(){
+    var c=clips[cur];
+    if(vid.readyState>=2){
+      for(var k=0;k<3;k++)ctx[k].drawImage(vid,OFF[k],0,320,240,0,0,320,240);
+      var n=c.base_ms.length,f=Math.min(n-1,Math.max(0,Math.floor(vid.currentTime*c.fps)));
+      var b=c.base_ms[f],m=c.cand_ms[f],d=c.diff_pct[f];
+      stRef.innerHTML="<b>"+b.toFixed(1)+" ms</b> &middot; "+Math.round(1000/b)+" fps";
+      stCand.innerHTML="<b>"+m.toFixed(1)+" ms</b> &middot; "+Math.round(1000/m)+" fps &middot; <b class=sp>"+(b/m).toFixed(2)+"&times;</b>";
+      stDiff.innerHTML="<b>"+d.toFixed(2)+"%</b> pixels differ";stDiff.classList.toggle("bad",d>0.2);
+      if(scrub&&document.activeElement!==scrub)scrub.value=f;
+      if(head)head.setAttribute("x",f);
+    }
+    requestAnimationFrame(draw);
+  }
+  root.querySelectorAll("[data-clip]").forEach(function(b){b.addEventListener("click",function(){sel(+b.getAttribute("data-clip"));});});
+  if(bp)bp.addEventListener("click",function(){if(vid.paused){vid.play();bp.textContent="Pause";}else{vid.pause();bp.textContent="Play";}});
+  if(bs)bs.addEventListener("click",function(){slow=!slow;vid.playbackRate=slow?0.5:1;bs.innerHTML=slow?"0.5&times;":"1&times;";});
+  if(scrub)scrub.addEventListener("input",function(){vid.currentTime=(+scrub.value+0.5)/clips[cur].fps;});
+  if(tl)tl.addEventListener("click",function(e){var r=tl.getBoundingClientRect(),c=clips[cur];
+    vid.currentTime=Math.max(0,Math.min(0.999,(e.clientX-r.left)/r.width))*c.frames/c.fps;});
+  var m=/[?&]c=(\\d+)/.exec(location.search);
+  sel(root.hasAttribute("data-url")&&m&&clips[+m[1]]?+m[1]:0);
+  requestAnimationFrame(draw);
+});
+})();</script>""".replace("{BASE}", BASE)
+
+
+def clip_course(c):
+    return SM64_COURSE_NAMES.get(c["route"], c["route"]).removesuffix(" (Sub)")
+
+
+def player_html(clips, full=False):
+    """Reference | difference | candidate screens drawn from one composite clip, with live frame timing."""
+    data = [{**c, "course": clip_course(c)} for c in clips]
+    c0 = data[0]
+    screens = f"""<div class="screens">
+  <div class="screen"><div class="screen-lbl">1996 build (reference)</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="ref"></div></div>
+  <div class="screen"><div class="screen-lbl">Diff</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="diff"></div></div>
+  <div class="screen"><div class="screen-lbl" data-cand>{esc(c0["name"])}</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="cand"></div></div>
+</div>"""
+    blob = json.dumps(data).replace("</", "<\\/")
+    if not full:
+        head = (f'<div class="feature-head"><h2 class="px-h" data-title>{esc(c0["course"])} ({esc(c0["name"])})</h2>'
+                f'<a class="mini-btn" href="{BASE}/watch/">Watch</a></div>')
+        return (f'<div class="player" data-player>{head}{screens}<video class="src" muted loop playsinline preload="auto"></video>'
+                f'<script type="application/json">{blob}</script></div>')
+    tabs = "".join(f'<button type="button" class="pill" data-clip="{i}">{esc(c["name"])} &middot; {esc(SM64_COURSE_SHORT.get(c["route"], c["route"]))}</button>'
+                   for i, c in enumerate(data))
+    return f"""<div class="player full" data-player data-url>
+<div class="pill-bar">{tabs}</div>
+<div class="feature-head"><h2 class="px-h" data-title></h2><span class="tag" data-badge></span></div>
+{screens}
+<div class="controls"><button type="button" data-play>Pause</button><button type="button" data-speed>1&times;</button>
+<input type="range" min="0" max="239" value="0" aria-label="Frame"></div>
+<div class="tl-wrap"><div class="tl-hdr"><span>Console frame time per frame: grey = 1996 build, colour = candidate, red = frame fails the video gate</span></div>
+<svg class="tl" preserveAspectRatio="none" role="img" aria-label="Per-frame console time"></svg></div>
+<p class="cap" data-cap></p>
+<video class="src" muted loop playsinline preload="auto"></video>
+<script type="application/json">{blob}</script>
+</div>"""
+
+
+def post_cards(post_items):
+    return '<div class="post-cards">' + "".join(
+        f'<a class="post-card" href="{BASE}/blog/{slug}/"><div class="pc-top"><span class="pc-title">{esc(m["title"])}</span>'
+        f'<span class="pc-date">{m["date"]}</span></div><p>{esc(m["summary"])}</p></a>' for slug, m, _ in post_items) + "</div>"
+
+
+def build_index(out, board, post_items, clips):
+    lead = next((e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["valid"]), None)
+    base_fps = next(e["fps"] for e in board["entries"] if e["kind"] == "baseline")
+    top = (f'<p class="top-cand">Top candidate: <a href="{lead["href"]}">{esc(lead["name"])}</a> '
+           f'<b>{lead["speedup"]:.3f}&times;</b></p>') if lead else ""
+    featured = player_html(clips[:1]) if clips else ""
+    body = f"""
+<section class="hero">
+  <div class="hero-text">
+    <h1>Models try to make Super Mario 64 run faster on a real Nintendo 64.</h1>
+    <p>We give AI coding agents the C source of Super Mario 64 and 24 hours to make it run as fast as possible on
+    an original 4&nbsp;MB console, without changing the game. Every frame is costed on an instrumented N64 emulator
+    and checked against the 1996 game.</p>
+    <p>The 1996 build runs at about {base_fps:.0f} uncapped frames per second on our routes. There is no ceiling:
+    the score is how much less console time each frame takes.</p>
+    {top}
+    <div class="hero-btns"><a class="px-btn primary" href="{BASE}/leaderboard/">Leaderboard</a>
+    <a class="px-btn" href="{BASE}/watch/">Watch</a><a class="px-btn" href="{BASE}/blog/">Blog</a></div>
+  </div>
+  <div class="hero-chart">{speedup_chart(board)}</div>
+</section>
+<div class="col">
+{featured}
+
+<h2 class="px-h">Scoring</h2>
+<div class="box">
+<p>After 24 hours we rebuild the agent's game from source with our own toolchain and replay recorded controller
+input on {board["routes"]} routes: the {board["public"]} public courses the agent can test, plus {board["private"]}
+private routes it never sees (other courses and seeded button mashing). A frame costs as much as the busiest of the
+console's four units, which run in parallel: <code>max(CPU, RSP, RDP, RDRAM bus)</code>. See
+<a href="{BASE}/blog/what-the-emulator-measures/">What the emulator measures</a> and
+<a href="{BASE}/blog/calibrating-the-grader/">Calibrating the grader</a>.</p>
+<div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup</span><span class="w">score</span>
+<p>Geometric mean over routes of the 1996 build's frame time divided by the candidate's. Unbounded above.
+FPS figures are 1000 / frame time: the work rate, not the 30 FPS the game displays.</p></div>
+<div class="score-sec"><span class="k" style="color:var(--amber)">Gameplay</span><span class="w">gate</span>
+<p>Mario's position, speed, action and stats, the camera, and every actor within 2000 units match the 1996 game on every frame.</p></div>
+<div class="score-sec"><span class="k" style="color:var(--cyan)">Video</span><span class="w">gate</span>
+<p>Each frame matches the original picture, or an accepted variant such as Nintendo's F3DEX2 microcode, on 99.8% of pixels within &plusmn;2/31 per channel.</p></div>
+<div class="score-sec"><span class="k" style="color:var(--red-soft)">Audio</span><span class="w">gate</span>
+<p>At least 40 dB signal-to-noise against the original sound output.</p></div>
+<div class="score-sec"><span class="k" style="color:var(--indigo-lit)">Hardware</span><span class="w">gate</span>
+<p>Fits in 4 MB of RAM, leaves the harness untouched, and the real-time console build links. No route may get more
+than 5% slower. Failing any gate scores &minus;1.</p></div>
+</div>
+
+<h2 class="px-h">How models run</h2>
+<div class="box">
+<p>Each model gets a Docker container with the Super Mario 64 decompilation (extracted assets, no ROM), the SGI IDO
+and GCC MIPS compilers, the instrumented emulator, and a <code>mev</code> tool that builds, runs, profiles and grades
+the public courses. It has no internet access beyond its model API. We run each model for 24 hours; the host
+commits its work and grades a snapshot on every route every two hours.</p>
+<p>See <a href="{BASE}/blog/building-mario-eval/">Building Mario Eval</a> for the container layout and the task statement.</p>
+</div>
+
+<h2 class="px-h">Blog</h2>
+{post_cards(post_items)}
+
+<h2 class="px-h" id="acknowledgements">Acknowledgements</h2>
+<p class="ack">Built by <a href="https://ilya.as/">{AUTHOR}</a>, modelled on Mechanize's <a href="https://gbaeval.com/">GBA Eval</a>.
+Human-expert techniques from <a href="https://www.youtube.com/@KazeN64">Kaze Emanuar</a>'s public Super Mario 64 work and
+ultrasm64 (FazanaJ, CrashOveride95). Decompilation by the <a href="https://github.com/n64decomp/sm64">n64decomp</a> team;
+emulation by <a href="https://ares-emu.net/">ares</a>.</p>
+</div>
+{PLAYER_JS if featured else ""}
+"""
+    write(out, "index.html", page("Mario Eval — make Super Mario 64 faster on a real N64", body, active=""))
+
+
+def ladder_html(sm64_rows):
+    """Reference rungs on the 6 public courses, re-rankable by resource profile."""
+    by_slug = {slug: (title, s) for slug, title, _p, s in sm64_rows if s["status"] == "valid"}
+    order = [
+        ("r11-beyond-kaze", "Beyond Kaze (R11)", "Earlier Kaze-style build with extra D-cache work; below the current expert reference."),
+        ("r10-kaze-master", "Kaze master reference (R10)", "Kaze Emanuar's and ultrasm64's published techniques, reconstructed."),
+        ("r9-kaze-partial", "Partial Kaze reference (R9)", "I-cache layout, 1-ULP trig, 3-line Surface, Sub cache, lazy Mtx, RA_ZB_OPA, coin batch, −304 KB."),
+        ("r8-kaze-collision-objects", "Collision & objects (R8)", "R7 plus cache-line Surface, Bowser's Sub surface cache, single-floor shadows."),
+        ("r7-kaze-icache-trig", "I-cache & table-free math (R7)", "16 KB I-cache de-aliasing, polynomial sin/cos, bit-exact atan2s."),
+        ("r6-kaze-super", "Early multi-subsystem (R6)", "GCC -O2, Kaze matrix math, CACHE 0x0d, skybox cull, double buffer."),
+        ("r1-gcc-o2", "GCC -O2, no code changes (R1)", "Compiler switch only."),
+        ("r4-kaze-rdp-opa", "IDO + RA_ZB_OPA render modes (R4)", "Drops per-pixel framebuffer reads on opaque surfaces."),
+        ("r2-kaze-mtx", "IDO + Kaze matrix math (R2)", "Stackless mtxf_mul and packed mtxf_to_mtx."),
+        ("r0-unchanged", "1996 retail build (R0)", "The unmodified decompilation."),
+    ]
+    entries = []
+    for slug, label, note in order:
         if slug not in by_slug:
             continue
-        s = by_slug[slug][2]
-        p = primary_profile(s)
-        wls = list(s["workloads"].values())
-        foot = sum(x["metrics"]["footprint_bytes"] for x in wls) / len(wls)
-        entries.append({
-            "name": label,
-            "href": f"{BASE}/calibration/#sm64-{slug}",
-            "kind": kind,
-            "note": note,
-            "reward": float(p.get("reward", 0.0)),
-            "speedup": float(p.get("speedup", 1.0)),
-            "vs_o2": p.get("vs_o2_speedup"),
-            "fps": round(mean_fps(s) or 0.0, 1),
-            "traffic_x": round(float(s["profiles"].get("traffic", {}).get("speedup", 1.0)), 2),
-            "ram_saved_kb": round(((base_foot - foot) / 1024.0), 0) if base_foot else 0.0,
-            "valid": s["status"] == "valid" and p.get("valid", True),
-            "profiles": _entry_profiles(s),
-        })
-
-    public_set = by_slug.get("r0-unchanged", (None, None, {}))[2].get("workload_set")
-    for ar in agent_runs:
-        if ar.get("kind") == "trial":
-            continue
-        if not public_set or ar["summary"].get("workload_set") != public_set:
-            continue
-        s = ar["summary"]
-        p = primary_profile(s)
-        valid = s["status"] == "valid" and p.get("valid", True)
-        wls = list(s.get("workloads", {}).values())
-        foot = (sum(x["metrics"]["footprint_bytes"] for x in wls) / len(wls)) if wls else (base_foot or 0.0)
-        entries.append({
-            "name": f"{ar['title']} ({ar['hours']}h)",
-            "href": ar.get("repo_url", ""),
-            "kind": "agent",
-            "note": ar["notes"],
-            "reward": float(p.get("reward", -1.0)),
-            "speedup": float(p.get("speedup", 0.0)) if valid else 0.0,
-            "vs_o2": p.get("vs_o2_speedup"),
-            "fps": round((mean_fps(s) or 0.0), 1) if valid else 0.0,
-            "traffic_x": round(float(s["profiles"].get("traffic", {}).get("speedup", 0.0)), 2) if valid else 0.0,
-            "ram_saved_kb": round(((base_foot - foot) / 1024.0), 0) if (base_foot and valid) else 0.0,
-            "valid": valid,
-            "profiles": _entry_profiles(s),
-        })
-
-    entries.sort(key=lambda e: (1 if e["valid"] else 0, e["speedup"]), reverse=True)
-    max_sp = max([e["speedup"] for e in entries if e["valid"]] + [1.25])
-
-    prof_pills = "".join(
-        f'<button class="pill{" on" if p == "console" else ""}" data-prof="{p}">{p}</button>' for p in PROFILES
-    )
-    rows_html = [
-        '<div class="panel-head" style="margin-top:16px"><div class="panel-title">Super Mario 64 Reference Ladder (6 public courses)</div>'
-        f'<div class="pill-bar" id="lb-prof-bar">{prof_pills}</div></div>',
-        '<div class="table-wrap"><table id="lb-table"><thead>',
-        '<tr><th>entry</th><th>type</th><th class="bar-cell" id="lb-sp-hdr">console speedup</th>'
-        '<th class="num" id="lb-rew-hdr">console</th><th class="num">vs -O2</th><th class="num">mean FPS</th>'
-        '<th class="num">bus&times;</th><th class="num">RAM &Delta;</th></tr></thead><tbody>',
-    ]
-    for e in entries:
-        nm = f'<a href="{e["href"]}">{esc(e["name"])}</a>' if e["href"] else f'<b>{esc(e["name"])}</b>'
-        tag_cls = "valid" if e["kind"] == "human ref" else ("ref" if e["kind"] in ("ref", "compiler") else ("valid" if e["valid"] else "invalid"))
-        pct = 0.0 if not e["valid"] else max(6.0, min(100.0, (e["speedup"] / max_sp) * 100.0))
-        bar_cls = "expert" if e["kind"] == "human ref" else ("compiler" if e["kind"] == "compiler" else "")
-        sp_txt = f'{e["speedup"]:.2f}&times;' if e["valid"] else "invalid"
-        vs_txt = f'{e["vs_o2"]:.2f}&times;' if (e["valid"] and e["vs_o2"]) else "&mdash;"
-        rew_txt = f'{e["reward"]:+.3f}' if e["valid"] else "&minus;1.000"
-        fps_txt = f'{e["fps"]:.1f}' if e["valid"] else "&mdash;"
-        traf_txt = f'{e["traffic_x"]:.2f}&times;' if e["valid"] else "&mdash;"
-        ram_txt = f'{-e["ram_saved_kb"]:+.0f} KiB' if (e["valid"] and abs(e["ram_saved_kb"]) >= 1.0) else "0 KiB"
-        rows_html.append(
-            f'<tr{" class=expert-row" if e["kind"] == "human ref" else ""}>'
-            f'<td>{nm}<br><span class="small muted">{esc(e["note"])}</span></td>'
-            f'<td><span class="tag {tag_cls}">{esc(e["kind"])}</span></td>'
-            f'<td class="bar-cell"><b>{sp_txt}</b><div class="bar-track"><div class="bar-fill {bar_cls}" style="width:{pct:.1f}%"></div></div></td>'
-            f'<td class="num {"pos" if e["reward"] > 0.0005 else ""}">{rew_txt}</td>'
-            f'<td class="num">{vs_txt}</td>'
-            f'<td class="num">{fps_txt}</td>'
-            f'<td class="num">{traf_txt}</td>'
-            f'<td class="num">{ram_txt}</td>'
-            f'</tr>'
-        )
-    rows_html.append("</tbody></table></div>")
-
-    lb_script = f"""<script>(function(){{
-var ENTRIES={json.dumps(entries)};
-var tbody=document.querySelector("#lb-table tbody");
-var spHdr=document.getElementById("lb-sp-hdr"),rewHdr=document.getElementById("lb-rew-hdr");
-var btns=document.querySelectorAll("#lb-prof-bar .pill");
-function esc(s){{return String(s).replace(/[&<>"]/g,function(c){{return{{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}}[c];}});}}
-function render(prof){{
-  spHdr.textContent=prof+" speedup";rewHdr.textContent=prof;
-  var list=ENTRIES.slice().sort(function(a,b){{
-    var pa=a.profiles[prof]||{{valid:false,speedup:0}},pb=b.profiles[prof]||{{valid:false,speedup:0}};
-    if(pa.valid!==pb.valid)return pb.valid?1:-1;
-    return pb.speedup-pa.speedup;
-  }});
-  var maxSp=Math.max.apply(null,list.map(function(e){{var p=e.profiles[prof];return p&&p.valid?p.speedup:0;}}).concat([1.25]));
-  tbody.innerHTML=list.map(function(e){{
-    var p=e.profiles[prof]||{{valid:false,speedup:0,reward:-1,vs_o2:null}};
-    var nm=e.href?'<a href="'+e.href+'">'+esc(e.name)+'</a>':'<b>'+esc(e.name)+'</b>';
-    var tagCls=e.kind==="human ref"?"valid":(e.kind==="ref"||e.kind==="compiler"?"ref":(p.valid?"valid":"invalid"));
-    var barCls=e.kind==="human ref"?"expert":(e.kind==="compiler"?"compiler":"");
-    var pct=p.valid?Math.max(6,Math.min(100,(p.speedup/maxSp)*100)):0;
-    var spTxt=p.valid?p.speedup.toFixed(2)+"&times;":"over budget";
-    var vsTxt=(p.valid&&p.vs_o2)?p.vs_o2.toFixed(2)+"&times;":"&mdash;";
-    var rewTxt=p.valid?(p.reward>=0?"+":"")+p.reward.toFixed(3):"&minus;1.000";
-    var ramTxt=Math.abs(e.ram_saved_kb)>=1?(-e.ram_saved_kb>0?"+":"")+(-e.ram_saved_kb).toFixed(0)+" KiB":"0 KiB";
-    return '<tr'+(e.kind==="human ref"?' class="expert-row"':'')+(p.valid?'':' class="invalid"')+'>'
-      +'<td>'+nm+'<br><span class="small muted">'+esc(e.note)+'</span></td>'
-      +'<td><span class="tag '+tagCls+'">'+esc(e.kind)+'</span></td>'
-      +'<td class="bar-cell"><b>'+spTxt+'</b><div class="bar-track"><div class="bar-fill '+barCls+'" style="width:'+pct.toFixed(1)+'%"></div></div></td>'
-      +'<td class="num '+(p.valid&&p.reward>0.0005?'pos':(p.valid?'':'neg'))+'">'+rewTxt+'</td>'
-      +'<td class="num">'+vsTxt+'</td>'
-      +'<td class="num">'+(e.valid?e.fps.toFixed(1):"&mdash;")+'</td>'
-      +'<td class="num">'+(e.valid?e.traffic_x.toFixed(2)+"&times;":"&mdash;")+'</td>'
-      +'<td class="num">'+ramTxt+'</td></tr>';
+        s = by_slug[slug][1]
+        profs = {}
+        for p in PROFILES:
+            pv = s.get("profiles", {}).get(p, {})
+            ok = pv.get("valid", False)
+            profs[p] = {"valid": ok, "speedup": round(float(pv.get("speedup", 0.0)), 3) if ok else 0.0,
+                        "vs_o2": round(float(pv["vs_o2_speedup"]), 3) if ok and pv.get("vs_o2_speedup") else None}
+        entries.append({"name": label, "href": f"{BASE}/calibration/#sm64-{slug}", "note": note,
+                        "expert": slug == EXPERT_REF, "fps": round(mean_fps(s) or 0.0, 1), "profiles": profs})
+    pills = "".join(f'<button class="pill{" on" if p == "console" else ""}" data-prof="{p}">{p}</button>' for p in PROFILES)
+    return f"""<div class="panel-head"><div class="panel-title">Reference ladder &middot; 6 public courses</div><div class="pill-bar" id="lad-prof">{pills}</div></div>
+<div class="table-wrap"><table id="lad"><thead><tr><th>entry</th><th class="bar-cell" id="lad-hdr">console speedup</th>
+<th class="num">vs GCC -O2</th><th class="num">uncapped FPS</th></tr></thead><tbody></tbody></table></div>
+<script>(function(){{
+var E={json.dumps(entries)},tb=document.querySelector("#lad tbody"),hdr=document.getElementById("lad-hdr"),
+    btns=document.querySelectorAll("#lad-prof .pill");
+function render(p){{
+  hdr.textContent=p+" speedup";
+  var list=E.slice().sort(function(a,b){{var x=a.profiles[p],y=b.profiles[p];
+    return x.valid!==y.valid?(y.valid?1:-1):y.speedup-x.speedup;}});
+  var max=Math.max.apply(null,list.map(function(e){{return e.profiles[p].speedup;}}).concat([1.25]));
+  tb.innerHTML=list.map(function(e){{var v=e.profiles[p];
+    var w=v.valid?Math.max(4,v.speedup/max*100):0;
+    return '<tr'+(e.expert?' class="expert-row"':'')+'><td><a href="'+e.href+'">'+e.name+'</a><br><span class="small muted">'+e.note+'</span></td>'
+      +'<td class="bar-cell"><b>'+(v.valid?v.speedup.toFixed(2)+'&times;':'over budget')+'</b><div class="bar-track"><div class="bar-fill'+(e.expert?' expert':'')+'" style="width:'+w.toFixed(1)+'%"></div></div></td>'
+      +'<td class="num">'+(v.vs_o2?v.vs_o2.toFixed(2)+'&times;':'&mdash;')+'</td><td class="num">'+e.fps.toFixed(1)+'</td></tr>';
   }}).join("");
 }}
-btns.forEach(function(b){{
-  b.addEventListener("click",function(){{
-    btns.forEach(function(x){{x.classList.remove("on");}});
-    b.classList.add("on");
-    render(b.getAttribute("data-prof"));
-  }});
-}});
+btns.forEach(function(b){{b.addEventListener("click",function(){{
+  btns.forEach(function(x){{x.classList.toggle("on",x===b);}});render(b.getAttribute("data-prof"));}});}});
+render("console");
 }})();</script>"""
 
-    trial_html = trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="lb-trial-traj")
 
-    charts = [f'<div class="chart-box">{trajectory_svg(sm64_rows, [], chart_id="ladder")}</div>']
-    std_cohorts = {}
-    for run in agent_runs:
-        if run.get("kind") == "trial":
-            continue
-        if checkpoint_points(run):
-            std_cohorts.setdefault(run["summary"]["workload_set"], []).append(run)
-    for idx, (cohort, runs) in enumerate(std_cohorts.items()):
-        refs = [row for row in [*sm64_rows, *trial_rows] if row[3].get("workload_set") == cohort]
-        count = max(len(run["summary"].get("workloads", {})) for run in runs)
-        charts.append(f'<div class="chart-box"><div class="panel-title" style="margin-bottom:8px">Agent checkpoints ({count} routes)</div>'
-                      + trajectory_svg(refs, runs, chart_id=f"std-traj-{idx}") + '</div>')
-    b_svg = sm64_bottleneck_svg(sm64_rows)
-    b_box = f'<div class="chart-box">{b_svg}</div>' if b_svg else ""
+def bands_html(sm64_rows):
+    by_slug = {slug: s for slug, _t, _p, s in sm64_rows if s["status"] == "valid"}
 
-    body = f"""
-<div class="prose">
-<h1>Leaderboard</h1>
-<p>Reference rungs are graded across <b>6 public Super Mario 64 courses</b> (240 frames each) on an instrumented
-<code>ares</code> N64 console model (93.75 MHz VR4300 + 16 KB I$ / 8 KB D$, 62.5 MHz RSP &amp; RDP, 4 MB RDRAM).
-Switch resource profiles below to re-rank by <code>console</code>, <code>stutter</code>, <code>speed</code>,
-<code>rdp</code>, <code>rsp</code>, <code>traffic</code>, or <code>memory</code>. The human-expert baseline is the
-<a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a> (reconstructed from Kaze Emanuar's public SM64 optimization videos and <code>ultrasm64</code> &mdash; not a physical ceiling; reward is unbounded above so agents can push beyond human-expert work).</p>
-</div>
+    def sp(slug):
+        return primary_profile(by_slug[slug])["speedup"]
 
-{"".join(rows_html)}
-{lb_script}
+    need = ["r0-unchanged", "r1-gcc-o2", "r7-kaze-icache-trig", "r9-kaze-partial", EXPERT_REF]
+    if any(s not in by_slug for s in need):
+        return ""
+    rows = [
+        (1.0, "1.00&times;", "The 1996 game",
+         f"The retail build: about {mean_fps(by_slug['r0-unchanged']):.0f} uncapped FPS on the public courses.", "r0-unchanged"),
+        (sp("r1-gcc-o2"), f'{sp("r1-gcc-o2"):.2f}&times;', "Compiler only",
+         "The same code rebuilt with GCC -O2. Agents are also scored against this.", "r1-gcc-o2"),
+        (sp("r9-kaze-partial"), f'{sp("r7-kaze-icache-trig"):.2f}&ndash;{sp("r9-kaze-partial"):.2f}&times;', "Targeted fixes",
+         "Table-free trig, I-cache layout, cache-friendly collision, matrix math.", "r9-kaze-partial"),
+        (sp(EXPERT_REF), f'{sp(EXPERT_REF):.2f}&times;', "Human expert",
+         "Kaze Emanuar-style work across CPU, RSP and RDP: F3DEX2, culling, fused matrices, audio, memory layout.", EXPERT_REF),
+        (2.0, f'&gt; {sp(EXPERT_REF):.2f}&times;', "Beyond published work", "No reference yet; the score has no upper bound.", None),
+    ]
+    body = "".join(
+        f'<tr><td><span class="sq" style="background:{score_color(v)}"></span>{rng}</td><td><b>{lbl}</b></td>'
+        f'<td class="muted">{desc}</td><td class="num">'
+        + (f'<a href="{BASE}/calibration/#sm64-{slug}">Example &rarr;</a>' if slug else "") + "</td></tr>"
+        for v, rng, lbl, desc, slug in rows)
+    return ('<div class="box"><div class="box-title">What speedups mean <span class="muted">(6 public courses)</span></div>'
+            f'<table class="bands">{body}</table></div>')
 
-{trial_html}
 
-{"".join(charts)}
-{b_box}
-
-<div class="prose">
-<h2>Run a 24-hour agent evaluation</h2>
-<p><code>mev check</code> grades public routes for agent feedback (~29s clean). The host supervisor writes
-<code>trajectory.json</code> with separate private held-out checkpoints. Do not publish private replays.</p>
+def build_leaderboard(out, board, sm64_rows, agent_runs):
+    body = f"""<div class="col">
+<h1 class="px-h">Leaderboard</h1>
+<p class="muted">Ranked by console speedup over the 1996 build on {board["routes"]} routes: the {board["public"]} public
+courses agents can test plus {board["private"]} private routes they never see. Bars show the console bottleneck and each
+unit it is the maximum of. Expand an entry for per-course frame times.</p>
+{board_cards(board)}
+<h2 class="px-h">Score over time</h2>
+{speedup_chart(board, title=f"Best valid host grade &middot; {board['routes']} routes")}
+{bands_html(sm64_rows)}
+<h2 class="px-h">Reference ladder</h2>
+<p class="muted">Each rung is one known patch on the clean game, graded on the 6 public courses. Switch profiles to rank by a
+single unit. Every rung, including the rejected shortcuts, is on the <a href="{BASE}/calibration/">calibration</a> page.</p>
+{ladder_html(sm64_rows)}
+<div class="chart-box">{trajectory_svg(sm64_rows)}</div>
+<div class="chart-box">{sm64_bottleneck_svg(sm64_rows)}</div>
+{telemetry_inspector_html(sm64_rows, agent_runs)}
+<h2 class="px-h">Run it yourself</h2>
 <pre><code># 1. Prepare the game and private controller inputs (set PRIVATE_SEED)
 ./sm64/setup.sh "/path/to/Super Mario 64 (USA).z64"
 python3 sm64/corpus/make_replays.py --heldout /private/replays --mash-seed "$PRIVATE_SEED"
@@ -1266,10 +1222,67 @@ python3 sm64/corpus/make_replays.py --heldout /private/replays --mash-seed "$PRI
 docker compose --project-directory quickstart up -d
 AGENT_CMD='your-agent-command' ./quickstart/run-agent.sh --game sm64 \\
   --hours 24 --profile console --heldout /private/replays</code></pre>
+</div>"""
+    write(out, "leaderboard/index.html", page("Leaderboard | Mario Eval", body, active="leaderboard/"))
+
+
+def build_model(out, e, board):
+    s = e["summary"]
+    wls = s["workloads"]
+    top = max([2.0] + [v * 1.08 for v in e["units"].values()])
+    valid_cps = sum(1 for c in e["checkpoints"] if c.get("status") == "valid")
+    meta = " &middot; ".join(x for x in [esc(e["org"]), f'Graded: {esc(e["date"])}' if e["date"] else "",
+                                         f'commit: {esc(e["commit"])}' if e["commit"] else "",
+                                         f'harness: {esc(e["harness"])}' if e["harness"] else ""] if x)
+    links = (f'<a href="{esc(e["repo_url"])}">Source &amp; transcript &rarr;</a>' if e["repo_url"] else "") + \
+        f'<a href="{BASE}/leaderboard/">Compare with other entries &rarr;</a>'
+    cp_rows = "".join(
+        f'<tr><td>{esc(c.get("name", ""))}</td><td class="num">{c["elapsed_hours"]:.1f}h</td>'
+        f'<td><span class="tag {"valid" if c.get("status") == "valid" else "invalid"}">{esc(c.get("status"))}</span></td>'
+        f'<td class="num">{(f"{c["speedups"]["console"]:.3f}&times;" if c.get("status") == "valid" else "&mdash;")}</td>'
+        f'<td class="num">{(f"{c["vs_o2_speedups"]["console"]:.3f}&times;" if c.get("status") == "valid" and c.get("vs_o2_speedups", {}).get("console") else "&mdash;")}</td></tr>'
+        for c in e["checkpoints"])
+    body = f"""<div class="col">
+<a class="back" href="{BASE}/leaderboard/">&larr; Leaderboard</a>
+<div class="model-head">
+  <div><h1 class="px-h">{esc(e["name"])}</h1><div class="model-meta">{meta}</div>
+  <div class="model-stats"><div><span>Wall clock</span><b>{e["end_h"]:.1f}h</b></div>
+  <div><span>Checkpoints</span><b>{valid_cps}/{len(e["checkpoints"])} valid</b></div>
+  <div><span>Routes</span><b>{len(wls)}</b></div></div></div>
+  <div class="model-score"><span>Console speedup</span><b style="color:{score_color(e["speedup"])}">{e["speedup"]:.3f}<small>&times;</small></b>
+  <span>{f'{e["vs_o2"]:.2f}&times; vs GCC -O2' if e["vs_o2"] else ""}</span><div class="model-links">{links}</div></div>
 </div>
-"""
-    write(out, "leaderboard/index.html",
-          page("Leaderboard | Mario Eval", body, active="leaderboard/"))
+<div class="tabs" data-tabs><button type="button" class="on" data-tab="overview">Overview</button>
+<button type="button" data-tab="routes">Routes <span class="muted">{len(wls)}</span></button>
+<button type="button" data-tab="checkpoints">Checkpoints</button></div>
+<div data-tabpane="overview">
+<div class="box"><div class="box-title">About this candidate</div><p>{esc(e["note"])}</p></div>
+{speedup_chart(board, only=e["slug"], title="Score trajectory")}
+<div class="box"><div class="box-title">Units</div>{unit_bars(e["units"], top)}
+<p class="small muted">Speedup of each unit's busy time over the 1996 build (geometric mean over routes). The console
+score follows the busiest unit in each frame.</p></div>
+<h2 class="px-h">Public courses</h2>{course_tiles(wls)}
+</div>
+<div data-tabpane="routes" hidden>{routes_table(wls)}</div>
+<div data-tabpane="checkpoints" hidden><div class="table-wrap"><table><thead><tr><th>checkpoint</th><th class="num">elapsed</th>
+<th>status</th><th class="num">speedup</th><th class="num">vs GCC -O2</th></tr></thead><tbody>{cp_rows}</tbody></table></div>
+<p class="small muted">Host grades on all {len(wls)} routes. The leaderboard uses the best valid checkpoint.</p></div>
+</div>"""
+    write(out, f"model/{e['slug']}/index.html", page(f'{e["name"]} | Mario Eval', body, active="leaderboard/"))
+
+
+def build_watch(out, clips):
+    if not clips:
+        return
+    body = f"""<div class="col">
+<h1 class="px-h">Watch</h1>
+<p class="muted">Each replay feeds the same recorded controller input to the 1996 build and to a candidate on the
+instrumented emulator. The middle screen shows pixels that differ by more than &plusmn;2/31 per channel; the readouts
+show each frame's console time. The last two are shortcuts the grader rejects.</p>
+{player_html(clips, full=True)}
+</div>
+{PLAYER_JS}"""
+    write(out, "watch/index.html", page("Watch | Mario Eval", body, active="watch/"))
 
 
 def render_sections(rows, patch_dir, anchor_prefix=""):
@@ -1332,37 +1345,37 @@ def render_sections(rows, patch_dir, anchor_prefix=""):
     return "".join(sections)
 
 
-def build_calibration(out, rows, sm64_rows):
+def build_calibration(out, rows, sm64_rows, exported_frames):
     sm64_part = ""
     if sm64_rows:
         sm64_part = (
-            '<h2>Super Mario 64 (US, 6 courses)</h2>'
+            '<h2 class="px-h">Super Mario 64 &middot; 6 public courses</h2>'
             + cal_table(sm64_rows, anchor_prefix="sm64-")
-            + '<h3>Baseline (1996 IDO <code>-O0</code>)</h3>'
+            + '<h3>Baseline (1996 IDO)</h3>'
             + baseline_table(sm64_rows)
             + render_sections(sm64_rows, "sm64/calibration", anchor_prefix="sm64-")
             + "<hr>"
         )
-    body = f"""<div class="prose"><h1>Calibration</h1>
-<p>Each patch is applied to a clean baseline. The tables report the six public SM64 routes and
-eight Pip's Garden routes (240 frames each). The headline profile is <code>console</code>;
-<code>stutter</code> reports the p99 frame cost alongside five resource-specific profiles.</p></div>
+    body = f"""<div class="col wide"><h1 class="px-h">Calibration</h1>
+<p class="muted">Each patch is applied to a clean game and graded like a submission: known speedups must pass and score,
+known shortcuts must be rejected. The tables cover the six public SM64 courses and eight routes of Pip's Garden, an
+open-source N64 game that ships in the repo so the harness runs without a ROM.</p>
 {sm64_part}
-<h2>Pip's Garden (8 routes)</h2>
+<h2 class="px-h">Pip's Garden &middot; 8 routes</h2>
+{pips_gallery_html(exported_frames, rows)}
 {cal_table(rows)}
 <h3>Pip's Garden baseline</h3>
 {baseline_table(rows)}
-{render_sections(rows, "calibration")}"""
+{render_sections(rows, "calibration")}</div>"""
     write(out, "calibration/index.html", page("Calibration | Mario Eval", body, active="calibration/"))
 
 
 def build_blog(out, post_items):
-    lis = "".join(
-        f'<li><a href="{BASE}/blog/{slug}/"><b>{esc(m["title"])}</b></a><span class="date">{m["date"]}</span><br>'
-        f'<span class="small muted">{esc(m["summary"])}</span></li>' for slug, m, _ in post_items)
-    write(out, "blog/index.html", page("Blog | Mario Eval", f'<div class="prose"><h1>Blog</h1><ul class="post-list">{lis}</ul></div>', active="blog/"))
+    write(out, "blog/index.html", page("Blog | Mario Eval",
+                                       f'<div class="col"><h1 class="px-h">Blog</h1>{post_cards(post_items)}</div>', active="blog/"))
     for slug, m, text in post_items:
-        body = (f'<article class="prose"><h1>{esc(m["title"])}</h1><p class="meta">{m["date"]}</p>'
+        body = (f'<article class="col prose"><a class="back" href="{BASE}/blog/">&larr; Blog</a><h1 class="px-h">{esc(m["title"])}</h1>'
+                f'<p class="meta">{AUTHOR.upper()} &middot; {m["date"]}</p>'
                 f'{text.replace("{BASE}", BASE).replace("{REPO}", REPO)}</article>')
         write(out, f"blog/{slug}/index.html", page(f'{m["title"]} | Mario Eval', body, active="blog/", desc=m["summary"]))
 
@@ -1380,9 +1393,16 @@ def main():
     trial_rows = load_cal(SM64_TRIAL_CAL, SM64_PATCHES)
     agent_runs = load_agent_runs()
     post_items = posts()
-    build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames, clips)
-    build_leaderboard(out, sm64_rows, trial_rows, agent_runs)
-    build_calibration(out, rows, sm64_rows)
+    board = build_board(trial_rows, agent_runs)
+    if board is None:
+        sys.exit("no agent runs with a workload_set under results/agents/")
+    build_index(out, board, post_items, clips)
+    build_leaderboard(out, board, sm64_rows, agent_runs)
+    for e in board["entries"]:
+        if e["kind"] in AGENT_KINDS and e["valid"]:
+            build_model(out, e, board)
+    build_watch(out, clips)
+    build_calibration(out, rows, sm64_rows, exported_frames)
     build_blog(out, post_items)
     print(f"wrote {out}: {len(rows)} pips entries, {len(sm64_rows)} sm64 entries, "
           f"{len(agent_runs)} agent runs, {len(exported_frames)} png frames, {len(clips)} clips, {len(post_items)} posts")
