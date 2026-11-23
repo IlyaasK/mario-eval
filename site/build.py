@@ -27,6 +27,7 @@ SM64_CAL = ROOT / "results" / "sm64-calibration"
 SM64_TRIAL_CAL = ROOT / "results" / "sm64-trial-calibration"
 AGENTS_DIR = ROOT / "results" / "agents"
 PIPS_REF_RUNS = ROOT / "cache" / "reference" / "runs"
+CLIPS_SRC = SITE / "assets" / "clips"
 BASE = "/mario-eval"
 REPO = "https://github.com/IlyaasK/mario-eval"
 
@@ -806,7 +807,154 @@ def trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="trial-traj")
     return "\n".join(t_rows)
 
 
-def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames):
+def export_clips(out):
+    """Copy pre-rendered Pip's Garden 3-panel comparison clips into out/assets/clips/."""
+    meta_path = CLIPS_SRC / "clips.json"
+    if not meta_path.is_file():
+        return []
+    clips = json.loads(meta_path.read_text())
+    dst = out / "assets" / "clips"
+    dst.mkdir(parents=True, exist_ok=True)
+    kept = []
+    for c in clips:
+        src_mp4 = CLIPS_SRC / c["video"]
+        if src_mp4.is_file():
+            shutil.copy2(src_mp4, dst / c["video"])
+            kept.append(c)
+    return kept
+
+
+def comparison_monitor_html(clips):
+    """Interactive 3-panel (Reference | Candidate | Difference) CRT monitor widget."""
+    if not clips:
+        return ""
+    tabs = "".join(
+        f'<button class="pill{" on" if i == 0 else ""}" data-idx="{i}">{esc(c["tab"])}</button>'
+        for i, c in enumerate(clips)
+    )
+    c0 = clips[0]
+    return f"""
+<div class="monitor" id="cmp-monitor">
+  <div class="monitor-head">
+    <div class="panel-title">Live N64 Gate Replay &mdash; Reference vs Candidate vs Difference</div>
+    <span class="tag {esc(c0["badge_cls"])}" id="cmp-badge">{esc(c0["badge"])}</span>
+  </div>
+  <div class="pill-bar" id="cmp-tabs" style="margin-bottom:12px">{tabs}</div>
+  <div class="monitor-screen">
+    <video id="cmp-vid" src="{BASE}/assets/clips/{esc(c0["video"])}" autoplay muted loop playsinline preload="metadata"></video>
+    <div class="screen-labels">
+      <span>Reference (Baseline)</span>
+      <span id="cmp-cand-lbl">Candidate ({esc(c0["slug"])})</span>
+      <span>Pixel Difference (Amplified)</span>
+    </div>
+  </div>
+  <div class="monitor-controls">
+    <button type="button" id="cmp-play">Pause</button>
+    <button type="button" id="cmp-speed">1&times;</button>
+    <input class="monitor-scrub" id="cmp-scrub" type="range" min="0" max="{c0["frames"] - 1}" value="0" aria-label="Frame scrubber">
+    <span class="monitor-readout" id="cmp-readout">frame <b>000</b>/{c0["frames"]} &middot; <b>{c0["base_mean_ms"]:.1f}ms</b> &rarr; <b>{c0["cand_mean_ms"]:.1f}ms</b></span>
+  </div>
+  <div class="timeline-wrap">
+    <div class="timeline-hdr">
+      <span>Per-frame console ms (dim = baseline, bright = candidate; red ticks = pixel diff &gt; 0.2%)</span>
+      <span id="cmp-tl-stat">click timeline to seek</span>
+    </div>
+    <svg id="cmp-tl" viewBox="0 0 239 44" preserveAspectRatio="none" role="img" aria-label="Per-frame console timing and diff timeline"></svg>
+  </div>
+  <div class="monitor-cap">
+    <span id="cmp-cap">{esc(c0["caption"])}</span>
+    <span class="small muted">Captured directly from <code>ares</code> N64 on open-source Pip's Garden (240 frames @ 30 fps)</span>
+  </div>
+</div>
+<script>(function(){{
+var CLIPS={json.dumps(clips)};
+var BASE="{BASE}/assets/clips/";
+var vid=document.getElementById("cmp-vid"),
+    tabs=document.querySelectorAll("#cmp-tabs .pill"),
+    badge=document.getElementById("cmp-badge"),
+    candLbl=document.getElementById("cmp-cand-lbl"),
+    cap=document.getElementById("cmp-cap"),
+    btnPlay=document.getElementById("cmp-play"),
+    btnSpd=document.getElementById("cmp-speed"),
+    scrub=document.getElementById("cmp-scrub"),
+    readout=document.getElementById("cmp-readout"),
+    tlSvg=document.getElementById("cmp-tl"),
+    tlStat=document.getElementById("cmp-tl-stat");
+var cur=0, slow=false, playhead=null;
+
+function drawTimeline(c){{
+  var n=c.base_ms.length;
+  var maxMs=Math.max.apply(null,c.base_ms.concat(c.cand_ms).concat([40]))*1.08;
+  var col=c.badge_cls==="invalid"?"#ff5a63":(c.badge_cls==="ref"?"#7b68ee":"#2ed573");
+  var parts=[];
+  for(var i=0;i<n;i++){{
+    var bh=(c.base_ms[i]/maxMs)*40;
+    var ch=(c.cand_ms[i]/maxMs)*40;
+    parts.push('<rect x="'+i+'" y="'+(44-bh).toFixed(1)+'" width="0.85" height="'+bh.toFixed(1)+'" fill="#38344a"/>');
+    var barCol=(c.diff_pct[i]>0.2 && c.badge_cls==="invalid")?"#ff5a63":col;
+    parts.push('<rect x="'+i+'" y="'+(44-ch).toFixed(1)+'" width="0.85" height="'+ch.toFixed(1)+'" fill="'+barCol+'" opacity="0.88"/>');
+  }}
+  parts.push('<rect id="cmp-head" x="0" y="0" width="1.4" height="44" fill="#ffffff" opacity="0.9"/>');
+  tlSvg.setAttribute("viewBox","0 0 "+n+" 44");
+  tlSvg.innerHTML=parts.join("");
+  playhead=document.getElementById("cmp-head");
+}}
+
+function selectClip(idx){{
+  cur=idx;
+  var c=CLIPS[idx];
+  tabs.forEach(function(b,i){{b.classList.toggle("on",i===idx);}});
+  badge.textContent=c.badge;
+  badge.className="tag "+c.badge_cls;
+  candLbl.textContent="Candidate ("+c.slug+")";
+  cap.textContent=c.caption;
+  scrub.max=c.frames-1;
+  vid.src=BASE+c.video;
+  vid.playbackRate=slow?0.5:1.0;
+  vid.play().catch(function(){{}});
+  btnPlay.textContent="Pause";
+  drawTimeline(c);
+}}
+
+function tick(){{
+  var c=CLIPS[cur];
+  if(c && vid.duration>0){{
+    var f=Math.min(c.frames-1,Math.max(0,Math.floor(vid.currentTime*c.fps)));
+    var fi=Math.min(c.base_ms.length-1,Math.max(0,f-1));
+    if(document.activeElement!==scrub) scrub.value=f;
+    if(playhead) playhead.setAttribute("x",fi);
+    var bms=c.base_ms[fi], cms=c.cand_ms[fi], dp=c.diff_pct[fi];
+    readout.innerHTML="frame <b>"+String(f).padStart(3,"0")+"</b>/"+c.frames+" &middot; <b>"+bms.toFixed(1)+"ms</b> &rarr; <b>"+cms.toFixed(1)+"ms</b>";
+    tlStat.textContent="diff: "+dp.toFixed(2)+"% px";
+  }}
+  requestAnimationFrame(tick);
+}}
+
+tabs.forEach(function(b){{
+  b.addEventListener("click",function(){{selectClip(parseInt(b.getAttribute("data-idx"),10));}});
+}});
+btnPlay.addEventListener("click",function(){{
+  if(vid.paused){{vid.play();btnPlay.textContent="Pause";}}
+  else{{vid.pause();btnPlay.textContent="Play";}}
+}});
+btnSpd.addEventListener("click",function(){{
+  slow=!slow; vid.playbackRate=slow?0.5:1.0; btnSpd.innerHTML=slow?"0.5&times;":"1&times;";
+}});
+scrub.addEventListener("input",function(){{
+  var c=CLIPS[cur]; vid.currentTime=parseInt(scrub.value,10)/c.fps;
+}});
+tlSvg.addEventListener("click",function(e){{
+  var c=CLIPS[cur], r=tlSvg.getBoundingClientRect();
+  var frac=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  vid.currentTime=frac*(c.frames/c.fps);
+}});
+drawTimeline(CLIPS[0]);
+requestAnimationFrame(tick);
+}})();</script>
+"""
+
+
+def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames, clips):
     post_links = "".join(
         f'<li><a href="{BASE}/blog/{slug}/"><b>{esc(m["title"])}</b></a><span class="date">{m["date"]}</span><br>'
         f'<span class="small muted">{esc(m["summary"])}</span></li>' for slug, m, _ in post_items)
@@ -836,6 +984,7 @@ def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, export
 """
 
     inspector = telemetry_inspector_html(sm64_rows, agent_runs)
+    monitor = comparison_monitor_html(clips)
     trial_sec = trial_section_html(agent_runs, sm64_rows, trial_rows, chart_id="home-trial-traj")
     gallery = pips_gallery_html(exported_frames, rows)
 
@@ -855,6 +1004,8 @@ def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, export
 </div>
 
 {ceil_kpi}
+
+{monitor}
 
 {trial_sec}
 
@@ -1218,17 +1369,18 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     shutil.copy(SITE / "style.css", out / "style.css")
     exported_frames = export_pips_frames(out)
+    clips = export_clips(out)
     rows = load_cal(CAL, PATCHES)
     sm64_rows = load_cal(SM64_CAL, SM64_PATCHES)
     trial_rows = load_cal(SM64_TRIAL_CAL, SM64_PATCHES)
     agent_runs = load_agent_runs()
     post_items = posts()
-    build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames)
+    build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, exported_frames, clips)
     build_leaderboard(out, sm64_rows, trial_rows, agent_runs)
     build_calibration(out, rows, sm64_rows)
     build_blog(out, post_items)
     print(f"wrote {out}: {len(rows)} pips entries, {len(sm64_rows)} sm64 entries, "
-          f"{len(agent_runs)} agent runs, {len(exported_frames)} png frames, {len(post_items)} posts")
+          f"{len(agent_runs)} agent runs, {len(exported_frames)} png frames, {len(clips)} clips, {len(post_items)} posts")
 
 
 if __name__ == "__main__":
