@@ -100,6 +100,30 @@ clean build).
 - Kaze's Goomba rig rework (144 -> 107 triangles, 12 -> 7 bones): every Goomba bone is
   animated or carries a static rotation; it needs a re-export from the original model.
 
+## v2 Exhaustive Kaze & ultrasm64 completion pass (2026-11-22)
+
+Following a full audit of all 424 Kaze Emanuar videos (309 transcripts + 115 visual-screened), both Kaze code releases, `FazanaJ/ultrasm64`, and `CrashOveride95/ultrasm64` under Mario Eval v2's updated cost model (4-bank RDP page misses, early-Z write rejection, bus-coupled CPU contention, 60 Hz VI scanout, `cache_uncached_ops == 0`, and `PLAY=1` runtime smoke) and US `TOOLCHAIN_LIBGCC` linking, the remaining 8 unimplemented Kaze/`ultrasm64` candidates were tested on top of `r10-kaze-master` (v2 baseline `1.6745x` on 6 public routes / `1.6463x` on 25 private routes):
+
+### Adopted (graded `1.6745x -> 1.7328x` public, `1.6463x -> 1.6930x` across all 25 private routes; `PLAY=1` pass)
+
+| trial | source & change | pad-0 console vs r10 | key hardware deltas (mean/frame, 6 public) |
+|---|---|---|---|
+| `k1d-wb-all-plus-lookat` | Kaze `g5u3zW4SLow [12:37-13:52]` targeted `osWritebackDCache` in `main.c` (`spTask`, `data_ptr`, `&lookAt`, live `gGfxPool` head/tail) + NMI-only guard on `game_init.c:320` + Goddard flush in `PLAY=1` | `+1.55%` (`1.7004x`) | D$ misses `-344`, writebacks `-161`, `coh == 1408` (identical to base) |
+| `k2b-cde-bzero-bcopy` | Kaze `cache 0x0d` (Create Dirty Exclusive) in `lib/asm/bzero.s` & `lib/asm/bcopy.s`, strictly KSEG0 (`(addr >> 29) == 4`) and 16-byte aligned | `+0.38%` (`1.6809x`) | D$ misses `-271`, `cache_uncached_ops == 0` |
+| `k3-shadow-exact` | Kaze `3We_ZGOwmik [10:36]` `find_floor_height` instead of `find_floor_height_and_data` in `shadow.c` | `+0.05%` (`1.6753x`) | CPU eff `-859` cyc, exact |
+| `k4-lookat-hoist` | `FazanaJ/ultrasm64` `a946464b` hoist `gSPLookAt` once into `geo_process_master_list_sub` | `-0.37%` alone (I$ shift), `+0.33%` in combo | RSP busy `-20,238` cyc/frame (`-1.0%`) |
+| `k7-shadow-above-cam` | `FazanaJ/ultrasm64` `588d06bb` cull shadows whose floor is above `gCurGraphNodeCamera->pos[1]` | `+0.93%` (`1.6900x`) | CPU eff `-13,773` cyc, RSP busy `-9,410` cyc |
+| `area-play-null-fix` | Guard `load_obj_warp_nodes()` in `src/game/area.c` when `gObjParentGraphNode.children == NULL` | correctness fix | Fixes real-N64 `PLAY=1` boot hang in 0-object `levels/intro` caught by `--play-smoke` |
+| **combined (`k1d+k2b+k3+k4+k7`)** | **All adopted changes** | **`+3.48%` pad-0 (`1.7328x` pub / `1.6930x` 25-route)** | **5-pad sweep (`0x0..0x1800`): median `+2.71%` (`[+1.48%, +3.12%]`), strictly faster on all 5 pads and on 25/25 private routes; `PLAY=1` pass, `unc == 0`, zero extra `coh`** |
+
+### Not adopted (v2 pass)
+
+| trial | source & change | console vs r10 | why not |
+|---|---|---|---|
+| `k5-os-remaining` | Kaze `oZcbgNdWL7w` / `FazanaJ` `91ce5e84` `-Os` on 9 remaining `-O2` game-loop TUs (`mario.o`, `mario_step.o`, `object_list_processor.o`, `object_collision.o`, `spawn_object.o`, `level_update.o`, `memory.o`, `game_init.o`, `behavior_script.o`) | `-3.53%` (`1.6155x`) | Slower: I$ misses `+511`, CPU busy `+48.4k` cyc/frame |
+| `k6-inline-f32` | Kaze `U2K44nC8c8g` / `t_rzYnXEQlE` / `20s9hWDx0Io` (`f32` `round_float`, inline `absf`/`absi`/`signum_positive`, `__restrict__` in `mtxf_to_mtx`) | `-0.16%` (`1.6718x`) | Neutral/slower (`+70` D$ misses, `+1.8k` CPU busy) |
+| `k8-frustratio2` | `FazanaJ/ultrasm64` `a9630cf7` `FRUSTRATIO_1` -> `FRUSTRATIO_2` in `sInitRdpRspDl` | invalid (video gate) | Cuts RSP busy `-13.7%` and RDP `-3.8%`, but 3 frames reach `0.23%` bad edge pixels (`> 0.20%` video gate) |
+
 ## Model gaps these results expose
 
 - All six routes are CPU-bound, so RSP/RDP work (F3DEX3, culling, 1-cycle fog) cannot

@@ -1,7 +1,7 @@
-diff --git a/Makefile b/Makefile
-index 7a6eab1..1315ee1 100644
---- a/Makefile
-+++ b/Makefile
+diff --git c/Makefile i/Makefile
+index 074d3be..af06f90 100644
+--- c/Makefile
++++ i/Makefile
 @@ -23,7 +23,7 @@ TARGET_N64 ?= 1
  #   ido - uses the SGI IRIS Development Option compiler, which is used to build
  #         an original matching N64 ROM
@@ -49,7 +49,7 @@ index 7a6eab1..1315ee1 100644
  S_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
  ULTRA_C_FILES     := $(foreach dir,$(ULTRA_SRC_DIRS),$(wildcard $(dir)/*.c))
  GODDARD_C_FILES   := $(foreach dir,$(GODDARD_SRC_DIRS),$(wildcard $(dir)/*.c))
-@@ -876,8 +882,45 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
+@@ -879,8 +885,45 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
  	$(COPT) -signed -I=$< -CMP=$@ -cp=i -scalaroptimize=1 $(COPTFLAGS)
  $(BUILD_DIR)/src/audio/seqplayer.copt: COPTFLAGS := -inline_manual
  
@@ -95,7 +95,7 @@ index 7a6eab1..1315ee1 100644
  # Assemble assembly code
  $(BUILD_DIR)/%.o: %.s
  	$(call print,Assembling:,$<,$@)
-@@ -889,9 +932,11 @@ $(BUILD_DIR)/rsp/%.bin $(BUILD_DIR)/rsp/%_data.bin: rsp/%.s
+@@ -892,9 +935,11 @@ $(BUILD_DIR)/rsp/%.bin $(BUILD_DIR)/rsp/%_data.bin: rsp/%.s
  	$(V)$(RSPASM) -sym $@.sym $(RSPASMFLAGS) -strequ CODE_FILE $(BUILD_DIR)/rsp/$*.bin -strequ DATA_FILE $(BUILD_DIR)/rsp/$*_data.bin $<
  
  # Run linker script through the C preprocessor
@@ -108,10 +108,10 @@ index 7a6eab1..1315ee1 100644
  
  # Link libultra
  $(BUILD_DIR)/libultra.a: $(ULTRA_O_FILES)
-diff --git a/actors/coin/model.inc.c b/actors/coin/model.inc.c
+diff --git c/actors/coin/model.inc.c i/actors/coin/model.inc.c
 index dcb637d..745eccc 100644
---- a/actors/coin/model.inc.c
-+++ b/actors/coin/model.inc.c
+--- c/actors/coin/model.inc.c
++++ i/actors/coin/model.inc.c
 @@ -69,7 +69,6 @@ const Gfx coin_seg3_dl_030077D0[] = {
  
  // 0x03007800 - 0x03007828
@@ -208,10 +208,10 @@ index dcb637d..745eccc 100644
      gsDPSetTextureImage(G_IM_FMT_IA, G_IM_SIZ_16b, 1, coin_seg3_texture_03006F80),
      gsSPDisplayList(coin_seg3_dl_03007780),
      gsSPVertex(coin_seg3_vertex_03005740, 4, 0),
-diff --git a/bin/segment2.c b/bin/segment2.c
+diff --git c/bin/segment2.c i/bin/segment2.c
 index 7f69dc3..8f02cef 100644
---- a/bin/segment2.c
-+++ b/bin/segment2.c
+--- c/bin/segment2.c
++++ i/bin/segment2.c
 @@ -12241,7 +12241,7 @@ const Gfx dl_draw_quad_verts_4567[] = {
  
  const Gfx dl_shadow_begin[] = {
@@ -238,10 +238,10 @@ index 7f69dc3..8f02cef 100644
      gsDPSetTile(G_IM_FMT_RGBA, G_IM_SIZ_16b, 8, 0, G_TX_RENDERTILE, 0, G_TX_CLAMP, 5, G_TX_NOLOD, G_TX_CLAMP, 5, G_TX_NOLOD),
      gsDPSetTileSize(0, 0, 0, (32 - 1) << G_TEXTURE_IMAGE_FRAC, (32 - 1) << G_TEXTURE_IMAGE_FRAC),
      gsSPEndDisplayList(),
-diff --git a/include/PR/gbi.h b/include/PR/gbi.h
+diff --git c/include/PR/gbi.h i/include/PR/gbi.h
 index ebfab07..dfe735b 100644
---- a/include/PR/gbi.h
-+++ b/include/PR/gbi.h
+--- c/include/PR/gbi.h
++++ i/include/PR/gbi.h
 @@ -943,8 +943,8 @@
  	RM_AA_ZB_XLU_SURF(clk) | Z_UPD
  
@@ -264,10 +264,10 @@ index ebfab07..dfe735b 100644
  #define	G_RM_AA_XLU_SURF	RM_AA_XLU_SURF(1)
  #define	G_RM_AA_XLU_SURF2	RM_AA_XLU_SURF(2)
  #define	G_RM_AA_XLU_LINE	RM_AA_XLU_LINE(1)
-diff --git a/include/segments.h b/include/segments.h
+diff --git c/include/segments.h i/include/segments.h
 index 65f1fc4..423eae4 100644
---- a/include/segments.h
-+++ b/include/segments.h
+--- c/include/segments.h
++++ i/include/segments.h
 @@ -15,7 +15,10 @@
  
  #define SEG_START         0x8005C000
@@ -280,10 +280,10 @@ index 65f1fc4..423eae4 100644
  #define SEG_GODDARD_POOL_OFFSET 0x52000 // Offset from right side of pool
  #define SEG_GODDARD       (SEG_POOL_END - SEG_GODDARD_POOL_OFFSET)
  
-diff --git a/include/types.h b/include/types.h
+diff --git c/include/types.h i/include/types.h
 index e53fb7d..1fc9131 100644
---- a/include/types.h
-+++ b/include/types.h
+--- c/include/types.h
++++ i/include/types.h
 @@ -142,15 +142,19 @@ struct ObjectNode {
  // NOTE: Since ObjectNode is the first member of Object, it is difficult to determine
  // whether some of these pointers point to ObjectNode or Object.
@@ -396,10 +396,10 @@ index e53fb7d..1fc9131 100644
  
  struct MarioBodyState {
      /*0x00*/ u32 action;
-diff --git a/levels/rr/areas/1/collision.inc.c b/levels/rr/areas/1/collision.inc.c
+diff --git c/levels/rr/areas/1/collision.inc.c i/levels/rr/areas/1/collision.inc.c
 index ddd55ec..3c65e10 100644
---- a/levels/rr/areas/1/collision.inc.c
-+++ b/levels/rr/areas/1/collision.inc.c
+--- c/levels/rr/areas/1/collision.inc.c
++++ i/levels/rr/areas/1/collision.inc.c
 @@ -5418,29 +5418,16 @@ const Collision rr_seg7_collision_level[] = {
      COL_TRI_SPECIAL(35, 45, 46, 0x100),
      COL_TRI_SPECIAL(35, 46, 47, 0x100),
@@ -432,10 +432,10 @@ index ddd55ec..3c65e10 100644
      SPECIAL_OBJECT_WITH_YAW(/*preset*/ special_level_geo_16, /*pos*/ -6053,  4096, -3197, /*yaw*/    0),
      COL_END(),
  #endif
-diff --git a/levels/rr/areas/1/geo.inc.c b/levels/rr/areas/1/geo.inc.c
+diff --git c/levels/rr/areas/1/geo.inc.c i/levels/rr/areas/1/geo.inc.c
 index 3225f13..f3ad2fa 100644
---- a/levels/rr/areas/1/geo.inc.c
-+++ b/levels/rr/areas/1/geo.inc.c
+--- c/levels/rr/areas/1/geo.inc.c
++++ i/levels/rr/areas/1/geo.inc.c
 @@ -16,6 +16,9 @@ const GeoLayout rr_geo_0009D0[] = {
                  GEO_CAMERA(14, 0, 2000, 6000, 0, 0, -8000, geo_camera_main),
                  GEO_OPEN_NODE(),
@@ -446,10 +446,10 @@ index 3225f13..f3ad2fa 100644
                      GEO_DISPLAY_LIST(LAYER_ALPHA, dl_cruiser_metal_holes),
                      GEO_RENDER_OBJ(),
                      GEO_ASM(0, geo_envfx_main),
-diff --git a/levels/rr/header.h b/levels/rr/header.h
+diff --git c/levels/rr/header.h i/levels/rr/header.h
 index 162d384..c333080 100644
---- a/levels/rr/header.h
-+++ b/levels/rr/header.h
+--- c/levels/rr/header.h
++++ i/levels/rr/header.h
 @@ -110,4 +110,9 @@ extern const Trajectory rr_seg7_trajectory_0702EEE0[];
  // script
  extern const LevelScript level_rr_entry[];
@@ -460,20 +460,96 @@ index 162d384..c333080 100644
 +extern const Gfx rr_baked_statics_layer_transparent[];
 +
  #endif
-diff --git a/levels/rr/leveldata.c b/levels/rr/leveldata.c
+diff --git c/levels/rr/leveldata.c i/levels/rr/leveldata.c
 index 6551584..f8b9d9b 100644
---- a/levels/rr/leveldata.c
-+++ b/levels/rr/leveldata.c
+--- c/levels/rr/leveldata.c
++++ i/levels/rr/leveldata.c
 @@ -66,3 +66,5 @@
  #include "levels/rr/areas/1/collision.inc.c"
  #include "levels/rr/areas/1/macro.inc.c"
  #include "levels/rr/areas/1/trajectory.inc.c"
 +
 +#include "levels/rr/baked_statics.inc.c"
-diff --git a/sm64.ld b/sm64.ld
+diff --git c/lib/asm/bcopy.s i/lib/asm/bcopy.s
+index 859455c..2f55b01 100644
+--- c/lib/asm/bcopy.s
++++ i/lib/asm/bcopy.s
+@@ -134,6 +134,39 @@ glabel bcopy
+ #else
+     bnezl $at, .L80323B18
+      slti  $at, $a2, 0x10
++    srl   $t0, $a1, 29
++    xori  $t0, $t0, 4
++    bnez  $t0, .L80323AB8_nocde
++     andi  $t1, $a1, 15
++    bnez  $t1, .L80323AB8_nocde
++     nop
++.L80323AB8_cde:
++    lw    $v0, ($a0)
++    lw    $v1, 4($a0)
++    lw    $t0, 8($a0)
++    lw    $t1, 0xc($a0)
++    lw    $t2, 0x10($a0)
++    lw    $t3, 0x14($a0)
++    lw    $t4, 0x18($a0)
++    lw    $t5, 0x1c($a0)
++    addiu $a0, $a0, 0x20
++    cache 0x0d, 0x00($a1)
++    cache 0x0d, 0x10($a1)
++    addiu $a1, $a1, 0x20
++    addiu $a2, $a2, -0x20
++    sw    $v0, -0x20($a1)
++    sw    $v1, -0x1c($a1)
++    sw    $t0, -0x18($a1)
++    sw    $t1, -0x14($a1)
++    sw    $t2, -0x10($a1)
++    sw    $t3, -0xc($a1)
++    sw    $t4, -8($a1)
++    slti  $at, $a2, 0x20
++    beqz  $at, .L80323AB8_cde
++     sw    $t5, -4($a1)
++    b     .L80323B18
++     slti  $at, $a2, 0x10
++.L80323AB8_nocde:
+ #endif
+     lw    $v0, ($a0)
+     lw    $v1, 4($a0)
+diff --git c/lib/asm/bzero.s i/lib/asm/bzero.s
+index cc542f6..41e79a3 100644
+--- c/lib/asm/bzero.s
++++ i/lib/asm/bzero.s
+@@ -68,6 +68,27 @@ glabel bzero
+     beqz  $a3, .L8032369C
+      subu  $a1, $a1, $a3
+     addu  $a3, $a3, $a0
++    srl   $t0, $a0, 29
++    xori  $t0, $t0, 4
++    bnez  $t0, .L80323674
++     andi  $t1, $a0, 15
++    bnez  $t1, .L80323674
++     nop
++.L8032366C:
++    cache 0x0d, 0x00($a0)
++    cache 0x0d, 0x10($a0)
++    addiu $a0, $a0, 0x20
++    sw    $zero, -0x20($a0)
++    sw    $zero, -0x1c($a0)
++    sw    $zero, -0x18($a0)
++    sw    $zero, -0x14($a0)
++    sw    $zero, -0x10($a0)
++    sw    $zero, -0xc($a0)
++    sw    $zero, -8($a0)
++    bne   $a0, $a3, .L8032366C
++     sw    $zero, -4($a0)
++    b     .L8032369C
++     nop
+ .L80323674:
+     addiu $a0, $a0, 0x20
+     sw    $zero, -0x20($a0)
+diff --git c/sm64.ld i/sm64.ld
 index c88b5c0..a003289 100755
---- a/sm64.ld
-+++ b/sm64.ld
+--- c/sm64.ld
++++ i/sm64.ld
 @@ -162,6 +162,9 @@ SECTIONS
          BUILD_DIR/src/game/save_file.o(.text);
          BUILD_DIR/src/game/area.o(.text);
@@ -626,10 +702,10 @@ index c88b5c0..a003289 100755
          BUILD_DIR/src/engine/graph_node_manager.o(.text);
          BUILD_DIR/src/engine/geo_layout.o(.text);
          BUILD_DIR/src/engine/level_script.o(.text);
-diff --git a/src/audio/load.c b/src/audio/load.c
+diff --git c/src/audio/load.c i/src/audio/load.c
 index aa0c71d..fbfc369 100644
---- a/src/audio/load.c
-+++ b/src/audio/load.c
+--- c/src/audio/load.c
++++ i/src/audio/load.c
 @@ -408,8 +408,7 @@ out2:
  }
  
@@ -713,11 +789,11 @@ index aa0c71d..fbfc369 100644
  }
  
  struct AudioBank *bank_load_immediate(s32 bankId, s32 arg1) {
-diff --git a/src/audio/sequence_unity.c b/src/audio/sequence_unity.c
+diff --git c/src/audio/sequence_unity.c i/src/audio/sequence_unity.c
 new file mode 100644
 index 0000000..dc235f8
 --- /dev/null
-+++ b/src/audio/sequence_unity.c
++++ i/src/audio/sequence_unity.c
 @@ -0,0 +1,6 @@
 +// One translation unit for the per-update sequence and note code (Kaze Emanuar,
 +// "Revolutionizing N64 programming!": his released audio library is a single
@@ -725,10 +801,10 @@ index 0000000..dc235f8
 +#include "seqplayer.c"
 +#include "effects.c"
 +#include "playback.c"
-diff --git a/src/buffers/framebuffers.c b/src/buffers/framebuffers.c
+diff --git c/src/buffers/framebuffers.c i/src/buffers/framebuffers.c
 index 09a8478..3b5aaea 100644
---- a/src/buffers/framebuffers.c
-+++ b/src/buffers/framebuffers.c
+--- c/src/buffers/framebuffers.c
++++ i/src/buffers/framebuffers.c
 @@ -1,12 +1,8 @@
  #include <ultra64.h>
  
@@ -746,10 +822,10 @@ index 09a8478..3b5aaea 100644
 +// SEG_FRAMEBUFFERS_SIZE bytes, aliasing the always-black bars of adjacent
 +// buffers (see framebuffers.h).
 +u16 gFramebuffers[SEG_FRAMEBUFFERS_SIZE / sizeof(u16)];
-diff --git a/src/buffers/framebuffers.h b/src/buffers/framebuffers.h
+diff --git c/src/buffers/framebuffers.h i/src/buffers/framebuffers.h
 index 70cee04..d34fa52 100644
---- a/src/buffers/framebuffers.h
-+++ b/src/buffers/framebuffers.h
+--- c/src/buffers/framebuffers.h
++++ i/src/buffers/framebuffers.h
 @@ -4,19 +4,27 @@
  #include <PR/ultratypes.h>
  
@@ -791,10 +867,10 @@ index 70cee04..d34fa52 100644
 +#define gFramebuffer2 (gFramebuffers + 2 * FRAMEBUFFER_STRIDE_WORDS)
  
  #endif // FRAMEBUFFERS_H
-diff --git a/src/engine/behavior_script.c b/src/engine/behavior_script.c
+diff --git c/src/engine/behavior_script.c i/src/engine/behavior_script.c
 index 3d2fea1..bc5df49 100644
---- a/src/engine/behavior_script.c
-+++ b/src/engine/behavior_script.c
+--- c/src/engine/behavior_script.c
++++ i/src/engine/behavior_script.c
 @@ -71,8 +71,9 @@ u16 random_u16(void) {
  
  // Generate a pseudorandom float in the range [0, 1).
@@ -874,10 +950,10 @@ index 3d2fea1..bc5df49 100644
      bhv_cmd_spawn_water_droplet,
  };
  
-diff --git a/src/engine/geo_layout.c b/src/engine/geo_layout.c
+diff --git c/src/engine/geo_layout.c i/src/engine/geo_layout.c
 index 2fd4afa..f4fe917 100644
---- a/src/engine/geo_layout.c
-+++ b/src/engine/geo_layout.c
+--- c/src/engine/geo_layout.c
++++ i/src/engine/geo_layout.c
 @@ -8,6 +8,10 @@
  
  typedef void (*GeoLayoutCommandProc)(void);
@@ -931,10 +1007,10 @@ index 2fd4afa..f4fe917 100644
  
  /*
    0x1C: Create a held object scene graph node
-diff --git a/src/engine/geo_layout.h b/src/engine/geo_layout.h
+diff --git c/src/engine/geo_layout.h i/src/engine/geo_layout.h
 index 6211e14..754c638 100644
---- a/src/engine/geo_layout.h
-+++ b/src/engine/geo_layout.h
+--- c/src/engine/geo_layout.h
++++ i/src/engine/geo_layout.h
 @@ -78,7 +78,7 @@ void geo_layout_cmd_node_object_parent(void);
  void geo_layout_cmd_node_generated(void);
  void geo_layout_cmd_node_background(void);
@@ -944,10 +1020,10 @@ index 6211e14..754c638 100644
  void geo_layout_cmd_node_held_obj(void);
  void geo_layout_cmd_node_culling_radius(void);
  
-diff --git a/src/engine/graph_node.c b/src/engine/graph_node.c
+diff --git c/src/engine/graph_node.c i/src/engine/graph_node.c
 index 66b49b2..3ce51f5 100644
---- a/src/engine/graph_node.c
-+++ b/src/engine/graph_node.c
+--- c/src/engine/graph_node.c
++++ i/src/engine/graph_node.c
 @@ -557,6 +557,9 @@ struct GraphNode *geo_remove_child(struct GraphNode *graphNode) {
      struct GraphNode **firstChild;
  
@@ -974,10 +1050,10 @@ index 66b49b2..3ce51f5 100644
      graphNode->node.flags &= ~GRAPH_RENDER_ACTIVE;
  }
  
-diff --git a/src/engine/level_script.c b/src/engine/level_script.c
+diff --git c/src/engine/level_script.c i/src/engine/level_script.c
 index 0ec4341..d7c7179 100644
---- a/src/engine/level_script.c
-+++ b/src/engine/level_script.c
+--- c/src/engine/level_script.c
++++ i/src/engine/level_script.c
 @@ -286,7 +286,7 @@ static void level_cmd_load_mario_head(void) {
      if (addr != NULL) {
          gdm_init(addr, DOUBLE_SIZE_ON_64_BIT(0xE1000));
@@ -987,10 +1063,10 @@ index 0ec4341..d7c7179 100644
          gdm_setup();
          gdm_maketestdl(CMD_GET(s16, 2));
      } else {
-diff --git a/src/engine/math_util.c b/src/engine/math_util.c
+diff --git c/src/engine/math_util.c i/src/engine/math_util.c
 index 72fa625..8342bdf 100644
---- a/src/engine/math_util.c
-+++ b/src/engine/math_util.c
+--- c/src/engine/math_util.c
++++ i/src/engine/math_util.c
 @@ -5,7 +5,79 @@
  #include "math_util.h"
  #include "surface_collision.h"
@@ -1591,10 +1667,10 @@ index 72fa625..8342bdf 100644
  }
  
  /**
-diff --git a/src/engine/math_util.h b/src/engine/math_util.h
+diff --git c/src/engine/math_util.h i/src/engine/math_util.h
 index cb37d52..fdb72f0 100644
---- a/src/engine/math_util.h
-+++ b/src/engine/math_util.h
+--- c/src/engine/math_util.h
++++ i/src/engine/math_util.h
 @@ -17,15 +17,12 @@
   * exploits array sizes for range analysis-based optimizations as well).
   * Thus, for non-IDO compilers we use the standard-compliant version.
@@ -1625,10 +1701,10 @@ index cb37d52..fdb72f0 100644
  void mtxf_align_terrain_normal(Mat4 dest, Vec3f upDir, Vec3f pos, s16 yaw);
  void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius);
  void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b);
-diff --git a/src/engine/surface_collision.c b/src/engine/surface_collision.c
+diff --git c/src/engine/surface_collision.c i/src/engine/surface_collision.c
 index 741307b..a1b7065 100644
---- a/src/engine/surface_collision.c
-+++ b/src/engine/surface_collision.c
+--- c/src/engine/surface_collision.c
++++ i/src/engine/surface_collision.c
 @@ -57,8 +57,8 @@ static s32 find_wall_collisions_from_list(struct SurfaceNode *surfaceNode,
          //  the fact they are floating point, certain floating point positions
          //  along the seam of two walls may collide with neither wall or both walls.
@@ -1789,10 +1865,10 @@ index 741307b..a1b7065 100644
  
      // To prevent the Merry-Go-Round room from loading when Mario passes above the hole that leads
      // there, SURFACE_INTANGIBLE is used. This prevent the wrong room from loading, but can also allow
-diff --git a/src/engine/surface_load.c b/src/engine/surface_load.c
+diff --git c/src/engine/surface_load.c i/src/engine/surface_load.c
 index 8437bf0..e5653cc 100644
---- a/src/engine/surface_load.c
-+++ b/src/engine/surface_load.c
+--- c/src/engine/surface_load.c
++++ i/src/engine/surface_load.c
 @@ -11,10 +11,36 @@
  #include "surface_collision.h"
  #include "game/mario.h"
@@ -2076,10 +2152,25 @@ index 8437bf0..e5653cc 100644
          }
      }
  
-diff --git a/src/game/behaviors/bubble.inc.c b/src/game/behaviors/bubble.inc.c
+diff --git c/src/game/area.c i/src/game/area.c
+index 0c56be3..8214b7c 100644
+--- c/src/game/area.c
++++ i/src/game/area.c
+@@ -167,6 +167,10 @@ void load_obj_warp_nodes(void) {
+     struct ObjectWarpNode *sp24;
+     struct Object *sp20 = (struct Object *) gObjParentGraphNode.children;
+ 
++    if (sp20 == NULL) {
++        return;
++    }
++
+     do {
+         struct Object *sp1C = sp20;
+ 
+diff --git c/src/game/behaviors/bubble.inc.c i/src/game/behaviors/bubble.inc.c
 index 9b97701..750b28b 100644
---- a/src/game/behaviors/bubble.inc.c
-+++ b/src/game/behaviors/bubble.inc.c
+--- c/src/game/behaviors/bubble.inc.c
++++ i/src/game/behaviors/bubble.inc.c
 @@ -12,7 +12,7 @@ void bhv_object_bubble_loop(void) {
      f32 bubbleY = o->oPosY;
  
@@ -2089,10 +2180,10 @@ index 9b97701..750b28b 100644
              bubbleSplash = spawn_object_at_origin(o, 0, MODEL_SMALL_WATER_SPLASH, bhvBubbleSplash);
              bubbleSplash->oPosX = o->oPosX;
              bubbleSplash->oPosY = bubbleY + 5.0f;
-diff --git a/src/game/behaviors/exclamation_box.inc.c b/src/game/behaviors/exclamation_box.inc.c
+diff --git c/src/game/behaviors/exclamation_box.inc.c i/src/game/behaviors/exclamation_box.inc.c
 index 442c88f..d0bc99b 100644
---- a/src/game/behaviors/exclamation_box.inc.c
-+++ b/src/game/behaviors/exclamation_box.inc.c
+--- c/src/game/behaviors/exclamation_box.inc.c
++++ i/src/game/behaviors/exclamation_box.inc.c
 @@ -111,9 +111,12 @@ void exclamation_box_act_3(void) {
          o->oGravity = 0.0f;
      }
@@ -2138,10 +2229,10 @@ index 442c88f..d0bc99b 100644
      }
  }
  
-diff --git a/src/game/behaviors/water_objs.inc.c b/src/game/behaviors/water_objs.inc.c
+diff --git c/src/game/behaviors/water_objs.inc.c i/src/game/behaviors/water_objs.inc.c
 index 6712810..a244889 100644
---- a/src/game/behaviors/water_objs.inc.c
-+++ b/src/game/behaviors/water_objs.inc.c
+--- c/src/game/behaviors/water_objs.inc.c
++++ i/src/game/behaviors/water_objs.inc.c
 @@ -74,7 +74,7 @@ void bhv_small_water_wave_loop(void) {
      if (o->oPosY > sp1C) {
          o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
@@ -2151,10 +2242,10 @@ index 6712810..a244889 100644
              spawn_object(o, MODEL_SMALL_WATER_SPLASH, bhvObjectWaterSplash);
          }
      }
-diff --git a/src/game/camera.c b/src/game/camera.c
+diff --git c/src/game/camera.c i/src/game/camera.c
 index 0925e96..5df49f5 100644
---- a/src/game/camera.c
-+++ b/src/game/camera.c
+--- c/src/game/camera.c
++++ i/src/game/camera.c
 @@ -4381,15 +4381,15 @@ s32 is_surf_within_bounding_box(struct Surface *surf, f32 xMax, f32 yMax, f32 zM
      // result
      s32 smaller = FALSE;
@@ -2205,10 +2296,10 @@ index 0925e96..5df49f5 100644
  
      if (dirX * normX + dirY * normY + dirZ * normZ < 0) {
          behindSurface = 1;
-diff --git a/src/game/debug.c b/src/game/debug.c
+diff --git c/src/game/debug.c i/src/game/debug.c
 index c2b7172..19f6ae8 100644
---- a/src/game/debug.c
-+++ b/src/game/debug.c
+--- c/src/game/debug.c
++++ i/src/game/debug.c
 @@ -488,39 +488,6 @@ void try_do_mario_debug_object_spawn(void) {
      }
  }
@@ -2249,10 +2340,10 @@ index c2b7172..19f6ae8 100644
  // unused, what is this?
  void debug_enemy_unknown(s16 *enemyArr) {
      // copy b1-b4 over to an unknown s16 array
-diff --git a/src/game/game_init.c b/src/game/game_init.c
-index c969ba3..e767e35 100644
---- a/src/game/game_init.c
-+++ b/src/game/game_init.c
+diff --git c/src/game/game_init.c i/src/game/game_init.c
+index c969ba3..0289c6b 100644
+--- c/src/game/game_init.c
++++ i/src/game/game_init.c
 @@ -84,52 +84,47 @@ struct DemoInput gRecordedDemoInput = { 0 };
  // Display
  // ----------------------------------------------------------------------------------------------------
@@ -2337,6 +2428,17 @@ index c969ba3..e767e35 100644
  }
  
  /**
+@@ -320,9 +315,9 @@ void draw_reset_bars(void) {
+             for (height = 0; height < (SCREEN_WIDTH / 4); height++) *fbPtr++ = 0;
+             fbPtr += ((SCREEN_WIDTH / 4) * 14);
+         }
++        osWritebackDCacheAll();
+     }
+ 
+-    osWritebackDCacheAll();
+     osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+     osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+ }
 @@ -335,7 +330,7 @@ void render_init(void) {
      set_segment_base_addr(1, gGfxPool->buffer);
      gGfxSPTask = &gGfxPool->spTask;
@@ -2355,10 +2457,77 @@ index c969ba3..e767e35 100644
  }
  
  /**
-diff --git a/src/game/mario.c b/src/game/mario.c
+@@ -373,6 +368,7 @@ void display_and_vsync(void) {
+     if (gGoddardVblankCallback != NULL) {
+         gGoddardVblankCallback();
+         gGoddardVblankCallback = NULL;
++        osWritebackDCacheAll();
+     }
+     exec_display_list(&gGfxPool->spTask);
+     profiler_log_thread5_time(AFTER_DISPLAY_LISTS);
+diff --git c/src/game/main.c i/src/game/main.c
+index 50301e9..8e718dc 100644
+--- c/src/game/main.c
++++ i/src/game/main.c
+@@ -418,6 +418,27 @@ void set_vblank_handler(s32 index, struct VblankHandler *handler, OSMesgQueue *q
+     }
+ }
+ 
++
++extern u8 *gGfxPoolEnd;
++extern LookAt lookAt;
++
++static void writeback_sp_task(struct SPTask *spTask, s32 isGfx) {
++    osWritebackDCache(spTask, sizeof(*spTask));
++    if (spTask->task.t.data_ptr != NULL && spTask->task.t.data_size != 0) {
++        osWritebackDCache(spTask->task.t.data_ptr, spTask->task.t.data_size);
++    }
++    if (isGfx && gGfxPool != NULL) {
++        osWritebackDCache(&lookAt, sizeof(lookAt));
++        u8 *poolTop = (u8 *) (gGfxPool->buffer + GFX_POOL_SIZE);
++        if (gGfxPoolEnd != NULL && gGfxPoolEnd < poolTop) {
++            osWritebackDCache(gGfxPoolEnd, (s32) (poolTop - gGfxPoolEnd));
++        }
++        if (gDisplayListHead != NULL && gDisplayListHead > gGfxPool->buffer) {
++            osWritebackDCache(gGfxPool->buffer, (s32) ((u8 *) gDisplayListHead - (u8 *) gGfxPool->buffer));
++        }
++    }
++}
++
+ void send_sp_task_message(OSMesg *msg) {
+     osWritebackDCacheAll();
+     osSendMesg(&gSPTaskMesgQueue, msg, OS_MESG_NOBLOCK);
+@@ -425,7 +446,7 @@ void send_sp_task_message(OSMesg *msg) {
+ 
+ void dispatch_audio_sptask(struct SPTask *spTask) {
+     if (sAudioEnabled && spTask != NULL) {
+-        osWritebackDCacheAll();
++        writeback_sp_task(spTask, FALSE);
+         osSendMesg(&gSPTaskMesgQueue, spTask, OS_MESG_NOBLOCK);
+     }
+ }
+@@ -433,7 +454,7 @@ void dispatch_audio_sptask(struct SPTask *spTask) {
+ #ifndef PLAY
+ s32 exec_audio_sptask_sync(struct SPTask *spTask) {
+     if (sAudioEnabled && spTask != NULL) {
+-        osWritebackDCacheAll();
++        writeback_sp_task(spTask, FALSE);
+         spTask->state = SPTASK_STATE_NOT_STARTED;
+         sCurrentAudioSPTask = spTask;
+         sNextAudioSPTask = NULL;
+@@ -446,7 +467,7 @@ s32 exec_audio_sptask_sync(struct SPTask *spTask) {
+ 
+ void exec_display_list(struct SPTask *spTask) {
+     if (spTask != NULL) {
+-        osWritebackDCacheAll();
++        writeback_sp_task(spTask, TRUE);
+         spTask->state = SPTASK_STATE_NOT_STARTED;
+         if (sCurrentDisplaySPTask == NULL) {
+             sCurrentDisplaySPTask = spTask;
+diff --git c/src/game/mario.c i/src/game/mario.c
 index 32c63c9..c7b18fd 100644
---- a/src/game/mario.c
-+++ b/src/game/mario.c
+--- c/src/game/mario.c
++++ i/src/game/mario.c
 @@ -1592,7 +1592,8 @@ u32 update_and_return_cap_flags(struct MarioState *m) {
  
          // This code flickers the cap through a long binary string, increasing in how
@@ -2369,10 +2538,10 @@ index 32c63c9..c7b18fd 100644
              flags &= ~MARIO_SPECIAL_CAPS;
              if (!(flags & MARIO_CAPS)) {
                  flags &= ~MARIO_CAP_ON_HEAD;
-diff --git a/src/game/mario_step.c b/src/game/mario_step.c
+diff --git c/src/game/mario_step.c i/src/game/mario_step.c
 index 9f442fc..c4f0d91 100644
---- a/src/game/mario_step.c
-+++ b/src/game/mario_step.c
+--- c/src/game/mario_step.c
++++ i/src/game/mario_step.c
 @@ -12,8 +12,9 @@
  static s16 sMovingSandSpeeds[] = { 12, 8, 4, 0 };
  
@@ -2385,10 +2554,10 @@ index 9f442fc..c4f0d91 100644
  };
  
  /**
-diff --git a/src/game/memory.c b/src/game/memory.c
+diff --git c/src/game/memory.c i/src/game/memory.c
 index 0d08156..fc9c0f2 100644
---- a/src/game/memory.c
-+++ b/src/game/memory.c
+--- c/src/game/memory.c
++++ i/src/game/memory.c
 @@ -366,16 +366,21 @@ void *load_segment_decompress_heap(u32 segment, u8 *srcStart, u8 *srcEnd) {
      return gDecompressionHeap;
  }
@@ -2438,10 +2607,10 @@ index 0d08156..fc9c0f2 100644
      }
      return ptr;
  }
-diff --git a/src/game/object_collision.c b/src/game/object_collision.c
+diff --git c/src/game/object_collision.c i/src/game/object_collision.c
 index 59ae99b..8e568ba 100644
---- a/src/game/object_collision.c
-+++ b/src/game/object_collision.c
+--- c/src/game/object_collision.c
++++ i/src/game/object_collision.c
 @@ -29,9 +29,9 @@ s32 detect_object_hitbox_overlap(struct Object *a, struct Object *b) {
      UNUSED f32 sp30 = sp3C - sp38;
      f32 dz = a->oPosZ - b->oPosZ;
@@ -2470,10 +2639,10 @@ index 59ae99b..8e568ba 100644
          f32 sp20 = a->hitboxHeight + sp3C;
          f32 sp1C = b->hurtboxHeight + sp38;
  
-diff --git a/src/game/object_helpers.c b/src/game/object_helpers.c
+diff --git c/src/game/object_helpers.c i/src/game/object_helpers.c
 index 54cf24f..a6ea1ec 100644
---- a/src/game/object_helpers.c
-+++ b/src/game/object_helpers.c
+--- c/src/game/object_helpers.c
++++ i/src/game/object_helpers.c
 @@ -228,11 +228,6 @@ void obj_apply_scale_to_matrix(struct Object *obj, Mat4 dst, Mat4 src) {
      dst[1][2] = src[1][2] * obj->header.gfx.scale[1];
      dst[2][2] = src[2][2] * obj->header.gfx.scale[2];
@@ -2573,10 +2742,10 @@ index 54cf24f..a6ea1ec 100644
  }
  
  void cur_obj_move_using_fvel_and_gravity(void) {
-diff --git a/src/game/object_list_processor.c b/src/game/object_list_processor.c
+diff --git c/src/game/object_list_processor.c i/src/game/object_list_processor.c
 index a2590a2..2e65edd 100644
---- a/src/game/object_list_processor.c
-+++ b/src/game/object_list_processor.c
+--- c/src/game/object_list_processor.c
++++ i/src/game/object_list_processor.c
 @@ -66,7 +66,8 @@ u32 gTimeStopState;
  /**
   * The pool that objects are allocated from.
@@ -2602,10 +2771,10 @@ index a2590a2..2e65edd 100644
  
      gObjectMemoryPool = mem_pool_init(0x800, MEMORY_POOL_LEFT);
      gObjectLists = gObjectListArray;
-diff --git a/src/game/object_list_processor.h b/src/game/object_list_processor.h
+diff --git c/src/game/object_list_processor.h i/src/game/object_list_processor.h
 index 5bea549..c499afd 100644
---- a/src/game/object_list_processor.h
-+++ b/src/game/object_list_processor.h
+--- c/src/game/object_list_processor.h
++++ i/src/game/object_list_processor.h
 @@ -82,6 +82,10 @@ extern struct Object gObjectPool[];
  extern struct Object gMacroObjectDefaultParent;
  extern struct ObjectNode *gObjectLists;
@@ -2617,10 +2786,10 @@ index 5bea549..c499afd 100644
  
  extern struct Object *gMarioObject;
  extern struct Object *gLuigiObject;
-diff --git a/src/game/paintings.c b/src/game/paintings.c
+diff --git c/src/game/paintings.c i/src/game/paintings.c
 index 08706d9..5a9756f 100644
---- a/src/game/paintings.c
-+++ b/src/game/paintings.c
+--- c/src/game/paintings.c
++++ i/src/game/paintings.c
 @@ -587,11 +587,11 @@ void painting_update_ripple_state(struct Painting *painting) {
          //! 16777216 (1 << 24), at which point it will freeze (due to floating-point
          //! imprecision?) and the painting will stop rippling. This happens to HMC, DDD, and
@@ -2635,10 +2804,10 @@ index 08706d9..5a9756f 100644
              painting->state = PAINTING_IDLE;
              gRipplingPainting = NULL;
          }
-diff --git a/src/game/rendering_graph_node.c b/src/game/rendering_graph_node.c
-index 2343068..a10198e 100644
---- a/src/game/rendering_graph_node.c
-+++ b/src/game/rendering_graph_node.c
+diff --git c/src/game/rendering_graph_node.c i/src/game/rendering_graph_node.c
+index 2343068..98c51ee 100644
+--- c/src/game/rendering_graph_node.c
++++ i/src/game/rendering_graph_node.c
 @@ -6,6 +6,7 @@
  #include "gfx_dimensions.h"
  #include "main.h"
@@ -2658,7 +2827,7 @@ index 2343068..a10198e 100644
  
  /**
   * Animation nodes have state in global variables, so this struct captures
-@@ -129,19 +131,29 @@ u16 gAreaUpdateCounter = 0;
+@@ -129,22 +131,33 @@ u16 gAreaUpdateCounter = 0;
  LookAt lookAt;
  #endif
  
@@ -2691,7 +2860,11 @@ index 2343068..a10198e 100644
  #ifdef F3DEX_GBI_2
      Mtx lMtx;
      guLookAtReflect(&lMtx, &lookAt, 0, 0, 0, /* eye */ 0, 0, 1, /* at */ 1, 0, 0 /* up */);
-@@ -154,10 +166,70 @@ static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
++    gSPLookAt(gDisplayListHead++, &lookAt);
+ #endif
+ 
+     if (enableZBuffer != 0) {
+@@ -154,10 +167,70 @@ static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
  
      for (i = 0; i < GFX_NUM_MASTER_LISTS; i++) {
          if ((currList = node->listHeads[i]) != NULL) {
@@ -2764,9 +2937,14 @@ index 2343068..a10198e 100644
                  gSPDisplayList(gDisplayListHead++, currList->displayList);
                  currList = currList->next;
              }
-@@ -180,10 +252,16 @@ static void geo_append_display_list(void *displayList, s16 layer) {
-     gSPLookAt(gDisplayListHead++, &lookAt);
- #endif
+@@ -176,14 +249,18 @@ static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
+  */
+ static void geo_append_display_list(void *displayList, s16 layer) {
+ 
+-#ifdef F3DEX_GBI_2
+-    gSPLookAt(gDisplayListHead++, &lookAt);
+-#endif
++
      if (gCurGraphNodeMasterList != 0) {
 +        Mtx *mtx = gMatStackFixed[gMatStackIndex];
          struct DisplayListNode *listNode =
@@ -2782,7 +2960,7 @@ index 2343068..a10198e 100644
          listNode->displayList = displayList;
          listNode->next = 0;
          if (gCurGraphNodeMasterList->listHeads[layer] == 0) {
-@@ -241,6 +319,8 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -241,6 +318,8 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
      }
      if (node->fnNode.node.children != NULL) {
          u16 perspNorm;
@@ -2791,7 +2969,7 @@ index 2343068..a10198e 100644
          Mtx *mtx = alloc_display_list(sizeof(*mtx));
  
  #ifdef VERSION_EU
-@@ -254,6 +334,10 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -254,6 +333,10 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
  
          gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
  
@@ -2802,7 +2980,7 @@ index 2343068..a10198e 100644
          gCurGraphNodeCamFrustum = node;
          geo_process_node_and_siblings(node->fnNode.node.children);
          gCurGraphNodeCamFrustum = NULL;
-@@ -267,17 +351,9 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
+@@ -267,17 +350,9 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
   * range of this node.
   */
  static void geo_process_level_of_detail(struct GraphNodeLevelOfDetail *node) {
@@ -2823,7 +3001,7 @@ index 2343068..a10198e 100644
          if (node->node.children != 0) {
              geo_process_node_and_siblings(node->node.children);
          }
-@@ -307,10 +383,12 @@ static void geo_process_switch(struct GraphNodeSwitchCase *node) {
+@@ -307,10 +382,12 @@ static void geo_process_switch(struct GraphNodeSwitchCase *node) {
  /**
   * Process a camera node.
   */
@@ -2837,7 +3015,7 @@ index 2343068..a10198e 100644
  
      if (node->fnNode.func != NULL) {
          node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
-@@ -322,10 +400,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -322,10 +399,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
      mtxf_lookat(cameraTransform, node->pos, node->focus, node->roll);
      mtxf_mul(gMatStack[gMatStackIndex + 1], cameraTransform, gMatStack[gMatStackIndex]);
      gMatStackIndex++;
@@ -2851,7 +3029,7 @@ index 2343068..a10198e 100644
          node->matrixPtr = &gMatStack[gMatStackIndex];
          geo_process_node_and_siblings(node->fnNode.node.children);
          gCurGraphNodeCamera = NULL;
-@@ -333,6 +412,24 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -333,6 +411,24 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
      gMatStackIndex--;
  }
  
@@ -2876,7 +3054,7 @@ index 2343068..a10198e 100644
  /**
   * Process a translation / rotation node. A transformation matrix based
   * on the node's translation and rotation is created and pushed on both
-@@ -342,21 +439,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -342,21 +438,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
  static void geo_process_translation_rotation(struct GraphNodeTranslationRotation *node) {
      Mat4 mtxf;
      Vec3f translation;
@@ -2899,7 +3077,7 @@ index 2343068..a10198e 100644
  }
  
  /**
-@@ -365,23 +452,23 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
+@@ -365,23 +451,23 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_translation(struct GraphNodeTranslation *node) {
@@ -2938,7 +3116,7 @@ index 2343068..a10198e 100644
  }
  
  /**
-@@ -391,20 +478,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
+@@ -391,20 +477,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
   */
  static void geo_process_rotation(struct GraphNodeRotation *node) {
      Mat4 mtxf;
@@ -2960,7 +3138,7 @@ index 2343068..a10198e 100644
  }
  
  /**
-@@ -413,22 +490,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
+@@ -413,22 +489,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_scale(struct GraphNodeScale *node) {
@@ -2984,7 +3162,7 @@ index 2343068..a10198e 100644
  }
  
  /**
-@@ -439,12 +505,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
+@@ -439,12 +504,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
   */
  static void geo_process_billboard(struct GraphNodeBillboard *node) {
      Vec3f translation;
@@ -2998,7 +3176,7 @@ index 2343068..a10198e 100644
      if (gCurGraphNodeHeldObject != NULL) {
          mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                           gCurGraphNodeHeldObject->objNode->header.gfx.scale);
-@@ -453,8 +518,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
+@@ -453,8 +517,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
                           gCurGraphNodeObject->scale);
      }
  
@@ -3008,7 +3186,7 @@ index 2343068..a10198e 100644
  
      if (node->displayList != NULL) {
          geo_append_display_list(node->displayList, node->node.flags >> 8);
-@@ -541,13 +605,53 @@ static void geo_process_background(struct GraphNodeBackground *node) {
+@@ -541,13 +604,53 @@ static void geo_process_background(struct GraphNodeBackground *node) {
   * Render an animated part. The current animation state is not part of the node
   * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
   */
@@ -3065,7 +3243,7 @@ index 2343068..a10198e 100644
      vec3f_set(translation, node->translation[0], node->translation[1], node->translation[2]);
      if (gCurrAnimType == ANIM_TYPE_TRANSLATION) {
          translation[0] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
-@@ -587,18 +691,33 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
+@@ -587,18 +690,33 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
          rotation[1] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
          rotation[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
      }
@@ -3110,7 +3288,7 @@ index 2343068..a10198e 100644
  }
  
  /**
-@@ -641,7 +760,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
+@@ -641,7 +759,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
   */
  static void geo_process_shadow(struct GraphNodeShadow *node) {
      Gfx *shadowList;
@@ -3118,7 +3296,7 @@ index 2343068..a10198e 100644
      Vec3f shadowPos;
      Vec3f animOffset;
      f32 objScale;
-@@ -649,7 +767,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -649,7 +766,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
      f32 sinAng;
      f32 cosAng;
      struct GraphNode *geo;
@@ -3126,7 +3304,7 @@ index 2343068..a10198e 100644
  
      if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
          if (gCurGraphNodeHeldObject != NULL) {
-@@ -680,8 +797,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -680,8 +796,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
                  gCurrAnimAttribute -= 6;
  
                  // simple matrix rotation so the shadow offset rotates along with the object
@@ -3136,7 +3314,7 @@ index 2343068..a10198e 100644
  
                  shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
                  shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
-@@ -691,12 +807,19 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -691,12 +806,19 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
          shadowList = create_shadow_below_xyz(shadowPos[0], shadowPos[1], shadowPos[2], shadowScale,
                                               node->shadowSolidity, node->shadowType);
          if (shadowList != NULL) {
@@ -3161,7 +3339,7 @@ index 2343068..a10198e 100644
              if (gShadowAboveWaterOrLava == TRUE) {
                  geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 4);
              } else if (gMarioOnIceOrCarpet == 1) {
-@@ -746,7 +869,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -746,7 +868,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
   */
  static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      s16 cullingRadius;
@@ -3169,7 +3347,7 @@ index 2343068..a10198e 100644
      struct GraphNode *geo;
      f32 hScreenEdge;
  
-@@ -755,26 +877,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -755,26 +876,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      }
  
      geo = node->sharedChild;
@@ -3198,7 +3376,7 @@ index 2343068..a10198e 100644
      } else {
          cullingRadius = 300;
      }
-@@ -784,10 +894,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -784,10 +893,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
          return FALSE;
      }
  
@@ -3209,7 +3387,7 @@ index 2343068..a10198e 100644
      if (matrix[3][2] < -20000.0f - cullingRadius) {
          return FALSE;
      }
-@@ -799,6 +905,27 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -799,6 +904,27 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      if (matrix[3][0] < -hScreenEdge - cullingRadius) {
          return FALSE;
      }
@@ -3237,7 +3415,7 @@ index 2343068..a10198e 100644
      return TRUE;
  }
  
-@@ -810,33 +933,58 @@ static void geo_process_object(struct Object *node) {
+@@ -810,33 +936,58 @@ static void geo_process_object(struct Object *node) {
      s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
  
      if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
@@ -3315,15 +3493,20 @@ index 2343068..a10198e 100644
              if (node->header.gfx.sharedChild != NULL) {
                  gCurGraphNodeObject = (struct GraphNodeObject *) node;
                  node->header.gfx.sharedChild->parent = &node->header.gfx.node;
-@@ -877,7 +1025,6 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
+@@ -877,11 +1028,8 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
  void geo_process_held_object(struct GraphNodeHeldObject *node) {
      Mat4 mat;
      Vec3f translation;
 -    Mtx *mtx = alloc_display_list(sizeof(*mtx));
  
- #ifdef F3DEX_GBI_2
-     gSPLookAt(gDisplayListHead++, &lookAt);
-@@ -906,8 +1053,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
+-#ifdef F3DEX_GBI_2
+-    gSPLookAt(gDisplayListHead++, &lookAt);
+-#endif
++
+ 
+     if (node->fnNode.func != NULL) {
+         node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
+@@ -906,8 +1054,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
                                (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
          }
          gMatStackIndex++;
@@ -3333,10 +3516,10 @@ index 2343068..a10198e 100644
          gGeoTempState.type = gCurrAnimType;
          gGeoTempState.enabled = gCurrAnimEnabled;
          gGeoTempState.frame = gCurrAnimFrame;
-diff --git a/src/game/shadow.c b/src/game/shadow.c
-index 5856272..72871c3 100644
---- a/src/game/shadow.c
-+++ b/src/game/shadow.c
+diff --git c/src/game/shadow.c i/src/game/shadow.c
+index 5856272..6ad06c6 100644
+--- c/src/game/shadow.c
++++ i/src/game/shadow.c
 @@ -40,10 +40,16 @@ struct Shadow {
      f32 floorDownwardAngle;
      /* Angle describing "how tilted the ground is" in degrees (-90 to 90). */
@@ -3521,7 +3704,7 @@ index 5856272..72871c3 100644
 +                if (index == 4) {
 +                    *yPosVtx = s.floorHeight;
 +                } else {
-+                    *yPosVtx = find_floor_height_and_data(*xPosVtx, s.parentY, *zPosVtx, &dummy);
++                    *yPosVtx = find_floor_height(*xPosVtx, s.parentY, *zPosVtx);
 +                }
                  break;
              case SHADOW_WITH_4_VERTS:
@@ -3546,7 +3729,18 @@ index 5856272..72871c3 100644
              gShadowAboveWaterOrLava = TRUE;
          }
      } else if (gCurrLevelNum == LEVEL_LLL && gCurrAreaIndex == 1
-@@ -735,22 +739,24 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
+@@ -701,9 +705,8 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
+                                                u8 solidity) {
+     Vtx *verts;
+     Gfx *displayList;
+-    struct FloorGeometry *dummy; // only for calling find_floor_height_and_data
+     f32 distBelowFloor;
+-    f32 floorHeight = find_floor_height_and_data(xPos, yPos, zPos, &dummy);
++    f32 floorHeight = find_floor_height(xPos, yPos, zPos);
+     f32 radius = shadowScale / 2;
+ 
+     if (floorHeight < FLOOR_LOWER_LIMIT_SHADOW) {
+@@ -735,22 +738,24 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
  Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidity) {
      Vtx *verts = alloc_display_list(4 * sizeof(Vtx));
      Gfx *displayList = alloc_display_list(5 * sizeof(Gfx));
@@ -3581,7 +3775,7 @@ index 5856272..72871c3 100644
  
      add_shadow_to_display_list(displayList, verts, SHADOW_WITH_4_VERTS, SHADOW_SHAPE_SQUARE);
      return displayList;
-@@ -761,9 +767,8 @@ Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidit
+@@ -761,9 +766,8 @@ Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidit
   * value is 200. Return 0 if a shadow should be drawn, 1 if not.
   */
  s32 get_shadow_height_solidity(f32 xPos, f32 yPos, f32 zPos, f32 *shadowHeight, u8 *solidity) {
@@ -3592,7 +3786,7 @@ index 5856272..72871c3 100644
  
      if (*shadowHeight < FLOOR_LOWER_LIMIT_SHADOW) {
          return 1;
-@@ -853,7 +858,8 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
+@@ -853,7 +857,8 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
                               s8 shadowType) {
      Gfx *displayList = NULL;
      struct Surface *pfloor;
@@ -3602,10 +3796,20 @@ index 5856272..72871c3 100644
  
      gShadowAboveWaterOrLava = FALSE;
      gMarioOnIceOrCarpet = 0;
-diff --git a/src/game/skybox.c b/src/game/skybox.c
+@@ -864,6 +869,9 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
+         }
+         sSurfaceTypeBelowShadow = pfloor->type;
+     }
++    if (gCurGraphNodeCamera != NULL && sCachedShadowFloorHeight > gCurGraphNodeCamera->pos[1]) {
++        return NULL;
++    }
+     switch (shadowType) {
+         case SHADOW_CIRCLE_9_VERTS:
+             displayList = create_shadow_circle_9_verts(xPos, yPos, zPos, shadowScale, shadowSolidity);
+diff --git c/src/game/skybox.c i/src/game/skybox.c
 index 055d1ce..9c58140 100644
---- a/src/game/skybox.c
-+++ b/src/game/skybox.c
+--- c/src/game/skybox.c
++++ i/src/game/skybox.c
 @@ -137,11 +137,8 @@ u8 sSkyboxColors[][3] = {
   */
  s32 calculate_skybox_scaled_x(s8 player, f32 fov) {
@@ -3674,10 +3878,10 @@ index 055d1ce..9c58140 100644
              gSPVertex((*dlist)++, VIRTUAL_TO_PHYSICAL(vertices), 4, 0);
              gSPDisplayList((*dlist)++, dl_draw_quad_verts_0123);
          }
-diff --git a/src/game/spawn_object.c b/src/game/spawn_object.c
+diff --git c/src/game/spawn_object.c i/src/game/spawn_object.c
 index 4cc1636..33e3044 100644
---- a/src/game/spawn_object.c
-+++ b/src/game/spawn_object.c
+--- c/src/game/spawn_object.c
++++ i/src/game/spawn_object.c
 @@ -82,16 +82,21 @@ struct Object *try_allocate_object(struct ObjectNode *destList, struct ObjectNod
      if ((nextObj = freeList->next) != NULL) {
          // Remove from free list
@@ -3737,11 +3941,11 @@ index 4cc1636..33e3044 100644
  
      obj->header.gfx.node.flags &= ~GRAPH_RENDER_BILLBOARD;
      obj->header.gfx.node.flags &= ~GRAPH_RENDER_ACTIVE;
-diff --git a/tools/bake_rr_statics.py b/tools/bake_rr_statics.py
+diff --git c/tools/bake_rr_statics.py i/tools/bake_rr_statics.py
 new file mode 100755
 index 0000000..c82dab7
 --- /dev/null
-+++ b/tools/bake_rr_statics.py
++++ i/tools/bake_rr_statics.py
 @@ -0,0 +1,73 @@
 +#!/usr/bin/env python3
 +"""Draw Rainbow Ride's static decoration pieces as part of the level mesh.

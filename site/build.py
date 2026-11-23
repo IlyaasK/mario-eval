@@ -972,15 +972,18 @@ def build_index(out, rows, sm64_rows, trial_rows, agent_runs, post_items, export
         r10_sp = primary_profile(r10).get("speedup", 1.0)
         r1_sp = primary_profile(r1).get("speedup", 1.0)
         trial_best = next((ar for ar in agent_runs if ar.get("kind") == "trial" and ar["summary"].get("status") == "valid"), None)
+        trial_by_slug = {slug: s for slug, _, _, s in trial_rows}
+        r10_25_sp = primary_profile(trial_by_slug[EXPERT_REF]).get("speedup", r10_sp) if EXPERT_REF in trial_by_slug else r10_sp
         trial_kpi = ""
         if trial_best:
             tsp = primary_profile(trial_best["summary"]).get("speedup", 0.0)
-            trial_kpi = f'<div class="kpi"><div class="val amber">{tsp:.2f}&times;</div><div class="lbl">Kimi K3.1 Pro trial best valid (25 routes, beats Kaze 1.65&times;)</div></div>'
+            cmp_lbl = f"vs Kaze {r10_25_sp:.3f}&times;" if abs(tsp - r10_25_sp) < 0.01 else f"beats Kaze {r10_25_sp:.2f}&times;"
+            trial_kpi = f'<div class="kpi"><div class="val amber">{tsp:.3f}&times;</div><div class="lbl">Kimi K3.1 Pro trial best valid (25 routes, {cmp_lbl})</div></div>'
         ceil_kpi = f"""
 <div class="kpis">
   <div class="kpi"><div class="val">{r0_fps:.0f} &rarr; {r10_fps:.0f} FPS</div><div class="lbl">uncapped console throughput (1000 / est. console ms): 1996 IDO vs Kaze master</div></div>
   <div class="kpi"><div class="val indigo">{r1_sp:.2f}&times;</div><div class="lbl">GCC -O2 compiler-only baseline (zero C edits)</div></div>
-  <div class="kpi"><div class="val pcb">{r10_sp:.2f}&times;</div><div class="lbl">Kaze master reference (6 public courses; 1.65&times; on 25 routes)</div></div>
+  <div class="kpi"><div class="val pcb">{r10_sp:.2f}&times;</div><div class="lbl">Kaze master reference (6 public courses; {r10_25_sp:.2f}&times; on 25 routes)</div></div>
   {trial_kpi}
 </div>
 """
