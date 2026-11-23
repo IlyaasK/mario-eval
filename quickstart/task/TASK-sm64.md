@@ -108,18 +108,18 @@ Grading replays recorded controller inputs across courses and checks these gates
   some geo callbacks move objects (e.g. a held Spiny or a collision child), so
   culling an object vanilla draws can fail this gate.
 - **Video** — every frame as a whole must match either the baseline picture or
-  an accepted visual variant in `/opt/mario-eval/corpus/variants/`
+  an accepted visual variant defined in `/opt/mario-eval/corpus/grader.json`
   (`full-detail`: always high-polygon Mario instead of medium/low LODs;
   `ra-zb-opa`: SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing
   opaque modes without `IM_RD`; `f3dex2`: Nintendo's later F3DEX2 microcode;
   `no-lod`: always the near full-detail branch of every level-of-detail node;
-  `rr-statics`: Rainbow Ride's 14 static decoration pieces drawn as part of the
+  `rr-statics`: Rainbow Ride's 14 static decoration pieces
+  `special_level_geo_03/04/07/09/0A/0B/0C/0D/10-15` drawn as part of the
   level instead of as objects; or any combination of these): at most
   0.2% of pixels may differ by more than ±2/31 per channel from their best 3×3
-  neighbor. **Before using any visual variant, read its exact `.patch` file in
-  `/opt/mario-eval/corpus/variants/` verbatim** and do not extrapolate beyond
-  those exact macros/meshes (for example, `ra-zb-opa.patch` covers `OPA_SURF`
-  only, not `OPA_DECAL` or `OPA_INTER`). Watch the `vid%` column in `mev check`:
+  neighbor. Do not extrapolate beyond those exact accepted policies (for
+  example, `ra-zb-opa` covers `OPA_SURF` only, not `OPA_DECAL` or `OPA_INTER`).
+  Watch the `vid%` column in `mev check`:
   a non-zero pixel drift that stays under 0.2% on the 6 public courses often
   exceeds 0.2% on held-out routes. Each frame is matched against the set of *distinct* reference
   frames for that frame index; identical combinations are stored once, and

@@ -47,10 +47,10 @@ Grading replays recorded controller inputs and checks six gates on every route:
   voice counts) must match **bit for bit** on every frame. Reordering IEEE 754
   floating-point arithmetic in simulation code (`-ffast-math`) will drift and fail.
 - **Video** — every frame as a whole must match either the baseline picture or
-  an accepted visual variant (`full-detail` in `/opt/mario-eval/corpus/variants/`,
-  where Pip is always drawn at full detail regardless of camera distance):
-  at most 0.2% of pixels may differ by more than ±2/31 per channel from their
-  best 3×3 neighbor.
+  an accepted visual variant defined in `/opt/mario-eval/corpus/grader.json`
+  (`full-detail`: Pip is always drawn at full detail regardless of camera
+  distance): at most 0.2% of pixels may differ by more than ±2/31 per channel
+  from their best 3×3 neighbor.
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
   non-silent frame; silence must stay silent.
 

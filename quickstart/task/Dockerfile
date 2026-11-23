@@ -9,7 +9,6 @@ ARG GAME_TITLE="Pip's Garden baseline"
 
 COPY ${CORPUS_DIR}/grader.json /opt/mario-eval/corpus/grader.json
 COPY ${CORPUS_DIR}/replays/public /opt/mario-eval/corpus/replays/public
-COPY ${CORPUS_DIR}/variants /opt/mario-eval/corpus/variants
 COPY cache/public-stage /opt/mario-eval/reference
 COPY tools/mev.py /usr/local/bin/mev
 
@@ -63,14 +62,16 @@ PY
 fi
 SH
 
-# Verify zero held-out data or retail ROM images exist anywhere in the image.
-RUN python3 -c 'import json, pathlib; ref = pathlib.Path("/opt/mario-eval/reference"); idx = json.loads((ref / "index.json").read_text()); assert all(not k.startswith("heldout") for k in idx.get("workloads", {})), "heldout leaked in index.json"; assert not list(ref.rglob("heldout*")), "heldout files leaked in reference"; assert not list(pathlib.Path("/task/game").rglob("*.z64")), "ROM file leaked in /task/game"'
+# Verify zero held-out data, variant patches, or retail ROM images exist in the image.
+RUN python3 -c 'import json, pathlib; ref = pathlib.Path("/opt/mario-eval/reference"); idx = json.loads((ref / "index.json").read_text()); assert all(not k.startswith("heldout") for k in idx.get("workloads", {})), "heldout leaked in index.json"; assert not list(ref.rglob("heldout*")), "heldout files leaked in reference"; assert not pathlib.Path("/opt/mario-eval/corpus/variants").exists(), "variant patches leaked into task image"; assert not list(pathlib.Path("/task/game").rglob("*.z64")), "ROM file leaked in /task/game"'
 
 USER agent
 ENV HOME=/home/agent
 RUN cd /task/game && rm -rf .git build build_* *.z64 \
+    && find . -exec touch -t 202601010000 {} + \
     && printf 'build/\nbuild_*/\n*.z64\n' >> .gitignore \
     && git init -q -b main \
     && git -c user.name=baseline -c user.email=baseline@mario-eval add -A \
-    && git -c user.name=baseline -c user.email=baseline@mario-eval commit -qm "${GAME_TITLE}"
+    && git -c user.name=baseline -c user.email=baseline@mario-eval commit -qm "${GAME_TITLE}" \
+    && test -z "$(git fsck --full --no-reflogs --unreachable 2>&1)"
 WORKDIR /task/game
