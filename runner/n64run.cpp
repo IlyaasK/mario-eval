@@ -228,10 +228,19 @@ struct Runner : ares::Platform {
       << ",\"dcache_hits\":" << cp.dcacheHits << ",\"dcache_misses\":" << cp.dcacheMisses
       << ",\"dcache_writebacks\":" << cp.dcacheWritebacks
       << ",\"uncached_reads\":" << cp.uncachedReads << ",\"uncached_writes\":" << cp.uncachedWrites
+      << ",\"cache_uncached_ops\":" << cp.cacheUncachedOps
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
+      << ",\"rsp_gfx_cycles\":" << rp.gfxCycles << ",\"rsp_aud_cycles\":" << rp.audCycles
+      << ",\"dcache_coherence_errors\":" << (rp.dcacheCoherenceErrors + dp.dcacheCoherenceErrors)
       << ",\"cpu_idle_cycles\":" << N64::cpu.sampler.idleClocks / 2
       << ",\"rdp_cycles\":" << dp.cycles
       << ",\"rdp_fill_cycles\":" << dp.fillCycles
+      << ",\"rdp_fill_imrd_cycles\":" << dp.fillImRdCycles
+      << ",\"rdp_fill_2cycle_cycles\":" << dp.fill2CycleCycles
+      << ",\"rdp_fill_decal_cycles\":" << dp.fillDecalCycles
+      << ",\"rdp_fill_copy_cycles\":" << dp.fillCopyCycles
+      << ",\"rdp_color_addr\":" << dp.lastColorAddr
+      << ",\"rdp_z_addr\":" << dp.lastZAddr
       << ",\"rdp_page_miss_cycles\":" << dp.pageMissCycles
       << ",\"rdp_rdram_page_misses\":" << dp.rdramPageMisses
       << ",\"rdp_tmem_cycles\":" << dp.tmemCycles
@@ -276,6 +285,8 @@ struct Runner : ares::Platform {
     }
     r << ",\"footprint_bytes\":" << fp.lines() * 16
       << ",\"highest_line\":" << fp.highestLine()
+      << ",\"cache_uncached_ops\":" << N64::cpu.profile.cacheUncachedOps
+      << ",\"dcache_coherence_errors\":" << (N64::rsp.profile.dcacheCoherenceErrors + N64::rdp.profile.dcacheCoherenceErrors)
       << ",\"host_seconds\":" << seconds << "}\n";
   }
 };

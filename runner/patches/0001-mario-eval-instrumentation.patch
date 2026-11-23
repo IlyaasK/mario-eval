@@ -100,7 +100,7 @@ index 41964d4..d618b76 100644
  auto CPU::instructionEpilogue() -> void {
    if constexpr(!Recompiled) {
 diff --git i/ares/n64/cpu/cpu.hpp w/ares/n64/cpu/cpu.hpp
-index b51000d..4d3bea7 100644
+index b51000d..ae53ed3 100644
 --- i/ares/n64/cpu/cpu.hpp
 +++ w/ares/n64/cpu/cpu.hpp
 @@ -53,6 +53,10 @@ struct CPU : Thread {
@@ -130,14 +130,15 @@ index b51000d..4d3bea7 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1303,42 @@ struct CPU : Thread {
+@@ -1297,11 +1303,43 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
 +      s64 uncachedReads, uncachedWrites;  //mario-eval: CPU accesses to RDRAM that bypass the caches
++      s64 cacheUncachedOps;               //mario-eval: hit/CDE CACHE ops on uncached (KSEG1) addresses
      };
 -    s64 data[8];
-+    s64 data[10];
++    s64 data[11];
      Profile() : data{0} {}
    } profile;
  
@@ -208,6 +209,20 @@ index 4de28e0..de340a2 100644
    } else {
      cpu.step(1 * 2);
      self.profile.dcacheHits++;
+diff --git i/ares/n64/cpu/interpreter-ipu.cpp w/ares/n64/cpu/interpreter-ipu.cpp
+index 938ccbd..a0d7ebd 100644
+--- i/ares/n64/cpu/interpreter-ipu.cpp
++++ w/ares/n64/cpu/interpreter-ipu.cpp
+@@ -121,6 +121,9 @@ auto CPU::CACHE(u8 operation, cr64& rs, s16 imm) -> void {
+   auto access = devirtualize<Read, Word>(rs.u64 + imm);
+   if (!access) return;
+   if(!access.cache) {
++    if(operation == 0x0d || (operation & 0x10)) {
++      profile.cacheUncachedOps++;
++    }
+     debug(unusual, "[CPU] CACHE access to non-cacheable address ", hex(access.vaddr, 8L), " at PC ", hex(PC, 16L));
+   }
+ 
 diff --git i/ares/n64/cpu/memory.cpp w/ares/n64/cpu/memory.cpp
 index f362ef6..827c915 100644
 --- i/ares/n64/cpu/memory.cpp
@@ -273,7 +288,7 @@ index 8158048..f0f64af 100644
        } else {
          const sljit_sw ramDataField = sdram ? (sljit_sw)(uintptr_t)&aleck64.sdram.data
 diff --git i/ares/n64/rdp/rdp.cpp w/ares/n64/rdp/rdp.cpp
-index b71c407..e0ade1c 100644
+index b71c407..f1acd90 100644
 --- i/ares/n64/rdp/rdp.cpp
 +++ w/ares/n64/rdp/rdp.cpp
 @@ -1,4 +1,5 @@
@@ -282,7 +297,7 @@ index b71c407..e0ade1c 100644
  
  namespace ares::Nintendo64 {
  
-@@ -60,7 +61,305 @@ auto RDP::power(bool reset) -> void {
+@@ -60,7 +61,322 @@ auto RDP::power(bool reset) -> void {
    fillRectangle_ = {};
    io.bist = {};
    io.test = {};
@@ -305,6 +320,17 @@ index b71c407..e0ade1c 100644
 +    if(bytes > avail) bytes = avail;
 +    if(write) rdram.profile.metrics[(u32)dev].writes += bytes;
 +    else      rdram.profile.metrics[(u32)dev].reads  += bytes;
++    if(!write && dev == RBusDevice::DP_DMA) {
++      u32 firstLine = addr & ~15u;
++      u32 lastLine = (addr + bytes - 1) & ~15u;
++      for(u32 la = firstLine; la <= lastLine; la += 16) {
++        auto& line = cpu.dcache.line(la);
++        if(line.hit(la) && line.dirty) {
++          dcacheCoherenceErrors++;
++          break;
++        }
++      }
++    }
 +    rdram.footprint.mark(addr, bytes);
 +    u32 firstPage = addr >> 11;
 +    u32 lastPage = (addr + bytes - 1) >> 11;
@@ -392,6 +418,7 @@ index b71c407..e0ade1c 100644
 +        u32 pxPerCycle = (bpp == 4) ? 2 : 4;
 +        u64 sc = 2 + (px + pxPerCycle - 1) / pxPerCycle;
 +        fillCycles += sc;
++        fillCopyCycles += sc;
 +        cycles += sc;
 +        markRdram(cAddr, cBytes, RBusDevice::DP_DRAW, true);
 +      } else {
@@ -438,6 +465,9 @@ index b71c407..e0ade1c 100644
 +          markRdram(zAddr, passed * 2, RBusDevice::DP_DRAW, true);
 +        }
 +        fillCycles += sc;
++        if(state.imageRead) fillImRdCycles += sc;
++        if(state.cycleType == 1) fill2CycleCycles += sc;
++        if(state.zMode == 3) fillDecalCycles += sc;
 +        cycles += sc;
 +      }
 +    }
@@ -577,22 +607,24 @@ index b71c407..e0ade1c 100644
 +
 +  case 0x3e: {
 +    state.zAddr     = words[1] & 0x00ff'ffffu;
++    lastZAddr       = state.zAddr;
 +  } break;
 +
 +  case 0x3f: {
 +    state.colorSize  = (words[0] >> 19) & 3;
 +    state.colorWidth = (words[0] & 0x3ff) + 1;
 +    state.colorAddr  = words[1] & 0x00ff'ffffu;
++    if(state.colorAddr != state.zAddr) lastColorAddr = state.colorAddr;
 +  } break;
 +  }
 +}
 +
  }
 diff --git i/ares/n64/rdp/rdp.hpp w/ares/n64/rdp/rdp.hpp
-index d0b5773..34661fa 100644
+index d0b5773..c2fd8c8 100644
 --- i/ares/n64/rdp/rdp.hpp
 +++ w/ares/n64/rdp/rdp.hpp
-@@ -354,6 +354,48 @@ struct RDP : Thread, Memory::RCP<RDP> {
+@@ -354,6 +354,55 @@ struct RDP : Thread, Memory::RCP<RDP> {
  
    } io{*this};
  
@@ -601,6 +633,10 @@ index d0b5773..34661fa 100644
 +  struct Profile {
 +    u64 cycles = 0;          // Total modelled RDP gclk cycles
 +    u64 fillCycles = 0;      // Span/pixel combiner, Z-buffer & blender cycles
++    u64 fillImRdCycles = 0;  // Fill cycles on spans with IM_RD (AA/blend framebuffer reads)
++    u64 fill2CycleCycles = 0;// Fill cycles on 2-cycle combiner spans
++    u64 fillDecalCycles = 0; // Fill cycles on Z_MODE_DEC (decal) spans
++    u64 fillCopyCycles = 0;  // Fill cycles on FILL/COPY mode rectangles
 +    u64 pageMissCycles = 0;  // 4-bank x 2 KB RDRAM row-miss cycles (24 gclk/miss)
 +    u64 tmemCycles = 0;      // TMEM texture/TLUT load cycles
 +    u64 syncCycles = 0;      // SyncLoad/SyncPipe/SyncTile/SyncFull drain cycles
@@ -613,6 +649,9 @@ index d0b5773..34661fa 100644
 +    u64 tmemLoads = 0;       // LoadBlock + LoadTile + LoadTLUT count
 +    u64 tmemBytes = 0;       // RDRAM bytes loaded into TMEM
 +    u64 syncs = 0;           // Sync commands executed
++    u64 dcacheCoherenceErrors = 0; // DP DMA reads overlapping dirty CPU D-cache lines
++    u32 lastColorAddr = 0;   // Last color buffer RDRAM address (distinct from zAddr)
++    u32 lastZAddr = 0;       // Last Z-buffer RDRAM address
 +    u32 openRow[4] = {~0u, ~0u, ~0u, ~0u};
 +    std::vector<u16> shadowZ = std::vector<u16>(640 * 480, 0x7fffu);
 +
@@ -727,6 +766,71 @@ index c718ec2..9eec090 100644
    auto load(Node::Object) -> void;
    auto unload() -> void;
    auto power(bool reset) -> void;
+diff --git i/ares/n64/rsp/debugger.cpp w/ares/n64/rsp/debugger.cpp
+index cc5bd61..5a6320f 100644
+--- i/ares/n64/rsp/debugger.cpp
++++ w/ares/n64/rsp/debugger.cpp
+@@ -146,6 +146,7 @@ auto RSP::Debugger::dmemReadWord(u12 address, int size, const char *peripheral)
+     u8 readMask = ((1 << size) - 1) << (address & 0x7);
+     auto& taintWord = taintMask.dmem[address >> 3];
+     if (taintWord.dirty & readMask) {
++      rsp.profile.dcacheCoherenceErrors++;
+       u32 rdramAddress = taintWord.ctxDmaRdramAddress + (address & 0x7);
+       string msg = { peripheral, " reading from DMEM address 0x", hex(address), " which contains a value which is not cache coherent\n"};
+       msg.append(string{ "\tCurrent RSP PC: 0x", hex(rsp.ipu.pc, 3L), "\n" });
+diff --git i/ares/n64/rsp/io.cpp w/ares/n64/rsp/io.cpp
+index 19bf547..a466a12 100644
+--- i/ares/n64/rsp/io.cpp
++++ w/ares/n64/rsp/io.cpp
+@@ -119,7 +119,10 @@ auto RSP::ioWrite(u32 address, u32 data_, Thread& thread) -> void {
+ 
+   if(address == 4) {
+     //SP_STATUS
+-    if(data.bit( 0) && !data.bit( 1)) status.halted = 0;
++    if(data.bit( 0) && !data.bit( 1)) {
++      status.halted = 0;
++      profile.activeTaskType = dmem.read<Word>(0x0fc0);
++    }
+     if(data.bit( 1) && !data.bit( 0)) status.halted = 1;
+     if(data.bit( 2)) status.broken = 0;
+     if(data.bit( 3) && !data.bit( 4)) mi.lower(MI::IRQ::SP);
+diff --git i/ares/n64/rsp/rsp.cpp w/ares/n64/rsp/rsp.cpp
+index b743688..eab8e49 100644
+--- i/ares/n64/rsp/rsp.cpp
++++ w/ares/n64/rsp/rsp.cpp
+@@ -82,6 +82,8 @@ auto RSP::instruction() -> void {
+   //with the recompiler, it only steps for taken branch stalls
+   step(pipeline.clocks);
+   profile.cycles += pipeline.clocks;
++  if(profile.activeTaskType == 1) profile.gfxCycles += pipeline.clocks;
++  else if(profile.activeTaskType == 2) profile.audCycles += pipeline.clocks;
+   pipeline.clocksTotal += pipeline.clocks;
+ }
+ 
+@@ -108,6 +110,8 @@ auto RSP::instructionEpilogue(u32 clocks) -> s32 {
+   if constexpr(Recompiled) {
+     step(clocks);
+     profile.cycles += clocks;
++    if(profile.activeTaskType == 1) profile.gfxCycles += clocks;
++    else if(profile.activeTaskType == 2) profile.audCycles += clocks;
+     pipeline.clocksTotal += clocks;
+ 
+     assert(ipu.r[0].u32 == 0);
+diff --git i/ares/n64/rsp/rsp.hpp w/ares/n64/rsp/rsp.hpp
+index 3f05ea5..707be45 100644
+--- i/ares/n64/rsp/rsp.hpp
++++ w/ares/n64/rsp/rsp.hpp
+@@ -319,6 +319,10 @@ struct RSP : Thread, Memory::RCP<RSP> {
+   struct Profile {
+     s64 cycles;
+     s64 haltedCycles;
++    s64 gfxCycles;               //mario-eval: non-halted RSP clocks during M_GFXTASK (type 1)
++    s64 audCycles;               //mario-eval: non-halted RSP clocks during M_AUDTASK (type 2)
++    u32 activeTaskType;          //mario-eval: OSTask.t.type latched from DMEM 0x0fc0 on unhalt
++    u64 dcacheCoherenceErrors;   //mario-eval: RSP reads of DMEM bytes DMA'd from dirty CPU D-cache lines
+   } profile;
+ 
+   //ipu.cpp
 diff --git i/ares/n64/vulkan/vulkan.cpp w/ares/n64/vulkan/vulkan.cpp
 index 3f463a9..b370567 100644
 --- i/ares/n64/vulkan/vulkan.cpp

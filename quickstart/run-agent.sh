@@ -83,10 +83,27 @@ format_remaining() {
   if [ "$h" -gt 0 ]; then printf '%dh %02dm' "$h" "$m"; else printf '%dm' "$m"; fi
 }
 continue_prompt() {
-  local rem
+  local rem head_info dirty_count last_commit_age last_score nudge=""
   rem="$(format_remaining)"
-  printf 'Continue working on the %sh optimization task in /task/TASK.md (profile: %s; time remaining: %s). Run '\''mev check'\'' to see your current reward, speedup, and vs_o2_speedup, commit working milestones in /task/game, and keep pushing hardware performance further. Check $MEV_DEADLINE_EPOCH (seconds since epoch) and leave a clean, mev-check-passing tree before the deadline.' \
-    "$HOURS" "$PROFILE" "$rem"
+  head_info="$(in_task git -C /task/game log -1 --format='%h (%ar) %s' 2>/dev/null || echo 'unknown')"
+  dirty_count="$(in_task bash -c 'git -C /task/game status --porcelain 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ' || echo 0)"
+  last_commit_age="$(in_task bash -c 't=$(git -C /task/game log -1 --format=%ct 2>/dev/null || echo 0); echo $(( ($(date +%s) - t) / 60 ))' 2>/dev/null | tr -d ' ' || echo 0)"
+  last_score="$(in_task python3 -c '
+import json, pathlib
+p = pathlib.Path("/task/.mev-history.jsonl")
+if p.is_file():
+    lines = [l for l in p.read_text().splitlines() if l.strip()]
+    if lines:
+        d = json.loads(lines[-1])
+        sp = d.get("speedups", {}).get("'"$PROFILE"'", 0)
+        vo = d.get("vs_o2_speedups", {}).get("'"$PROFILE"'", 0)
+        print(f"status={d.get(\"status\")} speedup={sp}x vs_o2={vo}x ({d.get(\"git_head\")})")
+' 2>/dev/null || true)"
+  if [ "${last_commit_age:-0}" -ge 90 ]; then
+    nudge=" You have not landed a new commit in ${last_commit_age}m — avoid prolonged analysis without testing: pick a concrete bottleneck from 'mev profile', edit, verify with 'mev check <course> --fast', and commit or revert in small verified increments."
+  fi
+  printf 'Continue working on the %sh optimization task in /task/TASK.md (profile: %s; time remaining: %s). Current HEAD: %s (dirty files: %s). Last full check: %s.%s Always wait for mev check to finish before ending your turn (backgrounded jobs are killed when a turn ends). Review git log -n 10 --oneline and /task/OPTIMIZATION_LOG.md (if present), commit working milestones in /task/game, and leave a clean, mev-check-passing tree before $MEV_DEADLINE_EPOCH.' \
+    "$HOURS" "$PROFILE" "$rem" "$head_info" "$dirty_count" "${last_score:-none yet}" "$nudge"
 }
 
 # Snapshot /task/game onto refs/mev/checkpoints using a temporary index so we
@@ -258,8 +275,28 @@ start_agent
 while [ "$(now)" -lt "$DEADLINE" ]; do
   sleep 10
   if ! kill -0 "$AGENT_PID" 2>/dev/null; then
+    exit_rc=0; wait "$AGENT_PID" 2>/dev/null || exit_rc=$?
     stop_agent
     elapsed=$(( $(now) - AGENT_STARTED ))
+    stop_reason="$(python3 - "$AGENT_LOG" <<'PY' 2>/dev/null || true
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+if not p.is_file(): sys.exit(0)
+reason = ""
+for line in p.read_text(errors="replace").splitlines()[-80:]:
+    try:
+        d = json.loads(line)
+        msg = d.get("message") or d
+        if isinstance(msg, dict) and msg.get("stopReason"):
+            reason = str(msg["stopReason"])
+            if msg.get("errorMessage"):
+                reason += ":" + str(msg["errorMessage"])[:120]
+    except Exception:
+        pass
+print(reason)
+PY
+)"
+    log "agent invocation $N exited (rc=$exit_rc elapsed=${elapsed}s stop=${stop_reason:-unknown})"
     if [ "$elapsed" -lt 60 ]; then
       RAPID_FAILS=$((RAPID_FAILS + 1))
       if tail -c 8192 "$AGENT_LOG" 2>/dev/null | grep -qiE 'Model does not exist|do not have access to it|404[^0-9].*model|invalid_api_key|401[^0-9].*unauthorized'; then

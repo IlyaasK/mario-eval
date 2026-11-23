@@ -86,7 +86,8 @@ free CPU time: nothing else is ever credited as idle.
     D-cache misses + D-cache write-backs + uncached accesses)) / 93,750, where
     `rcp_mb` is non-CPU RDRAM traffic in the frame (`SP DMA + DP DMA + DP Draw
     + PI DMA + SI DMA`, in MB);
-  - `rsp_ms` = non-halted RSP cycles / 62,500;
+  - `rsp_ms` = non-halted RSP master clocks (`rsp_cycles - rsp_halted_cycles`) / 187,500
+    (ares steps the 62.5 MHz RSP in 187.5 MHz master clocks = 3 master clocks per RSP cycle);
   - `rdp_ms` = RDP cycles / 62,500, including **24 gclk per 2 KB RDRAM row miss**
     across the four 1 MB banks (`rdp_page_miss_cycles`; keeping color and Z
     buffers in distinct 1 MB banks avoids per-span bank thrashing);

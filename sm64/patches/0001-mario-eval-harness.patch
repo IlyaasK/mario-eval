@@ -65,7 +65,21 @@ index b267233..7a6eab1 100644
  	$(MAKE) -C $(TOOLS_DIR) clean
  	$(MAKE) -C $(TOOLS_DIR)/sm64tools clean
  
-@@ -930,7 +939,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
+@@ -909,7 +918,13 @@ $(BUILD_DIR)/libgcc.a: $(LIBGCC_O_FILES)
+ 	$(V)$(AR) rcs -o $@ $(LIBGCC_O_FILES)
+ 
+ # Link SM64 ELF file
++ifeq ($(COMPILER),gcc)
++  TOOLCHAIN_LIBGCC := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
++else
++  TOOLCHAIN_LIBGCC :=
++endif
+ $(ELF): $(O_FILES) $(MIO0_OBJ_FILES) $(SEG_FILES) $(BUILD_DIR)/$(LD_SCRIPT) undefined_syms.txt $(BUILD_DIR)/libultra.a $(BUILD_DIR)/libgoddard.a $(BUILD_DIR)/libgcc.a
+ 	@$(PRINT) "$(GREEN)Linking ELF file:  $(BLUE)$@ $(NO_COL)\n"
+-	$(V)$(LD) -L $(BUILD_DIR) -T undefined_syms.txt -T $(BUILD_DIR)/$(LD_SCRIPT) -Map $(BUILD_DIR)/sm64.$(VERSION).map --no-check-sections $(addprefix -R ,$(SEG_FILES)) -o $@ $(O_FILES) -lultra -lgoddard -lgcc
++	$(V)$(LD) -L $(BUILD_DIR) -T undefined_syms.txt -T $(BUILD_DIR)/$(LD_SCRIPT) -Map $(BUILD_DIR)/sm64.$(VERSION).map --no-check-sections $(addprefix -R ,$(SEG_FILES)) -o $@ $(O_FILES) -lultra -lgoddard -lgcc $(TOOLCHAIN_LIBGCC)
+ 
+@@ -930,7 +945,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
  
  
  
@@ -75,7 +89,9 @@ index b267233..7a6eab1 100644
 +
 +.PHONY: all clean distclean default diff test load libultra check-play
  # with no prerequisites, .SECONDARY causes no intermediate target to be removed
- .SECONDARY:
+-.SECONDARY:
++# Disabled in mario-eval: under GNU Make 4.3, empty .SECONDARY prevents rebuilding deleted .o files.
++# .SECONDARY:
  
 diff --git i/src/audio/external.c w/src/audio/external.c
 index a5140d7..f6a0187 100644

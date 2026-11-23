@@ -48,7 +48,7 @@ For each profile, `geo = geomean(yours / baseline)` over all courses:
 - **Unbounded speedup**: `speedup = 1 / geo`, `log2_speedup = -log2(geo)`, and `vs_o2_speedup` (speedup beyond switching `COMPILER=gcc` `-O2 -fno-fast-math`, directly measuring genuine algorithmic & hardware optimization beyond the compiler).
 
 Course budgets enforce honest hardware engineering. Each profile has a **profile budget** on its own metric (a course may not regress it) and a **cross-subsystem budget** (a course may not regress the other metric):
-- `console` (`est_console_ms`) and `stutter` (`est_console_p99_ms`): ≤ **5%**; cross-subsystem `footprint_bytes` ≤ **5%**.
+- `console` (`est_console_ms`) and `stutter` (`est_console_p99_ms`): ≤ **5%**; cross-subsystem `footprint_bytes` ≤ **5%** *(note: the 0% footprint cap applies ONLY to the `memory` profile, NOT `console`)*.
 - `speed` (`cpu_effective_cycles`): ≤ **5%**; cross-subsystem `rdp_busy` ≤ **5%**.
 - `rdp` (`rdp_busy`), `rsp` (`rsp_busy`), `traffic` (`rdram_bytes`): ≤ **5%**; cross-subsystem `cpu_effective_cycles` ≤ **5%**.
 - `memory` (`footprint_bytes`): no course may regress it at all (**0%**); cross-subsystem `cpu_effective_cycles` ≤ **5%**.
@@ -72,12 +72,19 @@ the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled)
   structures, Y-bounds/AABB pre-filtering, finer spatial grids, and stationary
   floor caching that return the same winning surfaces;
 - Hibernating physics/floor raycasts on distant off-screen objects far outside
-  Mario's interaction radius and Lakitu's camera view;
-- Balancing `-Os` vs `-O2` per file so hot code fits the 16 KB direct-mapped
-  I-cache instead of blindly unrolling loops;
-- Using VR4300 `CACHE 0x0d` (`Create Dirty Exclusive`), optimizing `math_util`,
-  `rendering_graph_node`, `audio`, Fast3D/RSP, RDP render modes/syncs/TMEM, and
-  compacting RDRAM pools and framebuffers.
+  Mario's interaction radius and Lakitu's camera view *(careful: some actors rest
+  in `oAction == 0` for 100+ frames before moving, so only hibernate genuinely
+  distant actors and verify with `mev stress`)*;
+- Balancing `-Os` vs `-O2` per file (GCC's `libgcc` is linked automatically) so
+  hot code fits the 16 KB direct-mapped I-cache instead of blindly unrolling
+  loops *(note: 16 KB direct-mapped I-cache set collisions can cause ±1–2% layout
+  variance when code addresses shift; use `mev profile` I-cache conflict pairs to
+  diagnose set collisions rather than misattributing them)*;
+- Using VR4300 `CACHE 0x0d` (`Create Dirty Exclusive`) on 16-byte-aligned cached
+  KSEG0 addresses (`0x80000000..0x9FFFFFFF` only — never KSEG1), optimizing
+  `math_util`, `rendering_graph_node`, `audio`, Fast3D/RSP, RDP render
+  modes/syncs/TMEM, and compacting RDRAM pools and framebuffers *(always keep
+  CPU D-cache writebacks coherent before SP/DP DMA reads)*.
 
 ## Verification Gates (Player Equivalence)
 
@@ -109,7 +116,12 @@ Grading replays recorded controller inputs across courses and checks these gates
   `rr-statics`: Rainbow Ride's 14 static decoration pieces drawn as part of the
   level instead of as objects; or any combination of these): at most
   0.2% of pixels may differ by more than ±2/31 per channel from their best 3×3
-  neighbor. Each frame is matched against the set of *distinct* reference
+  neighbor. **Before using any visual variant, read its exact `.patch` file in
+  `/opt/mario-eval/corpus/variants/` verbatim** and do not extrapolate beyond
+  those exact macros/meshes (for example, `ra-zb-opa.patch` covers `OPA_SURF`
+  only, not `OPA_DECAL` or `OPA_INTER`). Watch the `vid%` column in `mev check`:
+  a non-zero pixel drift that stays under 0.2% on the 6 public courses often
+  exceeds 0.2% on held-out routes. Each frame is matched against the set of *distinct* reference
   frames for that frame index; identical combinations are stored once, and
   `no-lod` subsumes `full-detail` (Mario's LOD is the only thing `full-detail`
   changes), so the reference does not hold that combination separately.
@@ -126,21 +138,25 @@ support (such as snow, desert, or lava effects) used in other courses.
 Your working directory is `/task/game` (the SM64 git repository).
 
 ```
-mev build                 build /task/game
-mev run jrb               run a public course; prints est_console_ms / est_console_p99_ms
-                          (console & stutter), cpu/rsp/rdp/rdram ms and vs-baseline speedups
-mev profile bob           per-function CPU profile plus D/I-cache misses, writebacks,
-                          top 16 KB I-cache conflict pairs, and RDP cycle breakdown
-mev check                 full clean + PLAY=1 grader on all 6 public courses; prints
-                          per-course timings and updates /tmp/mev-last-check/summary.json
-mev check jrb --fast      fast incremental gate check on 1+ courses (skips PLAY=1 rebuild)
+mev build [--clean]       build /task/game (prints ROM sha256; use --clean after Makefile flag changes)
+mev run jrb               run a public course; prints CPU/RSP/RDP/RDRAM breakdowns & vs-baseline speedups
+mev run --all             run all 6 public courses in parallel (~10s; defaults to 120 frames — pass --frames 240 to match check)
+mev profile bob           per-function CPU busy profile (idle excluded) with function sizes, D/I-cache misses,
+                          data-symbol miss & writeback attribution, 16 KB I-cache conflicts, and RDP/RDRAM map
+mev check                 full clean + PLAY=1 grader on all 6 public courses; prints per-course timings,
+                          vid% drift, Δcon vs last check, and updates /tmp/mev-last-check/summary.json
+mev check jrb --fast      fast incremental gate check on 1+ courses (~5s, skips PLAY=1 rebuild)
+mev stress                local seeded button-mash stress test across all 6 courses (checks crashes, RAM, DMA coherence)
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
 mev restore-assets        restore missing extracted SM64 assets offline without overwriting edits
 ```
 
-Use `make clean` for ordinary rebuilds. `make distclean` keeps extracted assets
-when `baserom.us.z64` is absent; if extracted assets are ever removed, run
-`mev restore-assets` before rebuilding. The task image does not contain the original ROM.
+Workflow tips:
+- Use `mev check <course> --fast` or `mev run --all` for rapid iteration, and reserve plain `mev check` for verifying milestone commits.
+- Always run `mev build --clean` (or `make clean`) after changing `COMPILER`, `GRUCODE`, or `OPT_FLAGS` in `Makefile`. Use `VERBOSE=1` (not `V=1`) to inspect compiler invocations.
+- Keep a short scratch log at `/task/OPTIMIZATION_LOG.md` (outside `/task/game`) summarizing tried ideas, measured deltas, and confirmed invariants so context compactions never cause duplicate work.
+- Always wait for `mev check` to finish before ending your turn — ending a turn with a backgrounded job kills the job. Never run overlapping `make`/`mev` jobs simultaneously.
+- `make distclean` keeps extracted assets when `baserom.us.z64` is absent; if extracted assets are ever removed, run `mev restore-assets` before rebuilding. The task image does not contain the original ROM.
 
 `mev run` and `mev check` measure CPU busy time the same way: the idle thread's
 halt loop is excluded from CPU time and nothing else is, so an optimization

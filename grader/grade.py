@@ -162,10 +162,35 @@ def build(src, cfg, log_path, keep_play=False):
         _copy_source(src, work / "src")
         home.mkdir(exist_ok=True)
         tmp.mkdir(exist_ok=True)
-        jobs = str(os.cpu_count() or 4)
+        jobs = int(os.cpu_count() or 4)
         base_cmd = cfg.get("build_cmd", ["make"])
-        cmd = [base_cmd[0], f"-j{jobs}", *base_cmd[1:]] if base_cmd[0] == "make" else list(base_cmd)
-        rc, out, timed_out = _run_build(cmd, work / "src", home, tmp, cfg["build_timeout_s"])
+        play_cmd = cfg.get("play_build_cmd")
+
+        def _make_cmd(raw, j):
+            return [raw[0], f"-j{j}", *raw[1:]] if raw[0] == "make" else list(raw)
+
+        if play_cmd:
+            # Build benchmark and PLAY=1 ROMs concurrently in separate scratch copies
+            # so full clean `mev check` stays well under interactive/agent timeouts.
+            play_src = work / "play-src"
+            play_home, play_tmp = work / "play-home", work / "play-tmp"
+            _copy_source(src, play_src)
+            play_home.mkdir(exist_ok=True)
+            play_tmp.mkdir(exist_ok=True)
+            j_half = max(1, jobs // 2)
+            cmd = _make_cmd(base_cmd, jobs - j_half)
+            pcmd = _make_cmd(play_cmd, j_half)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                f_bench = pool.submit(_run_build, cmd, work / "src", home, tmp, cfg["build_timeout_s"])
+                f_play = pool.submit(_run_build, pcmd, play_src, play_home, play_tmp, cfg["build_timeout_s"])
+                rc, out, timed_out = f_bench.result()
+                prc, pout, ptimeout = f_play.result()
+        else:
+            cmd = _make_cmd(base_cmd, jobs)
+            rc, out, timed_out = _run_build(cmd, work / "src", home, tmp, cfg["build_timeout_s"])
+            prc, pout, ptimeout = 0, "", False
+            play_src = None
+
         if timed_out:
             pathlib.Path(log_path).write_text(out + "\nbuild timed out\n")
             shutil.rmtree(work, ignore_errors=True)
@@ -185,11 +210,7 @@ def build(src, cfg, log_path, keep_play=False):
         idle = idle_ranges(work / "src" / cfg["elf"], cfg.get("idle_symbols", [])) if cfg.get("elf") else []
         (work / "built.idle.json").write_text(json.dumps(idle))
 
-        play_cmd = cfg.get("play_build_cmd")
         if play_cmd:
-            shutil.rmtree(work / "src" / "build", ignore_errors=True)
-            pcmd = [play_cmd[0], f"-j{jobs}", *play_cmd[1:]] if play_cmd[0] == "make" else list(play_cmd)
-            prc, pout, ptimeout = _run_build(pcmd, work / "src", home, tmp, cfg["build_timeout_s"])
             logs.append("\n--- play build ---\n" + pout)
             if ptimeout:
                 logs.append("\n--- PLAY=1 ROM build timed out ---\n")
@@ -201,7 +222,7 @@ def build(src, cfg, log_path, keep_play=False):
                 shutil.rmtree(work, ignore_errors=True)
                 return None, "PLAY=1 ROM build failed; see build.log"
             if keep_play:
-                playable = work / "src" / cfg["play_rom"]
+                playable = play_src / cfg["play_rom"]
                 if not playable.is_file():
                     pathlib.Path(log_path).write_text("".join(logs))
                     shutil.rmtree(work, ignore_errors=True)
@@ -210,6 +231,8 @@ def build(src, cfg, log_path, keep_play=False):
 
         pathlib.Path(log_path).write_text("".join(logs))
         shutil.rmtree(work / "src", ignore_errors=True)
+        if play_src is not None:
+            shutil.rmtree(play_src, ignore_errors=True)
         return out_rom, None
     except Exception:
         shutil.rmtree(work, ignore_errors=True)
@@ -453,17 +476,26 @@ def metrics(run):
         "frame_ticks_p99": float(np.percentile(ticks, 99)),
         "cpu_busy_cycles": float(cpu_busy.mean()),
         "cpu_effective_cycles": float(cpu_eff.mean()),
+        "cpu_bus_contention_cycles": float((contention_cycles * bus_events).mean()),
         "cpu_idle_cycles": float(idle.mean()),
         "frame_ms": float(ticks.mean() / CPU_CYCLES_PER_MS),
         "cpu_ms": float(cpu_ms_f.mean()),
         "cpu_cycles": float(cpu_eff.mean()),
         "rsp_busy": float(rsp.mean()),
         "rsp_ms": float(rsp_ms_f.mean()),
+        "rsp_gfx_ms": float(_delta_mean(rows, "rsp_gfx_cycles") / RSP_UNITS_PER_MS),
+        "rsp_aud_ms": float(_delta_mean(rows, "rsp_aud_cycles") / RSP_UNITS_PER_MS),
         "rdp_busy": float(rdp.mean()),
         "rdp_ms": float(rdp_ms_f.mean()),
         "mem_ms": float(mem_ms_f.mean()),
         "bottleneck_share": {name: float((bottleneck == i).mean()) for i, name in enumerate(("cpu", "rsp", "rdp", "rdram"))},
         "rdp_fill_cycles": _delta_mean(rows, "rdp_fill_cycles"),
+        "rdp_fill_imrd_cycles": _delta_mean(rows, "rdp_fill_imrd_cycles"),
+        "rdp_fill_2cycle_cycles": _delta_mean(rows, "rdp_fill_2cycle_cycles"),
+        "rdp_fill_decal_cycles": _delta_mean(rows, "rdp_fill_decal_cycles"),
+        "rdp_fill_copy_cycles": _delta_mean(rows, "rdp_fill_copy_cycles"),
+        "rdp_color_addr": int(last.get("rdp_color_addr", 0)),
+        "rdp_z_addr": int(last.get("rdp_z_addr", 0)),
         "rdp_page_miss_cycles": _delta_mean(rows, "rdp_page_miss_cycles"),
         "rdp_rdram_page_misses": _delta_mean(rows, "rdp_rdram_page_misses"),
         "rdp_tmem_cycles": _delta_mean(rows, "rdp_tmem_cycles"),
@@ -484,6 +516,11 @@ def metrics(run):
         "rdram_bytes_by_device": per_device,
         "dcache_misses": _delta_mean(rows, "dcache_misses"),
         "icache_misses": _delta_mean(rows, "icache_misses"),
+        "dcache_writebacks": _delta_mean(rows, "dcache_writebacks"),
+        "uncached_reads": _delta_mean(rows, "uncached_reads"),
+        "uncached_writes": _delta_mean(rows, "uncached_writes"),
+        "cache_uncached_ops": int(run["result"].get("cache_uncached_ops", 0)),
+        "dcache_coherence_errors": int(run["result"].get("dcache_coherence_errors", 0)),
         "footprint_bytes": run["result"]["footprint_bytes"],
         "highest_byte": (run["result"]["highest_line"] + 1) * 16,
     }
@@ -1232,8 +1269,11 @@ def grade(args):
                            cand["video_path"], ref["rows"], cand["rows"], cfg, max_threads=vid_threads)
         au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
         m = metrics(cand)
-        hw = {"pass": m["highest_byte"] <= cfg["hardware"]["rdram_bytes"],
-              "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"]}
+        hw = {"pass": (m["highest_byte"] <= cfg["hardware"]["rdram_bytes"]
+                       and m.get("cache_uncached_ops", 0) == 0),
+              "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"],
+              "cache_uncached_ops": m.get("cache_uncached_ops", 0),
+              "dcache_coherence_errors": m.get("dcache_coherence_errors", 0)}
         base = index["workloads"][wid]["metrics"]
         wl_entry = {
             "metrics": m,
