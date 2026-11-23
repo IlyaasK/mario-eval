@@ -391,7 +391,7 @@ def cal_table(rows, compact=False, anchor_prefix=""):
         if s["status"] != "valid":
             row_cls.append("invalid")
         elif slug == EXPERT_REF:
-            row_cls.append("ceiling-row")
+            row_cls.append("expert-row")
         cls = f' class="{" ".join(row_cls)}"' if row_cls else ""
         tag = f'<span class="tag {s["status"]}">{s["status"]}</span>'
         name = f'<a href="{BASE}/calibration/#{anchor_prefix}{slug}">{title}</a>' if compact else title
@@ -1042,8 +1042,8 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
     ref_order = [
         ("r11-beyond-kaze", "Beyond Kaze (R11)", "ref",
          "Earlier Kaze-style build with additional D-cache experiments; scores below the current expert reference"),
-        ("r10-kaze-master", "Kaze master reference (R10)", "ceiling",
-         "Reconstructed techniques from Kaze Emanuar's public work, checked against the vanilla game"),
+        ("r10-kaze-master", "Kaze master reference (R10)", "human ref",
+         "Human-expert reference reconstructed from Kaze Emanuar's public SM64 videos & ultrasm64 (not a physical hardware ceiling)"),
         ("r9-kaze-partial", "Partial Kaze reference (R9)", "ref",
          "I-cache + 1-ULP trig + 3-line Surface + Sub cache + lazy Mtx + RA_ZB_OPA + coin batch + -304 KB"),
         ("r8-kaze-collision-objects", "Kaze Rung 2: Collision & Objects (R8)", "ref",
@@ -1145,9 +1145,9 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
     ]
     for e in entries:
         nm = f'<a href="{e["href"]}">{esc(e["name"])}</a>' if e["href"] else f'<b>{esc(e["name"])}</b>'
-        tag_cls = "valid" if e["kind"] == "ceiling" else ("ref" if e["kind"] in ("ref", "compiler") else ("valid" if e["valid"] else "invalid"))
+        tag_cls = "valid" if e["kind"] == "human ref" else ("ref" if e["kind"] in ("ref", "compiler") else ("valid" if e["valid"] else "invalid"))
         pct = 0.0 if not e["valid"] else max(6.0, min(100.0, (e["speedup"] / max_sp) * 100.0))
-        bar_cls = "ceiling" if e["kind"] == "ceiling" else ("compiler" if e["kind"] == "compiler" else "")
+        bar_cls = "expert" if e["kind"] == "human ref" else ("compiler" if e["kind"] == "compiler" else "")
         sp_txt = f'{e["speedup"]:.2f}&times;' if e["valid"] else "invalid"
         vs_txt = f'{e["vs_o2"]:.2f}&times;' if (e["valid"] and e["vs_o2"]) else "&mdash;"
         rew_txt = f'{e["reward"]:+.3f}' if e["valid"] else "&minus;1.000"
@@ -1155,7 +1155,7 @@ def build_leaderboard(out, sm64_rows, trial_rows, agent_runs):
         traf_txt = f'{e["traffic_x"]:.2f}&times;' if e["valid"] else "&mdash;"
         ram_txt = f'{-e["ram_saved_kb"]:+.0f} KiB' if (e["valid"] and abs(e["ram_saved_kb"]) >= 1.0) else "0 KiB"
         rows_html.append(
-            f'<tr{" class=ceiling-row" if e["kind"] == "ceiling" else ""}>'
+            f'<tr{" class=expert-row" if e["kind"] == "human ref" else ""}>'
             f'<td>{nm}<br><span class="small muted">{esc(e["note"])}</span></td>'
             f'<td><span class="tag {tag_cls}">{esc(e["kind"])}</span></td>'
             f'<td class="bar-cell"><b>{sp_txt}</b><div class="bar-track"><div class="bar-fill {bar_cls}" style="width:{pct:.1f}%"></div></div></td>'
@@ -1185,14 +1185,14 @@ function render(prof){{
   tbody.innerHTML=list.map(function(e){{
     var p=e.profiles[prof]||{{valid:false,speedup:0,reward:-1,vs_o2:null}};
     var nm=e.href?'<a href="'+e.href+'">'+esc(e.name)+'</a>':'<b>'+esc(e.name)+'</b>';
-    var tagCls=e.kind==="ceiling"?"valid":(e.kind==="ref"||e.kind==="compiler"?"ref":(p.valid?"valid":"invalid"));
-    var barCls=e.kind==="ceiling"?"ceiling":(e.kind==="compiler"?"compiler":"");
+    var tagCls=e.kind==="human ref"?"valid":(e.kind==="ref"||e.kind==="compiler"?"ref":(p.valid?"valid":"invalid"));
+    var barCls=e.kind==="human ref"?"expert":(e.kind==="compiler"?"compiler":"");
     var pct=p.valid?Math.max(6,Math.min(100,(p.speedup/maxSp)*100)):0;
     var spTxt=p.valid?p.speedup.toFixed(2)+"&times;":"over budget";
     var vsTxt=(p.valid&&p.vs_o2)?p.vs_o2.toFixed(2)+"&times;":"&mdash;";
     var rewTxt=p.valid?(p.reward>=0?"+":"")+p.reward.toFixed(3):"&minus;1.000";
     var ramTxt=Math.abs(e.ram_saved_kb)>=1?(-e.ram_saved_kb>0?"+":"")+(-e.ram_saved_kb).toFixed(0)+" KiB":"0 KiB";
-    return '<tr'+(e.kind==="ceiling"?' class="ceiling-row"':'')+(p.valid?'':' class="invalid"')+'>'
+    return '<tr'+(e.kind==="human ref"?' class="expert-row"':'')+(p.valid?'':' class="invalid"')+'>'
       +'<td>'+nm+'<br><span class="small muted">'+esc(e.note)+'</span></td>'
       +'<td><span class="tag '+tagCls+'">'+esc(e.kind)+'</span></td>'
       +'<td class="bar-cell"><b>'+spTxt+'</b><div class="bar-track"><div class="bar-fill '+barCls+'" style="width:'+pct.toFixed(1)+'%"></div></div></td>'
@@ -1235,8 +1235,8 @@ btns.forEach(function(b){{
 <p>Reference rungs are graded across <b>6 public Super Mario 64 courses</b> (240 frames each) on an instrumented
 <code>ares</code> N64 console model (93.75 MHz VR4300 + 16 KB I$ / 8 KB D$, 62.5 MHz RSP &amp; RDP, 4 MB RDRAM).
 Switch resource profiles below to re-rank by <code>console</code>, <code>stutter</code>, <code>speed</code>,
-<code>rdp</code>, <code>rsp</code>, <code>traffic</code>, or <code>memory</code>. The human-expert yardstick is the
-<a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a>.</p>
+<code>rdp</code>, <code>rsp</code>, <code>traffic</code>, or <code>memory</code>. The human-expert baseline is the
+<a href="{BASE}/blog/kaze-master-reference/">Kaze master reference</a> (reconstructed from Kaze Emanuar's public SM64 optimization videos and <code>ultrasm64</code> &mdash; not a physical ceiling; reward is unbounded above so agents can push beyond human-expert work).</p>
 </div>
 
 {"".join(rows_html)}
