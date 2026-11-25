@@ -233,9 +233,10 @@ def summarize(out_dir, workload, full_frames=240, as_json=False):
     c_addr, z_addr = m.get("rdp_color_addr", 0), m.get("rdp_z_addr", 0)
     if c_addr or z_addr:
         print(f"  RDRAM buffers: color=0x{c_addr:06x} (bank {(c_addr >> 20) & 3})  Z=0x{z_addr:06x} (bank {(z_addr >> 20) & 3})")
-    if m.get("dcache_coherence_errors", 0) or m.get("cache_uncached_ops", 0):
+    if m.get("dcache_coherence_errors", 0) or m.get("cache_uncached_ops", 0) or m.get("cache_cde_unaligned_ops", 0):
         print(f"  WARNING hardware hazards: dcache_coherence_errors={m.get('dcache_coherence_errors', 0)}  "
-              f"cache_uncached_ops={m.get('cache_uncached_ops', 0)}")
+              f"cache_uncached_ops={m.get('cache_uncached_ops', 0)}  "
+              f"cache_cde_unaligned_ops={m.get('cache_cde_unaligned_ops', 0)}")
     print()
     for label, key in detail:
         b = base.get(key)
@@ -484,11 +485,11 @@ def check(args):
                 if drift_wls:
                     notes = ", ".join(f"{wid}={pct:.3f}%" for wid, pct in drift_wls)
                     print(f"  NOTE: non-zero pixel drift detected ({notes}; limit 0.200%) — verify held-out safety before committing!")
-                hazards = [(wid, hw.get("dcache_coherence_errors", 0), hw.get("cache_uncached_ops", 0))
+                hazards = [(wid, hw.get("dcache_coherence_errors", 0), hw.get("cache_uncached_ops", 0), hw.get("cache_cde_unaligned_ops", 0))
                            for wid, hw in hw_wls.items()
-                           if hw.get("dcache_coherence_errors", 0) or hw.get("cache_uncached_ops", 0)]
+                           if hw.get("dcache_coherence_errors", 0) or hw.get("cache_uncached_ops", 0) or hw.get("cache_cde_unaligned_ops", 0)]
                 if hazards:
-                    hstr = ", ".join(f"{w}(coh={c},kseg1_cache={u})" for w, c, u in hazards)
+                    hstr = ", ".join(f"{w}(coh={c},kseg1_cache={u},cde_unaligned={a})" for w, c, u, a in hazards)
                     print(f"  WARNING hardware hazards: {hstr}")
             primary = "console"
             prof_file = pathlib.Path("/task/PROFILE")
@@ -573,11 +574,12 @@ def stress(args):
         hi = (res.get("highest_line", -1) + 1) * 16
         coh = int(res.get("dcache_coherence_errors", 0))
         uc = int(res.get("cache_uncached_ops", 0))
-        good = (st == "completed" and hi <= limit_ram and uc == 0)
+        ua = int(res.get("cache_cde_unaligned_ops", 0))
+        good = (st == "completed" and hi <= limit_ram and uc == 0 and ua == 0)
         if not good:
             ok = False
         tag = "PASS" if good else "FAIL"
-        print(f"  [{tag}] {wid:8s} status={st}  max_ram={hi/1024:.0f}KiB  kseg1_cache={uc}  dma_coh_warn={coh}")
+        print(f"  [{tag}] {wid:8s} status={st}  max_ram={hi/1024:.0f}KiB  kseg1_cache={uc}  cde_unaligned={ua}  dma_coh_warn={coh}")
     print_time_remaining()
     sys.exit(0 if ok else 1)
 

@@ -85,10 +85,11 @@ the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled)
   loops *(note: 16 KB direct-mapped I-cache set collisions can cause ±1–2% layout
   variance when code addresses shift; use `mev profile` I-cache conflict pairs to
   diagnose set collisions rather than misattributing them)*;
-- Using VR4300 `CACHE 0x0d` (`Create Dirty Exclusive`) on 16-byte-aligned cached
-  KSEG0 addresses (`0x80000000..0x9FFFFFFF` only — never KSEG1), optimizing
-  `math_util`, `rendering_graph_node`, `audio`, Fast3D/RSP, RDP render
-  modes/syncs/TMEM, and compacting RDRAM pools and framebuffers *(always keep
+- Using VR4300 `CACHE 0x0d` (`Create Dirty Exclusive`) on **16-byte-aligned** cached
+  KSEG0 addresses (`0x80000000..0x9FFFFFFF` only, `(addr & 0xF) == 0` — never KSEG1
+  and never unaligned `main_pool_alloc` / 8-byte pointers, both enforced by the
+  hardware gate), optimizing `math_util`, `rendering_graph_node`, `audio`, Fast3D/RSP,
+  RDP render modes/syncs/TMEM, and compacting RDRAM pools and framebuffers *(always keep
   CPU D-cache writebacks coherent before SP/DP DMA reads)*.
 
 ## Verification Gates (Player Equivalence)
@@ -96,11 +97,13 @@ the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled)
 Grading replays recorded controller inputs across courses and checks these gates:
 
 - **Integrity & Playable Build** — `src/game/mev.c` and `src/game/mev.h` must
-  be byte-identical, and **both** the graded build (`make VERSION=us COMPARE=0 NOEXTRACT=1`)
+  be byte-identical, baseline `#ifdef PLAY`/`#ifndef PLAY` benchmark glue blocks
+  must not be modified, and **both** the graded build (`make VERSION=us COMPARE=0 NOEXTRACT=1`)
   and the real-time console ROM (`make VERSION=us COMPARE=0 NOEXTRACT=1 check-play`)
-  must build and link. This does not validate physical-console behavior.
+  must build, link, and pass boot smoke.
 - **Execution & Hardware** — every course must complete all 240 frames within
-  the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak).
+  the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak), with zero
+  uncached KSEG1 `CACHE` ops and zero unaligned `CACHE 0x0d` ops.
 - **Gameplay (Player Equivalence)** — `level_area`, `mario_stats` (health,
   coins, stars, lives), `mario_action` and the actor count must match on every
   frame; `mario_pos`, `mario_vel` and `mario_floor_height` must stay within

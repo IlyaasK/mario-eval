@@ -410,7 +410,122 @@ PY
   if [ "$(now)" -ge "$NEXT_COMMIT" ]; then commit; NEXT_COMMIT=$(( $(now) + COMMIT_S )); fi
   if [ "$(now)" -ge "$NEXT_GRADE" ]; then G=$((G + 1)); grade_checkpoint "checkpoint-$G"; NEXT_GRADE=$(( $(now) + GRADE_S )); fi
 done
+bisect_last_valid() {
+  # Zero-feedback post-run binary search over agent commits when final (and
+  # last_valid) failed held-out gates, eliminating 2-hour checkpoint-grid luck.
+  [ -n "$HELDOUT" ] || return 0
+  local f_st lv_st
+  f_st=$(python3 -c "import json; print(json.load(open('$RUN_DIR/final/grade/summary.json')).get('status',''))" 2>/dev/null || true)
+  lv_st=$(python3 -c "import json; print(json.load(open('$RUN_DIR/final/last-valid-grade/summary.json')).get('status',''))" 2>/dev/null || true)
+  [ "$f_st" = "valid" ] || [ "$lv_st" = "valid" ] && return 0
+
+  mapfile -t COMMITS < <(in_task git -C /task/game rev-list --reverse --first-parent HEAD 2>/dev/null || true)
+  local total=${#COMMITS[@]}
+  [ "$total" -ge 3 ] || return 0
+
+  local known_bad=""
+  [ -f "$RUN_DIR/final/last-valid-commit" ] && known_bad=$(cat "$RUN_DIR/final/last-valid-commit" 2>/dev/null || true)
+  local args=(--heldout "$HELDOUT")
+  [ "$GAME" = "sm64" ] && args+=(--play-smoke)
+
+  local lo=1 hi=$((total - 1)) best_sha="" best_ts="" best_idx=-1 step=0
+  log "bisect_last_valid: final invalid; binary-searching $((total - 1)) agent commits for exact last valid commit"
+  while [ "$lo" -le "$hi" ]; do
+    local mid=$(( (lo + hi) / 2 ))
+    local sha="${COMMITS[$mid]}"
+    step=$((step + 1))
+    if [ -n "$known_bad" ] && [[ "$sha" == "$known_bad"* ]]; then
+      hi=$((mid - 1))
+      continue
+    fi
+    local bdir="$RUN_DIR/bisect-tmp"
+    rm -rf "$bdir"
+    mkdir -p "$bdir/src"
+    if ! in_task git -C /task/game archive "$sha" 2>/dev/null | tar -x -C "$bdir/src" 2>/dev/null; then
+      hi=$((mid - 1))
+      continue
+    fi
+    in_task git -C /task/game ls-files -z --others --ignored --exclude-standard 2>/dev/null \
+      | python3 -c '
+import pathlib, shutil, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+for raw in sys.stdin.buffer.read().split(b"\0"):
+    if not raw: continue
+    rel = raw.decode("utf-8", "surrogateescape")
+    if rel == "build" or rel.startswith(("build/", "build_")): continue
+    sp, dp = src / rel, dst / rel
+    if sp.is_file() and not dp.exists():
+        dp.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sp, dp)
+' "$RUN_DIR/final/src" "$bdir/src" || true
+    "$REPO/scripts/grade.sh" --game "$GAME" "$bdir/src" "$bdir/grade" "${args[@]}" \
+      > "$bdir/grade.txt" 2>&1 || true
+    local st sp
+    st=$(python3 -c "import json; print(json.load(open('$bdir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
+    sp=$(python3 -c "import json; print(json.load(open('$bdir/grade/summary.json')).get('profiles',{}).get('$PROFILE',{}).get('speedup',''))" 2>/dev/null || true)
+    log "bisect step $step ($mid/$((total - 1)) ${sha:0:7}): $st speedup=${sp:-none}"
+    if [ "$st" = "valid" ]; then
+      best_sha="$sha"
+      best_idx="$mid"
+      best_ts=$(in_task git -C /task/game show -s --format=%ct "$sha" 2>/dev/null || date +%s)
+      rm -rf "$RUN_DIR/bisect-best"
+      mkdir -p "$RUN_DIR/bisect-best"
+      mv "$bdir/grade" "$RUN_DIR/bisect-best/grade"
+      mv "$bdir/grade.txt" "$RUN_DIR/bisect-best/grade.txt"
+      printf '%s\n' "$sha" > "$RUN_DIR/bisect-best/commit"
+      printf '%s\n' "$best_ts" > "$RUN_DIR/bisect-best/commit-epoch"
+      lo=$((mid + 1))
+    else
+      hi=$((mid - 1))
+    fi
+    rm -rf "$bdir"
+  done
+
+  if [ -n "$best_sha" ] && [ -f "$RUN_DIR/bisect-best/grade/summary.json" ]; then
+    python3 - "$RUN_DIR" "$START" "$PROFILE" "$best_sha" "$best_ts" "$best_idx" "$((total - 1))" <<'PY' || true
+import json, pathlib, sys
+run_dir, t0, profile = pathlib.Path(sys.argv[1]), float(sys.argv[2]), sys.argv[3]
+sha, cts, idx, total = sys.argv[4], float(sys.argv[5]), int(sys.argv[6]), int(sys.argv[7])
+s = json.loads((run_dir / "bisect-best" / "grade" / "summary.json").read_text())
+tp = run_dir / "trajectory.json"
+if not tp.exists():
+    sys.exit(0)
+t = json.loads(tp.read_text())
+p = s.get("profiles", {}).get(profile, {})
+rec = {
+    "name": f"bisect-last-valid ({sha[:7]})",
+    "source": "bisect_last_valid",
+    "git_head": sha,
+    "commit_index": idx,
+    "commits_total": total,
+    "elapsed_hours": round(max(0.0, (cts - t0) / 3600.0), 4),
+    "workload_set": s.get("workload_set"),
+    "status": s.get("status"),
+    "speedup": p.get("speedup"),
+    "vs_o2_speedup": p.get("vs_o2_speedup"),
+    "reward": p.get("reward"),
+    "rewards": s.get("rewards", {}),
+    "speedups": s.get("speedups", {}),
+    "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
+}
+t["bisect_last_valid"] = rec
+cur = t.get("best_valid_checkpoint")
+if p.get("speedup") and (cur is None or p["speedup"] > (cur.get("speedup") or 0.0)):
+    t["best_valid_checkpoint"] = {
+        "name": rec["name"], "source": "bisect_last_valid", "git_head": sha,
+        "elapsed_hours": rec["elapsed_hours"], "speedup": p.get("speedup"),
+        "vs_o2_speedup": p.get("vs_o2_speedup"), "reward": p.get("reward"),
+    }
+tp.write_text(json.dumps(t, indent=1))
+PY
+    log "bisect_last_valid winner: ${best_sha:0:7} (commit $best_idx/$((total - 1))) -> $(python3 -c "import json;s=json.load(open('$RUN_DIR/bisect-best/grade/summary.json'));p=s.get('profiles',{}).get('$PROFILE',{});print('speedup=',p.get('speedup'),'vs_o2=',p.get('vs_o2_speedup'))" 2>/dev/null)"
+  else
+    log "bisect_last_valid: no valid commit found beyond baseline"
+  fi
+}
+
 stop_agent
 grade_checkpoint final
+bisect_last_valid
 in_task bash -c 'cd /task/game && git bundle create /tmp/game.bundle --all' >/dev/null 2>&1 && dc cp task:/tmp/game.bundle "$RUN_DIR/game.bundle" >/dev/null || true
 log "done: results in $RUN_DIR"

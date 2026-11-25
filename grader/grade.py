@@ -752,6 +752,7 @@ def metrics(run):
         "uncached_reads": _delta_mean(rows, "uncached_reads"),
         "uncached_writes": _delta_mean(rows, "uncached_writes"),
         "cache_uncached_ops": int(run["result"].get("cache_uncached_ops", 0)),
+        "cache_cde_unaligned_ops": int(run["result"].get("cache_cde_unaligned_ops", 0)),
         "dcache_coherence_errors": int(run["result"].get("dcache_coherence_errors", 0)),
         "footprint_bytes": run["result"]["footprint_bytes"],
         "highest_byte": (run["result"]["highest_line"] + 1) * 16,
@@ -1854,9 +1855,11 @@ def grade(args):
         coh_ok = True if max_coh is None else (m.get("dcache_coherence_errors", 0) <= max_coh)
         hw = {"pass": (m["highest_byte"] <= cfg["hardware"]["rdram_bytes"]
                        and m.get("cache_uncached_ops", 0) == 0
+                       and m.get("cache_cde_unaligned_ops", 0) == 0
                        and coh_ok),
               "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"],
               "cache_uncached_ops": m.get("cache_uncached_ops", 0),
+              "cache_cde_unaligned_ops": m.get("cache_cde_unaligned_ops", 0),
               "dcache_coherence_errors": m.get("dcache_coherence_errors", 0),
               **({"max_dcache_coherence_errors": max_coh} if max_coh is not None else {})}
         base = index["workloads"][wid]["metrics"]

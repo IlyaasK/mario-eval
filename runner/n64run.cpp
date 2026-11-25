@@ -229,6 +229,7 @@ struct Runner : ares::Platform {
       << ",\"dcache_writebacks\":" << cp.dcacheWritebacks
       << ",\"uncached_reads\":" << cp.uncachedReads << ",\"uncached_writes\":" << cp.uncachedWrites
       << ",\"cache_uncached_ops\":" << cp.cacheUncachedOps
+      << ",\"cache_cde_unaligned_ops\":" << cp.cacheCdeUnalignedOps
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
       << ",\"rsp_gfx_cycles\":" << rp.gfxCycles << ",\"rsp_aud_cycles\":" << rp.audCycles
       << ",\"dcache_coherence_errors\":" << (rp.dcacheCoherenceErrors + dp.dcacheCoherenceErrors)
@@ -286,6 +287,7 @@ struct Runner : ares::Platform {
     r << ",\"footprint_bytes\":" << fp.lines() * 16
       << ",\"highest_line\":" << fp.highestLine()
       << ",\"cache_uncached_ops\":" << N64::cpu.profile.cacheUncachedOps
+      << ",\"cache_cde_unaligned_ops\":" << N64::cpu.profile.cacheCdeUnalignedOps
       << ",\"dcache_coherence_errors\":" << (N64::rsp.profile.dcacheCoherenceErrors + N64::rdp.profile.dcacheCoherenceErrors)
       << ",\"host_seconds\":" << seconds << "}\n";
   }

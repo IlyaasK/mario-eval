@@ -130,15 +130,16 @@ index b51000d..ae53ed3 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1303,43 @@ struct CPU : Thread {
+@@ -1297,11 +1303,44 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
 +      s64 uncachedReads, uncachedWrites;  //mario-eval: CPU accesses to RDRAM that bypass the caches
 +      s64 cacheUncachedOps;               //mario-eval: hit/CDE CACHE ops on uncached (KSEG1) addresses
++      s64 cacheCdeUnalignedOps;           //mario-eval: Create Dirty Exclusive (0x0d) CACHE ops on non-16B-aligned addresses
      };
 -    s64 data[8];
-+    s64 data[11];
++    s64 data[12];
      Profile() : data{0} {}
    } profile;
  
@@ -213,9 +214,12 @@ diff --git i/ares/n64/cpu/interpreter-ipu.cpp w/ares/n64/cpu/interpreter-ipu.cpp
 index 938ccbd..a0d7ebd 100644
 --- i/ares/n64/cpu/interpreter-ipu.cpp
 +++ w/ares/n64/cpu/interpreter-ipu.cpp
-@@ -121,6 +121,9 @@ auto CPU::CACHE(u8 operation, cr64& rs, s16 imm) -> void {
+@@ -121,6 +121,12 @@ auto CPU::CACHE(u8 operation, cr64& rs, s16 imm) -> void {
    auto access = devirtualize<Read, Word>(rs.u64 + imm);
    if (!access) return;
++  if(operation == 0x0d && (access.vaddr & 0x0f)) {
++    profile.cacheCdeUnalignedOps++;
++  }
    if(!access.cache) {
 +    if(operation == 0x0d || (operation & 0x10)) {
 +      profile.cacheUncachedOps++;
