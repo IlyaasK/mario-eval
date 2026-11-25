@@ -24,6 +24,7 @@ reward; rerun).
 import argparse
 import concurrent.futures
 import ctypes
+import functools
 import hashlib
 import json
 import itertools
@@ -230,13 +231,19 @@ def build(src, cfg, log_path, keep_play=False):
                 pathlib.Path(log_path).write_text("".join(logs))
                 shutil.rmtree(work, ignore_errors=True)
                 return None, "PLAY=1 ROM build failed; see build.log"
-            if keep_play:
+            if cfg.get("play_rom"):
                 playable = play_src / cfg["play_rom"]
-                if not playable.is_file():
+                if not playable.is_file() or playable.stat().st_size < 65536:
                     pathlib.Path(log_path).write_text("".join(logs))
                     shutil.rmtree(work, ignore_errors=True)
                     return None, "PLAY=1 build did not produce its ROM; see build.log"
-                shutil.copyfile(playable, work / "play.z64")
+                play_bytes = playable.read_bytes()
+                if play_bytes == out_rom.read_bytes() or b"@mev " in play_bytes:
+                    pathlib.Path(log_path).write_text("".join(logs))
+                    shutil.rmtree(work, ignore_errors=True)
+                    return None, "PLAY=1 ROM still contains benchmark harness; see build.log"
+                if keep_play:
+                    shutil.copyfile(playable, work / "play.z64")
 
         pathlib.Path(log_path).write_text("".join(logs))
         shutil.rmtree(work / "src", ignore_errors=True)
@@ -340,13 +347,48 @@ def measurement_artifacts(corpus, cache, items):
 
 _SOURCE_EXTS = {".c", ".h", ".s", ".S", ".inc", ".cc", ".cpp"}
 _BUILD_EXTS = {".mk", ".ld", ".sh"}
-_RE_ISV_ADDR = re.compile(r"0x(?:b3ff|13ff)[0-9a-f]{4}\b", re.IGNORECASE)
+_RE_ISV_ADDR = re.compile(r"0x(?:b3f[ef]|13f[ef])[0-9a-f]{4}[uUlL]{0,3}\b", re.IGNORECASE)
 _RE_MEV_MACRO = re.compile(r"^\s*#\s*(?:define|undef)\s+(?:mev_|MEV_|sMev|ISV_)", re.MULTILINE)
 _RE_PLAY_COND = re.compile(r"^\s*#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\bPLAY\b", re.MULTILINE)
-_RE_GCC_INJECT = re.compile(r"(?:=|:=|\+=|\s)(?:-include|--include|-imacros)(?:\s|=)")
-_RE_LD_WRAP = re.compile(r"(?:--wrap|-Wl,--wrap)(?:=|\s)")
-_RE_LD_DEFSYM = re.compile(r"--defsym(?:=|\s)[^\n]*(?:mev_|MEV_|sMev|thread1_idle)")
+_RE_MAKE_PLAY_COND = re.compile(
+    r"^\s*(?:ifn?eq|ifn?def)\b[^\n]*\bPLAY\b"
+    r"|\$\(\s*(?:if|or|and|filter|filter-out|subst|patsubst|eval)\b[^\n]*\bPLAY\b"
+    r"|\$\([^)\n]*\$\(?PLAY\)?"
+)
+_RE_MAKE_DYN_EVAL = re.compile(r"\$\(\s*eval\b[^\n]*\$\(\s*(?:if|or|and|filter|shell)\b")
+_RE_SH_PLAY_COND = re.compile(r"\$\{?PLAY\}?\b")
+_RE_GCC_INJECT = re.compile(r"(?:=|:=|\+=|\s)(?:-include|--include|-imacros)(?:\s|=|$)")
+_RE_LD_WRAP = re.compile(r"(?:--wrap|-Wl,(?:[^,\s]*,)*--wrap)(?:=|,|\s|$)")
+_RE_LD_DEFSYM = re.compile(
+    r"(?:--defsym|-Wl,(?:[^,\s]*,)*--defsym)(?:=|,|\s)[^\n]*(?:mev_|MEV_|sMev|thread1_idle)"
+)
+_RE_LD_SCRIPT_SYM = re.compile(
+    r"(?:PROVIDE(?:_HIDDEN)?\s*\(\s*|(?:^|[;\s]))(?:mev_|MEV_|sMev|thread1_idle)\w*\s*="
+)
 _RE_CC_MEV_DEF = re.compile(r"(?:^|\s)-D\s*(?:mev_|MEV_|sMev|ISV_)")
+_RE_BSLASH_NL = re.compile(r"\\\r?\n")
+_RE_ADJ_STR = re.compile(r'"\s+"')
+
+
+def _extract_play_block_hashes(norm_text):
+    """Return SHA-256 digests of every top-level #ifdef/#ifndef/#if ... PLAY block."""
+    lines = norm_text.splitlines()
+    hashes = []
+    i = 0
+    while i < len(lines):
+        if _RE_PLAY_COND.match(lines[i]):
+            depth, start, i = 1, i, i + 1
+            while i < len(lines) and depth > 0:
+                if re.match(r"^\s*#\s*(?:ifdef|ifndef|if)\b", lines[i]):
+                    depth += 1
+                elif re.match(r"^\s*#\s*endif\b", lines[i]):
+                    depth -= 1
+                i += 1
+            norm = "\n".join(l.rstrip() for l in lines[start:i])
+            hashes.append(hashlib.sha256(norm.encode("utf-8")).hexdigest())
+        else:
+            i += 1
+    return hashes
 
 
 def audit_submission_integrity(src, cfg):
@@ -354,12 +396,14 @@ def audit_submission_integrity(src, cfg):
 
     Blocks harness spoofing (direct ISViewer/MMIO writes or '@mev ' strings outside
     protected files), macro/header shadowing of mev_* / MEV_*, Makefile/linker
-    flag subversion (-include/--wrap/--defsym/-Dmev_*), and unauthorized #ifdef PLAY
-    conditionals that could split benchmark vs real-console behavior.
+    flag subversion (-include/--wrap/--defsym/-Dmev_*/linker-script overrides),
+    and unauthorized PLAY conditionals or edits inside protected benchmark-only
+    PLAY glue blocks that could split benchmark vs real-console behavior.
     """
     root = pathlib.Path(src).resolve()
     protected = {pathlib.PurePosixPath(f).as_posix() for f in cfg.get("protected_files", [])}
     allowed_play = cfg.get("allowed_play_guards")
+    protected_play_blocks = cfg.get("protected_play_blocks") or {}
     errors = []
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -375,7 +419,10 @@ def audit_submission_integrity(src, cfg):
             if rel in protected:
                 continue
             ext = p.suffix
-            is_build = (fname == "Makefile" or ext in _BUILD_EXTS)
+            is_ld = (ext == ".ld" or fname.endswith(".ld.in"))
+            is_make = (fname in ("Makefile", "makefile", "GNUmakefile") or fname.startswith("Makefile.") or ext == ".mk")
+            is_sh = (ext == ".sh")
+            is_build = (is_make or is_ld or is_sh)
             is_src = (ext in _SOURCE_EXTS or fname.endswith(".inc.c"))
             if not is_build and not is_src:
                 continue
@@ -384,16 +431,25 @@ def audit_submission_integrity(src, cfg):
             except OSError:
                 continue
 
-            if _RE_ISV_ADDR.search(text):
+            # Join backslash-newline continuations (C translation phase 2 & Make
+            # line folding) and adjacent C string literals so multiline/split tricks
+            # cannot evade static regex checks.
+            norm_text = _RE_BSLASH_NL.sub("", text)
+            joined_str = _RE_ADJ_STR.sub("", norm_text) if is_src else norm_text
+
+            if _RE_ISV_ADDR.search(norm_text):
                 errors.append(f"{rel}: direct ISViewer MMIO address outside protected harness")
-            if '"@mev ' in text or "'@mev " in text:
+            if '"@mev ' in joined_str or "'@mev " in joined_str:
                 errors.append(f"{rel}: raw '@mev ' protocol string outside protected harness")
-            if is_src and _RE_MEV_MACRO.search(text):
+            if is_src and _RE_MEV_MACRO.search(norm_text):
                 errors.append(f"{rel}: preprocessor #define/#undef of protected mev/ISV symbol")
 
             if is_build:
+                n_build_play = 0
+                # Strip C block comments before scanning linker scripts for symbol assignments.
+                scan_text = re.sub(r"/\*.*?\*/", "", norm_text, flags=re.DOTALL) if is_ld else norm_text
                 # Inspect build/linker lines while ignoring GNU Make's top-level `-include dep.d`.
-                for lineno, line in enumerate(text.splitlines(), 1):
+                for lineno, line in enumerate(scan_text.splitlines(), 1):
                     stripped = line.lstrip()
                     if stripped.startswith("#"):
                         continue
@@ -406,12 +462,28 @@ def audit_submission_integrity(src, cfg):
                         errors.append(f"{rel}:{lineno}: disallowed linker --defsym targeting harness/idle symbol")
                     if _RE_CC_MEV_DEF.search(line):
                         errors.append(f"{rel}:{lineno}: disallowed -D override of mev/ISV symbol")
+                    if is_ld and _RE_LD_SCRIPT_SYM.search(line):
+                        errors.append(f"{rel}:{lineno}: disallowed linker-script override of harness/idle symbol")
+                    if is_make and _RE_MAKE_DYN_EVAL.search(line):
+                        errors.append(f"{rel}:{lineno}: disallowed dynamic Make $(eval ...) conditional")
+                    if is_make and _RE_MAKE_PLAY_COND.search(line):
+                        n_build_play += 1
+                    elif is_sh and _RE_SH_PLAY_COND.search(line):
+                        n_build_play += 1
+                if (is_make or is_sh) and allowed_play is not None:
+                    max_allowed = int(allowed_play.get(rel, 0))
+                    if n_build_play > max_allowed:
+                        errors.append(f"{rel}: unauthorized PLAY build conditional ({n_build_play} > allowed {max_allowed})")
 
             if is_src and allowed_play is not None:
-                n_play = len(_RE_PLAY_COND.findall(text))
+                n_play = len(_RE_PLAY_COND.findall(norm_text))
                 max_allowed = int(allowed_play.get(rel, 0))
                 if n_play > max_allowed:
                     errors.append(f"{rel}: unauthorized PLAY preprocessor conditional ({n_play} > allowed {max_allowed})")
+            if is_src and rel in protected_play_blocks:
+                got_hashes = _extract_play_block_hashes(norm_text)
+                if got_hashes != protected_play_blocks[rel]:
+                    errors.append(f"{rel}: protected PLAY/#ifndef PLAY benchmark glue block was modified")
             if len(errors) >= 16:
                 return errors
     return errors
@@ -439,7 +511,7 @@ def verify_elf_harness(elf, cfg, src_root=None):
             size = 0
         else:
             continue
-        if wrap_prefix and name.startswith(wrap_prefix):
+        if (wrap_prefix and name.startswith(wrap_prefix)) or name == "__wrap_thread1_idle":
             wrap_syms.append(name)
         if stype in "tT":
             text_syms[name] = size
@@ -452,6 +524,8 @@ def verify_elf_harness(elf, cfg, src_root=None):
         if sym not in text_syms:
             return f"ELF harness check failed: missing harness symbol '{sym}'"
     for sym, expected in spec.get("required_data_sizes", {}).items():
+        # Note: static BSS/data symbols (e.g. sMevObs) may be omitted from the
+        # linked ELF symbol table under SGI IDO; verify size whenever present.
         if sym in data_syms and data_syms[sym] != 0 and data_syms[sym] != expected:
             return f"ELF harness check failed: '{sym}' size {data_syms[sym]} != expected {expected}"
     for sym, minimum in spec.get("min_data_sizes", {}).items():
@@ -688,8 +762,19 @@ def metrics(run):
 
 def _max_abs_diff(a, b):
     if isinstance(a, list):
-        return max((abs(float(x) - float(y)) for x, y in zip(a, b)), default=0.0)
-    return abs(float(a) - float(b))
+        best = 0.0
+        for x, y in zip(a, b):
+            fx, fy = float(x), float(y)
+            if not (math.isfinite(fx) and math.isfinite(fy)):
+                return math.nan
+            d = abs(fx - fy)
+            if d > best:
+                best = d
+        return best
+    fa, fb = float(a), float(b)
+    if not (math.isfinite(fa) and math.isfinite(fb)):
+        return math.nan
+    return abs(fa - fb)
 
 
 def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
@@ -727,11 +812,11 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
                 return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cval}
         for fname, tol in float_tols.items():
             d = _max_abs_diff(rf.get(fname, 0.0), cf.get(fname, 0.0))
+            if not math.isfinite(d) or d > float(tol):
+                return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
+                        "diff": round(d, 4) if math.isfinite(d) else None, "tolerance": tol}
             if fname == "mario_pos" and d > worst_drift:
                 worst_drift = d
-            if d > float(tol):
-                return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
-                        "diff": round(d, 4), "tolerance": tol}
         if actor_tol is not None:
             miss = _unmatched_actor(rf, cf, float(actor_tol), actor_radius)
             if miss is not None:
@@ -763,14 +848,30 @@ def _unmatched_actor(rf, cf, tol, radius):
     if rs == cs and np.abs(rp - cp).max(initial=0.0) <= tol:
         return None
     near = np.linalg.norm(rp - np.asarray(rf["mario_pos"], dtype=np.float64), axis=1) <= radius
+    near_idx = [int(a) for a in np.flatnonzero(near)]
+    if not near_idx:
+        return None
     close = np.abs(rp[:, None, :] - cp[None, :, :]).max(axis=2) <= tol
-    used = np.zeros(count, dtype=bool)
-    for a in np.flatnonzero(near):
-        for b in np.flatnonzero(close[a] & ~used):
-            if cs[b] == rs[a]:
-                used[b] = True
-                break
-        else:
+    adj = {
+        a: [int(b) for b in np.flatnonzero(close[a]) if cs[b] == rs[a]]
+        for a in near_idx
+    }
+    # Exact bipartite maximum matching (Kuhn's augmenting-path DFS) so nearby
+    # identical-state actors never falsely fail due to greedy matching order.
+    match_b = {}
+
+    def _augment(u, seen):
+        for v in adj[u]:
+            if v in seen:
+                continue
+            seen.add(v)
+            if v not in match_b or _augment(match_b[v], seen):
+                match_b[v] = u
+                return True
+        return False
+
+    for a in near_idx:
+        if not _augment(a, set()):
             return {"state": rs[a], "pos": rp[a].tolist()}
     return None
 
@@ -863,7 +964,7 @@ def _get_fast_video():
         so = next((p for p in candidates if p.is_file()), None)
         if so is not None:
             lib = ctypes.CDLL(str(so))
-            lib.compare_video_fast.argtypes = [
+            base_args = [
                 ctypes.c_char_p,
                 ctypes.POINTER(ctypes.c_char_p),
                 ctypes.c_int,
@@ -880,19 +981,20 @@ def _get_fast_video():
                 ctypes.POINTER(ctypes.c_int),
                 ctypes.POINTER(ctypes.c_int),
             ]
+            lib.compare_video_fast.argtypes = base_args
             lib.compare_video_fast.restype = ctypes.c_int
+            if hasattr(lib, "compare_video_consistent"):
+                lib.compare_video_consistent.argtypes = base_args + [ctypes.POINTER(ctypes.c_int)]
+                lib.compare_video_consistent.restype = ctypes.c_int
             _FAST_VIDEO_LIB = lib
     return _FAST_VIDEO_LIB
 
 
 def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_threads=None):
-    """Every frame must match, as a whole frame within tolerance, either the
-    original picture or one of the accepted visual variants, at that frame
-    index (preventing half-original / half-variant per-pixel mixing within a
-    single frame).
-
-    The reference is the set of distinct frames per index, so an accepted
-    visual change present in several combinations costs one comparison.
+    """Every frame of a workload must match, within tolerance, one consistent
+    reference video — either the unmodified baseline ("orig") or a single
+    accepted visual variant combination across all frames of the workload
+    (preventing both per-pixel mixing and cross-frame variant flickering).
     """
     if len(ref_rows) != len(cand_rows):
         return {"pass": False, "frame": min(len(ref_rows), len(cand_rows)), "reason": "frame count changed"}
@@ -902,11 +1004,11 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
             return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
     tol = cfg["video"]["channel_tolerance"]
     limit = cfg["video"]["max_bad_fraction"]
+    ref_names = ["orig"] + sorted(set(variants.values()) - {""})
+    files = [ref_dir / "video.bin.z"] + [ref_dir / f"video.{v}.bin.z" for v in ref_names[1:]]
 
     fast = _get_fast_video()
     if fast is not None and bpp in (16, 32):
-        files = [ref_dir / "video.bin.z"] + [ref_dir / f"video.{v}.bin.z"
-                                             for v in sorted(set(variants.values()) - {""})]
         encoded = [os.fsencode(str(p)) for p in files]
         arr = (ctypes.c_char_p * len(encoded))(*encoded)
         out_pass = ctypes.c_int(0)
@@ -914,16 +1016,29 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         out_worst_frame = ctypes.c_int(-1)
         out_failed = ctypes.c_int(0)
         out_variant = ctypes.c_int(0)
+        out_best_ref = ctypes.c_int(0)
         threads = max(1, max_threads if max_threads is not None else (os.cpu_count() or 4))
-        rc = fast.compare_video_fast(
-            os.fsencode(str(cand_path)), arr, len(encoded),
-            len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
-            ctypes.byref(out_pass), ctypes.byref(out_worst_frac),
-            ctypes.byref(out_worst_frame), ctypes.byref(out_failed),
-            ctypes.byref(out_variant),
-        )
+        if hasattr(fast, "compare_video_consistent"):
+            rc = fast.compare_video_consistent(
+                os.fsencode(str(cand_path)), arr, len(encoded),
+                len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
+                ctypes.byref(out_pass), ctypes.byref(out_worst_frac),
+                ctypes.byref(out_worst_frame), ctypes.byref(out_failed),
+                ctypes.byref(out_variant), ctypes.byref(out_best_ref),
+            )
+            best_idx = out_best_ref.value
+            matched = ref_names[best_idx] if 0 <= best_idx < len(ref_names) else "orig"
+        else:
+            rc = fast.compare_video_fast(
+                os.fsencode(str(cand_path)), arr, len(encoded),
+                len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
+                ctypes.byref(out_pass), ctypes.byref(out_worst_frac),
+                ctypes.byref(out_worst_frame), ctypes.byref(out_failed),
+                ctypes.byref(out_variant),
+            )
+            matched = None
         if rc == 0:
-            return {
+            res = {
                 "pass": bool(out_pass.value),
                 "worst_bad_fraction": float(out_worst_frac.value),
                 "worst_frame": int(out_worst_frame.value),
@@ -931,37 +1046,224 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
                 "failed_frames": int(out_failed.value),
                 "variant_frames": int(out_variant.value),
             }
+            if matched is not None:
+                res["matched_variant"] = matched
+            return res
         raise GraderError(f"compare_video_fast failed (rc={rc}) on {cand_path}")
 
+    n_frames = len(ref_rows)
     size = w * h * bpp // 8
-    refs = _reference_frame_sets(ref_dir, variants, len(ref_rows), w, h, bpp)
-    worst = (0.0, -1)
-    variant_frames = 0
-    failed_frames = 0
-    with open(cand_path, "rb") as f:
-        for i, row in enumerate(cand_rows):
-            cand = f.read(size)
-            orig = refs[i][0]
-            if cand == orig:
+    cand_raw = pathlib.Path(cand_path).read_bytes()
+    orig_raw = zlib.decompress(files[0].read_bytes())
+    if cand_raw == orig_raw:
+        return {
+            "pass": True, "worst_bad_fraction": 0.0, "worst_frame": -1,
+            "max_bad_fraction": limit, "failed_frames": 0, "variant_frames": 0,
+            "matched_variant": "orig",
+        }
+
+    n_refs = len(files)
+    orig_fracs = [0.0] * n_frames
+    orig_exact = [False] * n_frames
+    any_nonzero = False
+    for i in range(n_frames):
+        off = i * size
+        cf, of = cand_raw[off:off + size], orig_raw[off:off + size]
+        if cf == of:
+            orig_exact[i] = True
+            continue
+        frac = float(mismatch(decode_frame(cf, w, h, bpp), decode_frame(of, w, h, bpp), tol).mean())
+        orig_fracs[i] = frac
+        if frac > 0.0:
+            any_nonzero = True
+    if not any_nonzero:
+        return {
+            "pass": True, "worst_bad_fraction": 0.0, "worst_frame": -1,
+            "max_bad_fraction": limit, "failed_frames": 0, "variant_frames": 0,
+            "matched_variant": "orig",
+        }
+
+    ref_raws = [orig_raw] + [zlib.decompress(p.read_bytes()) for p in files[1:]]
+    frac_mat = [[0.0] * n_frames for _ in range(n_refs)]
+    exact_mat = [[False] * n_frames for _ in range(n_refs)]
+    frac_mat[0] = orig_fracs
+    exact_mat[0] = orig_exact
+    for i in range(n_frames):
+        off = i * size
+        cf = cand_raw[off:off + size]
+        c_dec = None
+        seen = {hashlib.sha1(ref_raws[0][off:off + size]).digest(): orig_fracs[i]}
+        for r in range(1, n_refs):
+            rf = ref_raws[r][off:off + size]
+            if cf == rf:
+                exact_mat[r][i] = True
+                frac_mat[r][i] = 0.0
                 continue
-            if cand in refs[i][1:]:
-                variant_frames += 1
-                continue
-            c = decode_frame(cand, w, h, bpp)
-            orig_frac = float(mismatch(c, decode_frame(orig, w, h, bpp), tol).mean())
-            frac = orig_frac
-            for ref in refs[i][1:]:
-                v_frac = float(mismatch(c, decode_frame(ref, w, h, bpp), tol).mean())
-                if v_frac < frac:
-                    frac = v_frac
-            if orig_frac > limit and frac <= limit:
-                variant_frames += 1
-            failed_frames += frac > limit
-            if frac > worst[0]:
-                worst = (frac, i)
-    ok = worst[0] <= limit
-    return {"pass": ok, "worst_bad_fraction": worst[0], "worst_frame": worst[1],
-            "max_bad_fraction": limit, "failed_frames": failed_frames, "variant_frames": variant_frames}
+            key = hashlib.sha1(rf).digest()
+            vf = seen.get(key)
+            if vf is None:
+                if c_dec is None:
+                    c_dec = decode_frame(cf, w, h, bpp)
+                vf = float(mismatch(c_dec, decode_frame(rf, w, h, bpp), tol).mean())
+                seen[key] = vf
+            frac_mat[r][i] = vf
+
+    best_key = (n_frames + 1, 2.0, n_refs)
+    best_res = None
+    for r in range(n_refs):
+        r_worst = 0.0
+        r_wframe = -1
+        r_failed = 0
+        r_variant = 0
+        for i in range(n_frames):
+            f = frac_mat[r][i]
+            if f > limit:
+                r_failed += 1
+            if r > 0 and not exact_mat[0][i] and (exact_mat[r][i] or (orig_fracs[i] > limit and f <= limit)):
+                r_variant += 1
+            if f > r_worst:
+                r_worst = f
+                r_wframe = i
+        key = (r_failed, r_worst, r)
+        if key < best_key:
+            best_key = key
+            best_res = {
+                "pass": r_worst <= limit,
+                "worst_bad_fraction": r_worst,
+                "worst_frame": r_wframe,
+                "max_bad_fraction": limit,
+                "failed_frames": r_failed,
+                "variant_frames": r_variant,
+                "matched_variant": ref_names[r],
+            }
+    return best_res
+
+
+def _sanitize_json(obj):
+    """Ensure every nested value is strict RFC 8259 JSON (no NaN/Infinity)."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    return obj
+
+
+@functools.lru_cache(maxsize=8)
+def _mel_filterbank(sample_rate, n_fft=1024, n_mel=40, fmin=80.0, fmax_cap=8000.0):
+    hz_to_mel = lambda f: 2595.0 * np.log10(1.0 + f / 700.0)
+    mel_to_hz = lambda m: 700.0 * (10.0 ** (m / 2595.0) - 1.0)
+    fmax = min(sample_rate / 2.0, fmax_cap)
+    mels = np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), n_mel + 2)
+    bins = mel_to_hz(mels) * n_fft / sample_rate
+    k = np.arange(n_fft // 2 + 1, dtype=np.float64)[None, :]
+    lo, mid, hi = bins[:-2, None], bins[1:-1, None], bins[2:, None]
+    up = np.where((k > lo) & (k <= mid), (k - lo) / np.maximum(mid - lo, 1e-9), 0.0)
+    dn = np.where((k > mid) & (k < hi), (hi - k) / np.maximum(hi - mid, 1e-9), 0.0)
+    win = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(n_fft, dtype=np.float64) / (n_fft - 1.0))
+    return up + dn, win
+
+
+def _logmel_audio_check(a, b, acfg):
+    """GBA Eval-style 40-band log-mel spectral similarity check with CMN,
+    per-replay 90th-percentile adaptive tau (floor 25.0), null-frame hard-0,
+    and loudness (RMS ratio) guards across every channel.
+
+    Tolerates 1-16 sample phase/timing shifts from legitimate RSP audio
+    optimizations while catching dropped channels, missing sound effects,
+    gain hacking, desync, or audio corruption.
+    """
+    sample_rate = int(acfg.get("sample_rate", 32000))
+    channels = max(1, int(acfg.get("channels", 2)))
+    n_fft = 1024
+    hop = max(1, sample_rate // 60)
+    fb, win = _mel_filterbank(sample_rate, n_fft=n_fft)
+    silence_rms = float(acfg.get("logmel_silence_rms", 100.0))
+    null_rms = 2.0
+    delta_floor = 25.0
+    rms_err_limit = float(acfg.get("max_rms_ratio_err", 0.15))
+
+    min_mean = 1.0
+    min_frame = 1.0
+    worst_rms_err = 0.0
+    worst_rms_ratio = 1.0
+    frame_rms_ok = True
+    any_active = False
+
+    for ch in range(channels):
+        ra = a[ch::channels]
+        rb = b[ch::channels]
+        if len(ra) < n_fft:
+            continue
+        n_frames = 1 + (len(ra) - n_fft) // hop
+        idx = np.arange(n_frames)[:, None] * hop + np.arange(n_fft)[None, :]
+        r_win = ra[idx]
+        c_win = rb[idx]
+        r_rms = np.sqrt(np.mean(r_win * r_win, axis=1))
+        c_rms = np.sqrt(np.mean(c_win * c_win, axis=1))
+        r_sil = r_rms < silence_rms
+        c_sil = c_rms < silence_rms
+        active = ~(r_sil & c_sil)
+        if not active.any():
+            continue
+        any_active = True
+
+        r_spec = np.abs(np.fft.rfft(r_win * win[None, :], axis=1)) ** 2
+        c_spec = np.abs(np.fft.rfft(c_win * win[None, :], axis=1)) ** 2
+        r_lm = np.log(r_spec @ fb.T + 1e-10)
+        c_lm = np.log(c_spec @ fb.T + 1e-10)
+        r_cmn = r_lm - r_lm.mean(axis=1, keepdims=True)
+        c_cmn = c_lm - c_lm.mean(axis=1, keepdims=True)
+
+        adj_active = ~(r_sil[1:] & r_sil[:-1])
+        adj_diffs = np.abs(r_cmn[1:] - r_cmn[:-1]).sum(axis=1)[adj_active]
+        tau = max(float(np.quantile(adj_diffs, 0.90)) if len(adj_diffs) else 0.0, delta_floor)
+
+        d = np.abs(r_cmn - c_cmn).sum(axis=1)
+        fscore = 1.0 / (1.0 + (d / tau) ** 4)
+        fscore = np.where((r_rms < null_rms) != (c_rms < null_rms), 0.0, fscore)
+        act_scores = fscore[active]
+        ch_mean = float(act_scores.mean())
+        ch_min = float(act_scores.min())
+        if ch_mean < min_mean:
+            min_mean = ch_mean
+        if ch_min < min_frame:
+            min_frame = ch_min
+
+        # Guard loudness: CMN is gain-invariant, so enforce both overall channel
+        # RMS consistency and per-frame active loudness bounds.
+        r_tot = float(np.sqrt(np.mean(ra * ra)))
+        c_tot = float(np.sqrt(np.mean(rb * rb)))
+        if r_tot >= silence_rms:
+            ratio = c_tot / r_tot
+            err = abs(ratio - 1.0)
+            if err > worst_rms_err:
+                worst_rms_err = err
+                worst_rms_ratio = ratio
+        loud = r_rms >= max(2.0 * silence_rms, 128.0)
+        if loud.any():
+            fratio = c_rms[loud] / r_rms[loud]
+            if float(fratio.min()) < 0.50 or float(fratio.max()) > 2.00:
+                frame_rms_ok = False
+
+    min_score = float(acfg.get("min_logmel_score", 0.95))
+    min_frame_score = float(acfg.get("min_logmel_frame_score", 0.75))
+    ok = (not any_active) or (
+        min_mean >= min_score
+        and min_frame >= min_frame_score
+        and worst_rms_err <= rms_err_limit
+        and frame_rms_ok
+    )
+    return {
+        "pass": ok,
+        "logmel_score": round(min_mean, 6),
+        "worst_logmel_frame_score": round(min_frame, 6),
+        "min_logmel_score": min_score,
+        "min_logmel_frame_score": min_frame_score,
+        "rms_ratio": round(worst_rms_ratio, 4),
+        "frame_rms_ok": frame_rms_ok,
+    }
 
 
 def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
@@ -969,30 +1271,73 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
     for i, row in enumerate(cand_rows):
         if row["au_len"] != au_bytes:
             return {"pass": False, "frame": i, "reason": f"audio bytes/frame {row['au_len']} != {au_bytes}"}
+    acfg = cfg["audio"]
+    if len(ref) != len(cand):
+        return {"pass": False, "reason": "audio length differs"}
+    if ref == cand:
+        return {
+            "pass": True,
+            "mode": "exact",
+            "snr_db": None,
+            "worst_frame_snr_db": None,
+            "worst_frame": -1,
+            "min_snr_db": acfg["min_snr_db"],
+            "min_frame_snr_db": acfg["min_frame_snr_db"],
+        }
     a = np.frombuffer(ref, dtype=">i2").astype(np.float64)
     b = np.frombuffer(cand, dtype=">i2").astype(np.float64)
-    if a.shape != b.shape:
-        return {"pass": False, "reason": "audio length differs"}
     err = a - b
     snr = math.inf if not err.any() else 10 * math.log10(max((a * a).sum(), 1.0) / (err * err).sum())
-    acfg = cfg["audio"]
+    snr_out = round(snr, 4) if math.isfinite(snr) else None
     per = au_bytes // 2
     worst = (math.inf, -1)
+    any_nonsilent = False
     for i in range(len(a) // per):
         fa, fb = a[i * per:(i + 1) * per], b[i * per:(i + 1) * per]
         rms = math.sqrt((fa * fa).mean())
         if rms <= acfg["silence_rms"]:
             if np.abs(fb).max() > acfg["silence_max_abs"]:
-                return {"pass": False, "frame": i, "reason": "sound where the baseline is silent", "snr_db": snr}
+                return {"pass": False, "frame": i, "reason": "sound where the baseline is silent", "snr_db": snr_out}
             continue
+        any_nonsilent = True
         e = fa - fb
         if e.any():
             fsnr = 10 * math.log10((fa * fa).sum() / (e * e).sum())
             if fsnr < worst[0]:
                 worst = (fsnr, i)
-    ok = snr >= acfg["min_snr_db"] and worst[0] >= acfg["min_frame_snr_db"]
-    return {"pass": ok, "snr_db": snr, "worst_frame_snr_db": worst[0], "worst_frame": worst[1],
-            "min_snr_db": acfg["min_snr_db"], "min_frame_snr_db": acfg["min_frame_snr_db"]}
+    worst_out = round(worst[0], 4) if math.isfinite(worst[0]) else None
+    snr_ok = (not any_nonsilent) or (snr >= acfg["min_snr_db"] and worst[0] >= acfg["min_frame_snr_db"])
+    if snr_ok:
+        return {
+            "pass": True,
+            "mode": "snr",
+            "snr_db": snr_out,
+            "worst_frame_snr_db": worst_out,
+            "worst_frame": worst[1],
+            "min_snr_db": acfg["min_snr_db"],
+            "min_frame_snr_db": acfg["min_frame_snr_db"],
+        }
+    if acfg.get("min_logmel_score") is not None:
+        lm = _logmel_audio_check(a, b, acfg)
+        return {
+            "pass": lm["pass"],
+            "mode": "logmel",
+            "snr_db": snr_out,
+            "worst_frame_snr_db": worst_out,
+            "worst_frame": worst[1],
+            "min_snr_db": acfg["min_snr_db"],
+            "min_frame_snr_db": acfg["min_frame_snr_db"],
+            **{k: v for k, v in lm.items() if k != "pass"},
+        }
+    return {
+        "pass": False,
+        "mode": "snr",
+        "snr_db": snr_out,
+        "worst_frame_snr_db": worst_out,
+        "worst_frame": worst[1],
+        "min_snr_db": acfg["min_snr_db"],
+        "min_frame_snr_db": acfg["min_frame_snr_db"],
+    }
 
 
 # ------------------------------------------------------------------- corpus
@@ -1174,8 +1519,8 @@ def precompute(args):
                 au = compare_audio(base_run["audio"], var_run["audio"], base_run["rows"], var_run["rows"], cfg)
                 if not au["pass"]:
                     raise GraderError(f"variant {variant_id} changes audio on {wid}: {au}")
-                if base_run["audio"] != var_run["audio"]:
-                    print(f"variant {variant_id} {wid}: audio SNR {au['snr_db']:.1f} dB", file=sys.stderr)
+                if base_run["audio"] != var_run["audio"] and au.get("snr_db") is not None:
+                    print(f"variant {variant_id} {wid}: audio SNR {au['snr_db']:.1f} dB ({au.get('mode', 'snr')})", file=sys.stderr)
                 video = (vdir / wid / "video.bin").read_bytes()
                 digest = hashlib.sha1(video).hexdigest()
                 if (wid, digest) in video_seen:
@@ -1310,6 +1655,77 @@ def play_runtime_smoke(rom, out, timeout):
             "scenarios": results}
 
 
+def grader_fingerprint(corpus, cfg, index):
+    """Cryptographic fingerprint tying summary.json to the exact grader,
+    emulator binary, corpus config, and reference ROM."""
+    grader_dir = pathlib.Path(__file__).parent
+    grader_files = sorted(
+        [str(p) for p in grader_dir.rglob("*.py")]
+        + [str(p) for p in grader_dir.rglob("*.so")]
+    )
+    opt_so = pathlib.Path("/opt/mario-eval/grader/_fast_video.so")
+    if opt_so.is_file() and str(opt_so) not in grader_files:
+        grader_files.append(str(opt_so))
+    n64run = shutil.which("n64run")
+    corpus_cfg = pathlib.Path(corpus) / "grader.json"
+    return {
+        "grader_version": cfg.get("version"),
+        "grader_sha256": _digest(grader_files),
+        "n64run_sha256": sha256(n64run) if n64run and pathlib.Path(n64run).is_file() else None,
+        "corpus_config_sha256": sha256(corpus_cfg) if corpus_cfg.is_file() else None,
+        "reference_rom_sha256": index.get("rom_sha256"),
+    }
+
+
+def _workload_section(w):
+    if w.get("section"):
+        return w["section"]
+    if w.get("split") == "public":
+        return "public"
+    if w["id"].startswith("heldout-mash-"):
+        return "heldout_mash"
+    return "heldout_scripted"
+
+
+def _geomean(ratios):
+    return math.exp(sum(math.log(max(r, 1e-12)) for r in ratios) / len(ratios))
+
+
+def _section_weighted_geomean(items, ratio_by_id, section_weights):
+    """Compute section-weighted geometric mean and per-section breakdown.
+
+    Renormalizes weights across present sections so public-only checks score
+    100% on public while full 25-route runs weight scripted courses above
+    random button-mashing regardless of how many mash seeds exist.
+    """
+    by_sec = {}
+    for w in items:
+        by_sec.setdefault(_workload_section(w), []).append(w["id"])
+
+    raw_weights = {}
+    if section_weights:
+        for sec in by_sec:
+            wgt = float(section_weights.get(sec, 0.0))
+            if wgt > 0.0:
+                raw_weights[sec] = wgt
+    if not raw_weights:
+        # Unweighted fallback: proportional to workload count per section
+        total = float(len(items))
+        norm_weights = {sec: len(wids) / total for sec, wids in by_sec.items()}
+    else:
+        total_w = sum(raw_weights.values())
+        norm_weights = {sec: raw_weights.get(sec, 0.0) / total_w for sec in by_sec}
+
+    log_sum = 0.0
+    sec_geos = {}
+    for sec, wids in by_sec.items():
+        s_geo = _geomean([ratio_by_id[wid] for wid in wids])
+        sec_geos[sec] = (len(wids), norm_weights[sec], s_geo)
+        if norm_weights[sec] > 0.0:
+            log_sum += norm_weights[sec] * math.log(max(s_geo, 1e-12))
+    return math.exp(log_sum), sec_geos
+
+
 def grade(args):
     t0 = time.time()
     corpus = pathlib.Path(args.corpus)
@@ -1324,6 +1740,7 @@ def grade(args):
     summary = {
         "version": cfg["version"],
         "target": cfg.get("target", schema_name),
+        "fingerprint": grader_fingerprint(corpus, cfg, index),
         "gates": {},
         "workloads": {},
         "rewards": {},
@@ -1339,7 +1756,7 @@ def grade(args):
             summary["rewards"] = {p: -1.0 for p in cfg["profiles"]}
             summary["speedups"] = {p: 0.0 for p in cfg["profiles"]}
         summary["grader_seconds"] = round(time.time() - t0, 1)
-        (out / "summary.json").write_text(json.dumps(summary, indent=1))
+        (out / "summary.json").write_text(json.dumps(_sanitize_json(summary), indent=1, allow_nan=False))
         return summary
 
     # 1. integrity
@@ -1458,10 +1875,62 @@ def grade(args):
             hardware[wid] = hw
             summary["workloads"][wid] = wl_entry
 
-    for name, table in (("execution", execution), ("gameplay", gameplay), ("video", video),
+    summary["gates"]["execution"] = {
+        "pass": len(execution) == len(items) and all(v["pass"] for v in execution.values()),
+        "workloads": execution,
+    }
+    for name, table in (("gameplay", gameplay), ("video", video),
                         ("audio", audio), ("hardware", hardware)):
-        summary["gates"][name] = {"pass": len(table) == len(items) and all(v["pass"] for v in table.values()),
-                                  "workloads": table}
+        gate_entry = {
+            "pass": bool(table) and all(v["pass"] for v in table.values()),
+            "workloads": table,
+        }
+        if len(table) < len(items):
+            gate_entry["evaluated"] = len(table)
+            gate_entry["skipped"] = len(items) - len(table)
+        summary["gates"][name] = gate_entry
+
+    # Diagnostic sub-metrics preserved even on invalid runs (headline reward stays -1.0).
+    passed_wls = [
+        w for w in items
+        if execution.get(w["id"], {}).get("pass")
+        and gameplay.get(w["id"], {}).get("pass")
+        and video.get(w["id"], {}).get("pass")
+        and audio.get(w["id"], {}).get("pass")
+        and hardware.get(w["id"], {}).get("pass")
+    ]
+    passed_ids = {w["id"] for w in passed_wls}
+    sec_diag = {}
+    for w in items:
+        sec = _workload_section(w)
+        rec = sec_diag.setdefault(sec, {"passed": 0, "total": 0})
+        rec["total"] += 1
+        if w["id"] in passed_ids:
+            rec["passed"] += 1
+    for rec in sec_diag.values():
+        rec["valid"] = (rec["passed"] == rec["total"])
+    pub_items = [w for w in items if w["split"] == "public"]
+    ho_items = [w for w in items if w["split"] != "public"]
+    diag = {
+        "workloads_total": len(items),
+        "workloads_completed": len(completed),
+        "workloads_passed": len(passed_wls),
+        "sections": sec_diag,
+        "public_valid": all(w["id"] in passed_ids for w in pub_items) if pub_items else None,
+        "heldout_valid": all(w["id"] in passed_ids for w in ho_items) if ho_items else None,
+    }
+    if pub_items and all(w["id"] in summary["workloads"] for w in pub_items):
+        diag["unverified_public_speedups"] = {
+            profile: round(1.0 / _geomean([summary["workloads"][w["id"]]["ratios"][pcfg["metric"]] for w in pub_items]), 6)
+            for profile, pcfg in cfg["profiles"].items()
+        }
+    if passed_wls:
+        diag["unverified_passed_speedups"] = {
+            profile: round(1.0 / _geomean([summary["workloads"][w["id"]]["ratios"][pcfg["metric"]] for w in passed_wls]), 6)
+            for profile, pcfg in cfg["profiles"].items()
+        }
+    summary["diagnostics"] = diag
+
     failed = [g for g, v in summary["gates"].items() if not v["pass"]]
     if failed:
         return finish("invalid", f"failed gates: {failed}")
@@ -1471,12 +1940,19 @@ def grade(args):
     rdp_ratios = [summary["workloads"][w["id"]]["ratios"]["rdp_busy"] for w in items]
     footprint_ratios = [summary["workloads"][w["id"]]["ratios"]["footprint_bytes"] for w in items]
     o2_ref = index.get("o2_reference", {})
+    section_weights = cfg.get("section_weights")
 
     for profile, pcfg in cfg["profiles"].items():
         metric_key = pcfg["metric"]
-        ratios = [summary["workloads"][w["id"]]["ratios"][metric_key] for w in items]
-        geo = math.exp(sum(math.log(max(r, 1e-12)) for r in ratios) / len(ratios))
-        entry = {"metric": metric_key, "geomean_ratio": geo}
+        ratio_by_id = {w["id"]: summary["workloads"][w["id"]]["ratios"][metric_key] for w in items}
+        ratios = [ratio_by_id[w["id"]] for w in items]
+        unweighted_geo = _geomean(ratios)
+        geo, sec_geos = _section_weighted_geomean(items, ratio_by_id, section_weights)
+        entry = {
+            "metric": metric_key,
+            "geomean_ratio": geo,
+            "unweighted_geomean_ratio": unweighted_geo,
+        }
         worst = max(ratios)
         worst_id = items[ratios.index(worst)]["id"]
         if worst > 1.0 + pcfg["max_workload_regression"] + 1e-12:
@@ -1502,18 +1978,37 @@ def grade(args):
         # Not capped above; any failed gate or budget scores -1.
         scale = cfg.get("reward_log2_scale", 4.0)
         entry["speedup"] = round(1.0 / geo, 6) if entry["valid"] and geo > 0 else 0.0
+        entry["unweighted_speedup"] = round(1.0 / unweighted_geo, 6) if entry["valid"] and unweighted_geo > 0 else 0.0
         entry["log2_speedup"] = round(-math.log2(geo), 6) if entry["valid"] and geo > 0 else None
         entry["reward"] = max(-1.0, entry["log2_speedup"] / scale) if entry["valid"] else -1.0
 
-        if o2_ref and all(w["id"] in o2_ref for w in items):
-            o2_ratios = [
-                (summary["workloads"][w["id"]]["metrics"][metric_key] / o2_ref[w["id"]][metric_key]
-                 if o2_ref[w["id"]].get(metric_key) else 1.0)
+        sec_summary = {}
+        has_o2 = bool(o2_ref) and all(w["id"] in o2_ref for w in items)
+        o2_sec_geos = {}
+        if has_o2:
+            o2_ratio_by_id = {
+                w["id"]: (summary["workloads"][w["id"]]["metrics"][metric_key] / o2_ref[w["id"]][metric_key]
+                          if o2_ref[w["id"]].get(metric_key) else 1.0)
                 for w in items
-            ]
-            o2_geo = math.exp(sum(math.log(max(r, 1e-12)) for r in o2_ratios) / len(o2_ratios))
+            }
+            o2_unweighted_geo = _geomean([o2_ratio_by_id[w["id"]] for w in items])
+            o2_geo, o2_sec_geos = _section_weighted_geomean(items, o2_ratio_by_id, section_weights)
             entry["vs_o2_ratio"] = o2_geo
             entry["vs_o2_speedup"] = round(1.0 / o2_geo, 6) if entry["valid"] and o2_geo > 0 else 0.0
+            entry["unweighted_vs_o2_speedup"] = (
+                round(1.0 / o2_unweighted_geo, 6) if entry["valid"] and o2_unweighted_geo > 0 else 0.0
+            )
+
+        for sec, (cnt, wgt, s_geo) in sec_geos.items():
+            s_entry = {
+                "count": cnt,
+                "weight": round(wgt, 6),
+                "speedup": round(1.0 / s_geo, 6) if s_geo > 0 else 0.0,
+            }
+            if sec in o2_sec_geos and o2_sec_geos[sec][2] > 0:
+                s_entry["vs_o2_speedup"] = round(1.0 / o2_sec_geos[sec][2], 6)
+            sec_summary[sec] = s_entry
+        entry["sections"] = sec_summary
 
         summary["rewards"][profile] = entry["reward"]
         summary["speedups"][profile] = entry["speedup"]

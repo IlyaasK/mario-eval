@@ -6,6 +6,9 @@ results/calibration/*/*
 !results/sm64-calibration/
 results/sm64-calibration/*/*
 !results/sm64-calibration/*/summary.json
+!results/sm64-trial-calibration/
+results/sm64-trial-calibration/*/*
+!results/sm64-trial-calibration/*/summary.json
 !results/agents/
 results/agents/*/*
 !results/agents/*/summary.json

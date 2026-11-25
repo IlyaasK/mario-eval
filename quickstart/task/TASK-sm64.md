@@ -15,7 +15,10 @@ pioneered by Kaze Emanuar and cracked N64 systems programmers — **without
 changing the game the player experiences**.
 
 The GCC `-O2 -fno-fast-math` reference is about **1.38×** vanilla on the six
-public routes. Vanilla starts CPU-bound, but once CPU time drops (even at
+public routes. Grading builds `/task/game` with `make VERSION=us COMPARE=0 NOEXTRACT=1`:
+you may edit `Makefile` (including `COMPILER`, `OPT_FLAGS`, and `GRUCODE`), linker
+scripts, C source, and MIPS assembly — everything except the protected harness
+files (`src/game/mev.c`, `src/game/mev.h`). Vanilla starts CPU-bound, but once CPU time drops (even at
 `-O2` or after early CPU wins), Fast3D RSP (`bob`, `rr`) and RDP fillrate
 (`jrb`) become active bottlenecks, and RCP RDRAM traffic directly contends
 with CPU cache refills. Start with CPU and cache profiling; remeasure after
@@ -24,8 +27,10 @@ time. This model is not a hardware measurement.
 
 ## Objective
 
-Your submission is scored on **one primary resource profile**, named in
-`/task/PROFILE` (default: `console`). All seven profiles are measured and reported:
+Your submission is scored **solely** on one primary resource profile, named in
+`/task/PROFILE` (default: `console`). All seven profiles are measured and reported
+for diagnostics; another profile's budget (such as `memory`'s 0% footprint limit)
+never fails your primary profile:
 
 For `console`, maximize the game's capacity to render frames at unchanged
 quality, simulation cadence, and controls. Aim for a frame budget of **6.94 ms
@@ -107,27 +112,19 @@ Grading replays recorded controller inputs across courses and checks these gates
   also verified by the video gate. Drawing code must not change game state:
   some geo callbacks move objects (e.g. a held Spiny or a collision child), so
   culling an object vanilla draws can fail this gate.
-- **Video** — every frame as a whole must match either the baseline picture or
-  an accepted visual variant defined in `/opt/mario-eval/corpus/grader.json`
-  (`full-detail`: always high-polygon Mario instead of medium/low LODs;
-  `ra-zb-opa`: SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing
-  opaque modes without `IM_RD`; `f3dex2`: Nintendo's later F3DEX2 microcode;
-  `no-lod`: always the near full-detail branch of every level-of-detail node;
-  `rr-statics`: Rainbow Ride's 14 static decoration pieces
-  `special_level_geo_03/04/07/09/0A/0B/0C/0D/10-15` drawn as part of the
-  level instead of as objects; or any combination of these): at most
-  0.2% of pixels may differ by more than ±2/31 per channel from their best 3×3
-  neighbor. Do not extrapolate beyond those exact accepted policies (for
-  example, `ra-zb-opa` covers `OPA_SURF` only, not `OPA_DECAL` or `OPA_INTER`).
-  Watch the `vid%` column in `mev check`:
-  a non-zero pixel drift that stays under 0.2% on the 6 public courses often
-  exceeds 0.2% on held-out routes. Each frame is matched against the set of *distinct* reference
-  frames for that frame index; identical combinations are stored once, and
-  `no-lod` subsumes `full-detail` (Mario's LOD is the only thing `full-detail`
-  changes), so the reference does not hold that combination separately.
+- **Video** — every frame of a workload must match a single consistent reference
+  (either the baseline picture or one accepted visual variant combination defined in
+  `/opt/mario-eval/corpus/grader.json`: `full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
+  `rr-statics`, or any combination of these): at most 0.2% of pixels may differ by
+  more than ±2/31 per channel from their best 3×3 neighbor. Do not extrapolate beyond
+  those exact accepted policies (for example, `ra-zb-opa` covers `OPA_SURF` only, not
+  `OPA_DECAL` or `OPA_INTER`). Watch the `vid%` column in `mev check`: a non-zero
+  pixel drift that stays under 0.2% on the 6 public courses often exceeds 0.2% on
+  held-out routes.
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
-  non-silent frame; a frame the baseline renders silent (RMS ≤ 64 of 32768)
-  must stay silent (candidate samples there ≤ 256).
+  non-silent frame (with a 40-band log-mel spectral + loudness fallback for tiny
+  sub-millisecond phase shifts); a frame the baseline renders silent (RMS ≤ 64 of
+  32768) must stay silent (candidate samples there ≤ 256).
 
 Host grading also runs private held-out routes, unseen courses, and randomized
 controller inputs. Never special-case public course IDs or remove subsystem
@@ -145,6 +142,7 @@ mev profile bob           per-function CPU busy profile (idle excluded) with fun
                           data-symbol miss & writeback attribution, 16 KB I-cache conflicts, and RDP/RDRAM map
 mev check                 full clean + PLAY=1 grader on all 6 public courses; prints per-course timings,
                           vid% drift, Δcon vs last check, and updates /tmp/mev-last-check/summary.json
+mev check --play-smoke    full clean check + boots and verifies controller response on the PLAY=1 console ROM
 mev check jrb --fast      fast incremental gate check on 1+ courses (~5s, skips PLAY=1 rebuild)
 mev stress                local seeded button-mash stress test across all 6 courses (checks crashes, RAM, DMA coherence)
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
@@ -163,8 +161,8 @@ halt loop is excluded from CPU time and nothing else is, so an optimization
 cannot buy free time by moving work into the idle function or renaming it.
 
 Reference material: `/task/docs/n64-cost-model.md`. Both SGI IDO
-(`tools/ido-static-recomp`) and `mips64-elf-gcc` / `mips-linux-gnu-gcc` are
-installed locally; there is no internet access.
+(`tools/ido-static-recomp`) and `mips64-elf-gcc` are installed locally; there is
+no internet access.
 
 ## Rules
 

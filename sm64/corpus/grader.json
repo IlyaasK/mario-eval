@@ -1,5 +1,5 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "target": "sm64",
   "contract": "sm64",
   "rom": "build/us/sm64.us.z64",
@@ -10,12 +10,27 @@
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
   "protected_files": ["src/game/mev.c", "src/game/mev.h"],
   "allowed_play_guards": {
+    "Makefile": 2,
     "src/audio/external.c": 1,
     "src/audio/heap.c": 1,
     "src/game/game_init.c": 6,
     "src/game/level_update.c": 1,
     "src/game/main.c": 7,
     "src/game/sound_init.c": 1
+  },
+  "protected_play_blocks": {
+    "src/audio/external.c": [
+      "00e8c867db225ec2333f3c50b17644a576fa777da024e16e3fb7831211dc5edb"
+    ],
+    "src/audio/heap.c": [
+      "7daee4c3976c70af09bf32402dd7ea37ac3dc020bfea7db1b5e84eaec89d5525"
+    ],
+    "src/game/level_update.c": [
+      "888c58885cfd9c29b72987d5fb8938228cd81306cdd7ea9cb97f8a7cfa5f2140"
+    ],
+    "src/game/sound_init.c": [
+      "586d91e108d229d9031ce5c71ecdc3a34d52424f192c65b6de40fa96209bbf41"
+    ]
   },
   "elf_harness_check": {
     "required_text_symbols": [
@@ -94,7 +109,17 @@
     "min_snr_db": 40.0,
     "min_frame_snr_db": 20.0,
     "silence_rms": 64.0,
-    "silence_max_abs": 256
+    "silence_max_abs": 256,
+    "sample_rate": 32000,
+    "channels": 2,
+    "min_logmel_score": 0.95,
+    "min_logmel_frame_score": 0.75,
+    "max_rms_ratio_err": 0.15
+  },
+  "section_weights": {
+    "public": 0.40,
+    "heldout_scripted": 0.50,
+    "heldout_mash": 0.10
   },
   "hardware": {
     "rdram_bytes": 4194304,

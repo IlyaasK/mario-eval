@@ -11,10 +11,11 @@
                                 function sizes & I-cache lines, D/I-cache misses, data-symbol
                                 D-cache miss & writeback attribution, 16 KB I-cache conflicts,
                                 and RDP/RDRAM breakdown
-  mev check [WORKLOAD ...] [--fast]
+  mev check [WORKLOAD ...] [--fast] [--play-smoke]
                                 full public grading of /task/game (same grader, same gates).
                                 Pass workload IDs (e.g. `mev check jrb`) and/or `--fast`
                                 (incremental build, skips PLAY=1) for a ~5s gate-verified loop.
+                                Pass `--play-smoke` to boot and verify the PLAY=1 console ROM.
   mev stress [--frames N] [--seed S]
                                 run local seeded button-mash stress tests (checks completion,
                                 4 MB RAM, D-cache DMA coherence, and KSEG1 CACHE safety)
@@ -386,6 +387,8 @@ def check(args):
 
     cmd = [sys.executable, "-m", "grader.grade", "grade", str(GAME), "--corpus", str(CORPUS),
            "--cache", str(CACHE), "--out", str(out)]
+    if args.play_smoke and args.fast:
+        sys.exit("--play-smoke cannot be combined with --fast (needs a clean PLAY=1 ROM build)")
     handoff = None
     try:
         if args.fast:
@@ -401,6 +404,8 @@ def check(args):
             cmd += ["--built", str(handoff)]
         if args.workloads:
             cmd += ["--workloads", ",".join(args.workloads)]
+        if args.play_smoke:
+            cmd += ["--play-smoke"]
         r = sh(cmd, cwd="/opt/mario-eval")
     finally:
         if handoff is not None:
@@ -485,6 +490,21 @@ def check(args):
                 if hazards:
                     hstr = ", ".join(f"{w}(coh={c},kseg1_cache={u})" for w, c, u in hazards)
                     print(f"  WARNING hardware hazards: {hstr}")
+            primary = "console"
+            prof_file = pathlib.Path("/task/PROFILE")
+            if prof_file.is_file():
+                primary = prof_file.read_text().strip() or "console"
+            pinfo = s.get("profiles", {}).get(primary)
+            if s.get("status") == "valid" and isinstance(pinfo, dict):
+                if pinfo.get("valid"):
+                    vo2 = pinfo.get("vs_o2_speedup")
+                    vo2_s = f"  vs_o2={vo2:.4f}x" if vo2 is not None else ""
+                    print(f"\nPrimary profile [{primary}]: PASS  speedup={pinfo.get('speedup', 0):.4f}x{vo2_s}  reward={pinfo.get('reward', 0):+.6f}")
+                    other_fail = [k for k, v in s.get("profiles", {}).items() if k != primary and not v.get("valid", True)]
+                    if other_fail:
+                        print(f"  (Informational: other profiles {other_fail} exceeded their own budgets — this does NOT affect `{primary}`.)")
+                else:
+                    print(f"\nPrimary profile [{primary}]: FAIL  ({pinfo.get('reason', 'budget exceeded')})")
             if s.get("status") != "valid":
                 for gname, gval in s.get("gates", {}).items():
                     if not gval.get("pass", True):
@@ -580,6 +600,7 @@ def main():
     p_chk = sub.add_parser("check")
     p_chk.add_argument("workloads", nargs="*", help="optional subset of public workloads (e.g. bob jrb)")
     p_chk.add_argument("--fast", action="store_true", help="reuse incremental build and skip PLAY=1 rebuild")
+    p_chk.add_argument("--play-smoke", action="store_true", help="boot and verify the PLAY=1 console ROM")
     p_str = sub.add_parser("stress")
     p_str.add_argument("--frames", type=int, default=180)
     p_str.add_argument("--seed", type=int, default=1337)

@@ -132,14 +132,46 @@ def esc(s):
 NAV = [("", "About"), ("leaderboard/", "Leaderboard"), ("watch/", "Watch"), ("blog/", "Blog")]
 AUTHOR = "Ilyaas Kapadia"
 
-# Toggles shared by every page: chart views, leaderboard card expansion and tab strips.
+# Toggles shared by every page: chart views, interactive chart hover crosshair, leaderboard expansion, tab strips.
 SITE_JS = """<script>(function(){
 document.querySelectorAll(".chart").forEach(function(c){
-  var btns=c.querySelectorAll("[data-view]");
+  var btns=c.querySelectorAll("[data-view]"),tip=c.querySelector("[data-tip]");
   btns.forEach(function(b){b.addEventListener("click",function(){
     btns.forEach(function(x){x.classList.toggle("on",x===b);});
     c.querySelectorAll("[data-pane]").forEach(function(p){p.hidden=p.getAttribute("data-pane")!==b.getAttribute("data-view");});
+    if(tip)tip.textContent="";
   });});
+  c.querySelectorAll("svg.speed-chart").forEach(function(svg){
+    var xh=svg.querySelector(".xhair"),dot=svg.querySelector(".hdot");
+    var pts=svg.querySelectorAll("circle[data-hr]");
+    var series=svg.querySelectorAll("[data-series]");
+    function hi(slug){
+      series.forEach(function(g){g.style.opacity=(!slug||g.getAttribute("data-series")===slug)?"1":"0.22";});
+    }
+    series.forEach(function(g){
+      g.addEventListener("mouseenter",function(){hi(g.getAttribute("data-series"));});
+      g.addEventListener("mouseleave",function(){hi(null);});
+    });
+    svg.addEventListener("mousemove",function(ev){
+      if(!pts.length)return;
+      var r=svg.getBoundingClientRect(),vb=svg.viewBox.baseVal;
+      var mx=(ev.clientX-r.left)/r.width*vb.width;
+      var best=null,bd=1e9;
+      pts.forEach(function(p){var d=Math.abs(+p.getAttribute("cx")-mx);if(d<bd){bd=d;best=p;}});
+      if(best&&bd<45){
+        var cx=best.getAttribute("cx"),cy=best.getAttribute("cy");
+        if(xh){xh.setAttribute("x1",cx);xh.setAttribute("x2",cx);xh.hidden=false;}
+        if(dot){dot.setAttribute("cx",cx);dot.setAttribute("cy",cy);dot.setAttribute("fill",best.getAttribute("fill"));dot.hidden=false;}
+        if(tip)tip.textContent=best.getAttribute("data-name")+" @ "+best.getAttribute("data-hr")+"h: "+best.getAttribute("data-val")+"x ("+best.getAttribute("data-cp")+")";
+      }
+    });
+    svg.addEventListener("mouseleave",function(){
+      if(xh)xh.hidden=true;
+      if(dot)dot.hidden=true;
+      if(tip)tip.textContent="";
+      hi(null);
+    });
+  });
 });
 document.querySelectorAll(".lb-exp").forEach(function(b){b.addEventListener("click",function(){
   var d=b.closest(".lb-card").querySelector(".lb-detail");d.hidden=!d.hidden;b.textContent=d.hidden?"Expand":"Collapse";
@@ -677,6 +709,13 @@ AGENT_COLORS = ["#7b68ee", "#38bdf8", "#ff5a63", "#e85d04", "#d946ef", "#facc15"
 # Per-unit speedups shown as bars: the console bottleneck and the four units it is the max of.
 BAR_UNITS = [("est_console_ms", "Console"), ("cpu_effective_cycles", "CPU"), ("rsp_busy", "RSP"),
              ("rdp_busy", "RDP"), ("rdram_bytes", "RDRAM bus")]
+BAR_UNIT_PROFILES = {
+    "est_console_ms": "console",
+    "cpu_effective_cycles": "speed",
+    "rsp_busy": "rsp",
+    "rdp_busy": "rdp",
+    "rdram_bytes": "traffic",
+}
 
 
 def geomean(xs):
@@ -693,8 +732,13 @@ def score_color(sp):
 
 def unit_speedups(s):
     wls = list(s.get("workloads", {}).values())
+    profs = s.get("profiles", {})
     out = {}
     for key, _ in BAR_UNITS:
+        prof = profs.get(BAR_UNIT_PROFILES.get(key, ""))
+        if prof and prof.get("speedup") is not None:
+            out[key] = float(prof["speedup"])
+            continue
         ratios = [w["ratios"][key] for w in wls if w.get("ratios", {}).get(key)]
         if ratios:
             out[key] = 1.0 / geomean(ratios)
@@ -803,9 +847,10 @@ def speedup_svg(agents, refs, div):
     labels = []
     for e in refs:
         v, col = e["speedup"] / div, REF_COLORS[e["kind"]]
-        out.append(f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
-                   f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.3f}&times;</title></line>')
-        labels.append((y(v), col, f'{e["short"]} {v:.2f}×'))
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">'
+                   f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
+                   f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.3f}&times;</title></line></g>')
+        labels.append((y(v), col, f'{e["short"]} {v:.2f}×', e["slug"]))
     for e in agents:
         col, samples = e["color"], sorted(e["points"])
         best, steps = 0.0, []
@@ -814,22 +859,28 @@ def speedup_svg(agents, refs, div):
             steps.append((hr, best))
         h0, v0 = steps[0]
         # Before the first host grade on this replay set nothing is known: dotted lead-in.
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
         out.append(f'<line x1="{x(0):.1f}" y1="{y(1.0 / div):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
                    f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
         d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
         d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4"/>')
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
         for hr, sp, name in samples:
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.6" fill="{col}" stroke="#141318" stroke-width="1.5">'
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                       f'data-hr="{hr:.1f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
                        f'<title>{esc(e["name"])} at {hr:.1f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
-        labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.2f}×'))
+        out.append("</g>")
+        labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.2f}×', e["slug"]))
     labels.sort()
     last = -1e9
-    for ly, col, txt in labels:
+    for ly, col, txt, slug in labels:
         ly = max(ly, last + 14)
         last = ly
-        out.append(f'<rect x="{L + pw + 8}" y="{ly - 6:.1f}" width="3" height="11" fill="{col}"/>'
-                   f'<text class="lbl" x="{L + pw + 16}" y="{ly + 3.5:.1f}">{esc(txt)}</text>')
+        out.append(f'<g class="series" data-series="{esc(slug)}">'
+                   f'<rect x="{L + pw + 8}" y="{ly - 6:.1f}" width="3" height="11" fill="{col}"/>'
+                   f'<text class="lbl" x="{L + pw + 16}" y="{ly + 3.5:.1f}">{esc(txt)}</text></g>')
+    out.append(f'<line class="xhair" x1="{L}" x2="{L}" y1="{T}" y2="{T + ph}" hidden/>')
+    out.append(f'<circle class="hdot" cx="{L}" cy="{T}" r="5.5" fill="#fff" stroke="#fff" stroke-width="2" hidden style="pointer-events:none"/>')
     out.append("</svg>")
     return "".join(out)
 
@@ -839,7 +890,7 @@ def chart_html(views, title=""):
     btns = "".join(f'<button type="button" data-view="{k}"{" class=on" if i == 0 else ""}>{lbl}</button>'
                    for i, (k, lbl, _svg) in enumerate(views)) if len(views) > 1 else ""
     panes = "".join(f'<div data-pane="{k}"{"" if i == 0 else " hidden"}>{svg}</div>' for i, (k, _l, svg) in enumerate(views))
-    head = f'<div class="chart-head"><span class="chart-title">{title}</span><div class="toggle">{btns}</div></div>'
+    head = f'<div class="chart-head"><span class="chart-title">{title}</span><span class="chart-tip" data-tip></span><div class="toggle">{btns}</div></div>'
     return f'<div class="chart">{head}{panes}</div>'
 
 
@@ -1009,29 +1060,157 @@ def player_html(clips, full=False):
     data = [{**c, "course": clip_course(c)} for c in clips]
     c0 = data[0]
     screens = f"""<div class="screens">
-  <div class="screen"><div class="screen-lbl">1996 build (reference)</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="ref"></div></div>
-  <div class="screen"><div class="screen-lbl">Diff</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="diff"></div></div>
-  <div class="screen"><div class="screen-lbl" data-cand>{esc(c0["name"])}</div><canvas width="320" height="240"></canvas><div class="screen-stat" data-stat="cand"></div></div>
+  <div class="screen"><div class="screen-lbl">1996 build (reference)</div><div class="screen-wrap"><canvas width="320" height="240"></canvas></div><div class="screen-stat" data-stat="ref"></div></div>
+  <div class="screen"><div class="screen-lbl">Gate Pixel Diff</div><div class="screen-wrap"><canvas width="320" height="240"></canvas></div><div class="screen-stat" data-stat="diff"></div></div>
+  <div class="screen"><div class="screen-lbl" data-cand>{esc(c0["name"])}</div><div class="screen-wrap"><canvas width="320" height="240"></canvas></div><div class="screen-stat" data-stat="cand"></div></div>
 </div>"""
     blob = json.dumps(data).replace("</", "<\\/")
-    if not full:
-        head = (f'<div class="feature-head"><h2 class="px-h" data-title>{esc(c0["course"])} ({esc(c0["name"])})</h2>'
-                f'<a class="mini-btn" href="{BASE}/watch/">Watch</a></div>')
-        return (f'<div class="player" data-player>{head}{screens}<video class="src" muted loop playsinline preload="auto"></video>'
-                f'<script type="application/json">{blob}</script></div>')
     tabs = "".join(f'<button type="button" class="pill" data-clip="{i}">{esc(c["name"])} &middot; {esc(SM64_COURSE_SHORT.get(c["route"], c["route"]))}</button>'
                    for i, c in enumerate(data))
-    return f"""<div class="player full" data-player data-url>
+    watch_link = f'<a class="mini-btn" href="{BASE}/watch/">Watch all &rarr;</a>' if not full else ""
+    return f"""<div class="player{" full" if full else ""}" data-player{" data-url" if full else ""}>
+<div class="feature-head"><h2 class="px-h" data-title>{esc(c0["course"])} ({esc(c0["name"])})</h2><span class="tag {c0["badge_cls"]}" data-badge>{esc(c0["badge"])}</span>{watch_link}</div>
 <div class="pill-bar">{tabs}</div>
-<div class="feature-head"><h2 class="px-h" data-title></h2><span class="tag" data-badge></span></div>
 {screens}
 <div class="controls"><button type="button" data-play>Pause</button><button type="button" data-speed>1&times;</button>
 <input type="range" min="0" max="239" value="0" aria-label="Frame"></div>
-<div class="tl-wrap"><div class="tl-hdr"><span>Console frame time per frame: grey = 1996 build, colour = candidate, red = frame fails the video gate</span></div>
+<div class="tl-wrap"><div class="tl-hdr"><span>Console frame time per frame: grey = 1996 build, colour = candidate, red = fails video gate</span></div>
 <svg class="tl" preserveAspectRatio="none" role="img" aria-label="Per-frame console time"></svg></div>
-<p class="cap" data-cap></p>
+<p class="cap" data-cap>{esc(c0["caption"])}</p>
 <video class="src" muted loop playsinline preload="auto"></video>
 <script type="application/json">{blob}</script>
+</div>"""
+
+
+def hw_speedup_visual_html(sm64_rows, board):
+    """Interactive N64 speedup & bottleneck visual splitting VR4300 compute vs RDRAM memory stalls + RSP/RDP."""
+    cal_by_slug = {slug: s for slug, _t, _p, s in sm64_rows if s.get("status") == "valid"}
+    lead = next((e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["valid"]), None)
+    specs = [
+        ("r0-unchanged", "1996 Retail (IDO -O0)", "baseline", cal_by_slug.get("r0-unchanged")),
+        ("r1-gcc-o2", "GCC -O2 (compiler only)", "compiler", cal_by_slug.get("r1-gcc-o2")),
+        (EXPERT_REF, "Kaze Human Ref (R10)", "best", cal_by_slug.get(EXPERT_REF)),
+    ]
+    if lead and lead.get("summary"):
+        specs.append((lead["slug"], f'{lead["name"]} (24h)', "agent", lead["summary"]))
+    specs = [x for x in specs if x[3] is not None]
+    if len(specs) < 2:
+        return ""
+
+    def decompose(m):
+        cpu_ms = float(m["cpu_ms"])
+        pure_busy_ms = float(m["cpu_busy_cycles"]) / 93750.0
+        cont_ms = max(0.0, cpu_ms - pure_busy_ms)
+        ic_ms = float(m.get("icache_misses", 0)) * 48.0 / 93750.0
+        dc_ms = float(m.get("dcache_misses", 0)) * 40.0 / 93750.0
+        wb_ms = float(m.get("dcache_writebacks", 0)) * 40.0 / 93750.0
+        stall_ms = min(cpu_ms, ic_ms + dc_ms + wb_ms + cont_ms)
+        exec_ms = max(0.0, cpu_ms - stall_ms)
+        return {
+            "con": round(float(m["est_console_ms"]), 2),
+            "cpu": round(cpu_ms, 2),
+            "exec": round(exec_ms, 2),
+            "stall": round(stall_ms, 2),
+            "stall_pct": round(stall_ms / cpu_ms * 100.0, 0) if cpu_ms > 0 else 0,
+            "rsp": round(float(m["rsp_ms"]), 2),
+            "rdp": round(float(m["rdp_ms"]), 2),
+            "has_wb": float(m.get("dcache_writebacks", 0)) > 0,
+        }
+
+    courses_payload = {}
+    course_keys = ["avg"] + SM64_COURSES
+    for ck in course_keys:
+        rows_out = []
+        base_con = None
+        for slug, label, cls, s in specs:
+            wls = s["workloads"]
+            if ck == "avg":
+                ms_list = [decompose(wls[c]["metrics"]) for c in SM64_COURSES if c in wls]
+                if not ms_list:
+                    continue
+                n = len(ms_list)
+                d = {k: round(sum(x[k] for x in ms_list) / n, 2) for k in ("con", "cpu", "exec", "stall", "rsp", "rdp")}
+                d["stall_pct"] = round(d["stall"] / d["cpu"] * 100.0, 0) if d["cpu"] > 0 else 0
+                d["has_wb"] = all(x["has_wb"] for x in ms_list)
+            else:
+                if ck not in wls:
+                    continue
+                d = decompose(wls[ck]["metrics"])
+            if base_con is None:
+                base_con = d["con"]
+            sp = base_con / d["con"] if d["con"] > 0 else 1.0
+            rows_out.append({
+                "label": label, "cls": cls, "sp": round(sp, 2),
+                "fps": round(1000.0 / d["con"], 0) if d["con"] > 0 else 0,
+                "col": score_color(sp), **d,
+            })
+        courses_payload[ck] = rows_out
+
+    pills = '<button type="button" class="pill on" data-hwc="avg">6-course avg</button>' + "".join(
+        f'<button type="button" class="pill" data-hwc="{c}">{SM64_COURSE_SHORT[c]}</button>' for c in SM64_COURSES
+    )
+    notes = {
+        "avg": "Across all 6 courses, <b>~70% of Kaze R10's CPU frame time is the VR4300 stalled waiting on 4 MB RDRAM</b> (I$/D$ misses, writebacks &amp; RCP bus contention) — pure MIPS compute is only ~5 ms.",
+        "bob": "On Bob-omb Battlefield, GCC -O2 hits the <b>22.4 ms Fast3D RSP wall</b>; switching to F3DEX2 cuts RSP in half (12.0 ms), and R10/Kimi cut total frame time from <b>30.3 ms &rarr; 17.4 ms</b>.",
+        "jrb": "Jolly Roger Bay is fill-rate heavy: <b>RA_ZB_OPA</b> trims RDP time from 23.2 &rarr; 20.3 ms and reduces bus contention; once CPU memory stalls drop slightly further, JRB flips <b>RDP-bound</b>.",
+        "wf": "Whomp's Fortress drops from <b>27.8 ms (36 FPS) &rarr; 14.7 ms (68 FPS)</b> — comfortably under the 16.7 ms 60 FPS hardware budget, with only 4.2 ms of actual VR4300 compute.",
+        "ddd": "Dire Dire Docks (Sub) has heavy dynamic collision &amp; water overdraw; cache-friendly surface packing and targeted writebacks cut frame time from <b>28.1 &rarr; 16.6 ms</b>.",
+        "bitfs": "Bowser in the Fire Sea drops from <b>25.8 &rarr; 16.5 ms</b>, fitting inside the 16.7 ms 60 FPS frame budget on original 4 MB hardware.",
+        "rr": "Rainbow Ride's 14 static decoration pieces + F3DEX2 slash RSP from <b>18.5 &rarr; 12.1 ms</b> and lift throughput from <b>35 &rarr; 63 uncapped FPS</b>.",
+    }
+    blob = json.dumps({"courses": courses_payload, "notes": notes}).replace("</", "<\\/")
+    return f"""<div class="hw-vis" id="hw-vis">
+<div class="hw-top">
+  <div class="panel-title">Frame time &amp; N64 hardware bottleneck breakdown (ms / frame, lower is faster)</div>
+  <div class="pill-bar">{pills}</div>
+</div>
+<div class="hw-legend">
+  <span><i style="background:var(--indigo-lit)"></i>VR4300 Compute (exec)</span>
+  <span><i style="background:var(--spark)"></i>RDRAM Cache &amp; Bus Stalls (I$/D$/WB/contention)</span>
+  <span><i style="background:var(--amber)"></i>RSP (parallel)</span>
+  <span><i style="background:var(--red-soft)"></i>RDP (parallel)</span>
+</div>
+<div class="hw-ruler" id="hw-ruler"></div>
+<div class="hw-rows" id="hw-rows"></div>
+<p class="hw-note" id="hw-note"></p>
+<script type="application/json" id="hw-data">{blob}</script>
+<script>(function(){{
+var D=JSON.parse(document.getElementById("hw-data").textContent);
+var ruler=document.getElementById("hw-ruler"),box=document.getElementById("hw-rows"),note=document.getElementById("hw-note");
+var btns=document.querySelectorAll("#hw-vis [data-hwc]");
+function render(k){{
+  var rows=D.courses[k]||[];
+  var maxMs=Math.max.apply(null,[36].concat(rows.map(function(r){{return Math.max(r.con,r.cpu,r.rsp,r.rdp);}})))*1.06;
+  var p16=(16.67/maxMs*100).toFixed(2),p33=(33.33/maxMs*100).toFixed(2);
+  ruler.innerHTML='<span class="r60" style="left:'+p16+'%">16.7ms &middot; 60fps</span>'
+    +'<span class="r30" style="left:'+p33+'%">33.3ms &middot; 30fps</span>';
+  var refHtml='<div class="hw-ref r60" style="left:'+p16+'%"></div><div class="hw-ref r30" style="left:'+p33+'%"></div>';
+  box.innerHTML=rows.map(function(r){{
+    var we=(r.exec/maxMs*100).toFixed(2),ws=(r.stall/maxMs*100).toFixed(2);
+    var wrsp=(r.rsp/maxMs*100).toFixed(2),wrdp=(r.rdp/maxMs*100).toFixed(2);
+    var wbHint=r.has_wb?r.stall_pct+"% RAM stall":("&ge;"+r.stall_pct+"% RAM stall");
+    return '<div class="hw-row '+r.cls+'">'
+      +'<div class="hw-rhead"><span class="hw-rname">'+r.label+'</span>'
+      +'<span class="hw-rmeta"><span><b>'+r.con.toFixed(1)+' ms</b> &middot; '+r.fps.toFixed(0)+' fps</span>'
+      +'<span class="hw-sp" style="background:'+r.col+'">'+r.sp.toFixed(2)+'&times;</span></span></div>'
+      +'<div class="hw-bar-area">'+refHtml
+      +'<div class="hw-stack" title="VR4300 compute '+r.exec.toFixed(1)+' ms + RDRAM stalls '+r.stall.toFixed(1)+' ms = CPU '+r.cpu.toFixed(1)+' ms">'
+      +'<div class="hw-seg exec" style="width:'+we+'%">'+(r.exec>=4.0?r.exec.toFixed(1)+'ms':'')+'</div>'
+      +'<div class="hw-seg stall" style="width:'+ws+'%">'+(r.stall>=5.5?r.stall.toFixed(1)+'ms ('+wbHint+')':'')+'</div>'
+      +'</div></div>'
+      +'<div class="hw-rcp">'
+      +'<div class="hw-mini"><span>RSP</span><div class="t"><div class="f" style="width:'+wrsp+'%;background:var(--amber)"></div></div><span>'+r.rsp.toFixed(1)+' ms</span></div>'
+      +'<div class="hw-mini"><span>RDP</span><div class="t"><div class="f" style="width:'+wrdp+'%;background:var(--red-soft)"></div></div><span>'+r.rdp.toFixed(1)+' ms</span></div>'
+      +'</div></div>';
+  }}).join("");
+  note.innerHTML=D.notes[k]||"";
+}}
+btns.forEach(function(b){{b.addEventListener("click",function(){{
+  btns.forEach(function(x){{x.classList.toggle("on",x===b);}});
+  render(b.getAttribute("data-hwc"));
+}});}});
+render("avg");
+}})();</script>
 </div>"""
 
 
@@ -1041,12 +1220,13 @@ def post_cards(post_items):
         f'<span class="pc-date">{m["date"]}</span></div><p>{esc(m["summary"])}</p></a>' for slug, m, _ in post_items) + "</div>"
 
 
-def build_index(out, board, post_items, clips):
+def build_index(out, board, sm64_rows, post_items, clips):
     lead = next((e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["valid"]), None)
     base_fps = next(e["fps"] for e in board["entries"] if e["kind"] == "baseline")
     top = (f'<p class="top-cand">Top candidate: <a href="{lead["href"]}">{esc(lead["name"])}</a> '
            f'<b>{lead["speedup"]:.3f}&times;</b></p>') if lead else ""
-    featured = player_html(clips[:1]) if clips else ""
+    featured = player_html(clips, full=False) if clips else ""
+    hw_vis = hw_speedup_visual_html(sm64_rows, board)
     body = f"""
 <section class="hero">
   <div class="hero-text">
@@ -1060,10 +1240,16 @@ def build_index(out, board, post_items, clips):
     <div class="hero-btns"><a class="px-btn primary" href="{BASE}/leaderboard/">Leaderboard</a>
     <a class="px-btn" href="{BASE}/watch/">Watch</a><a class="px-btn" href="{BASE}/blog/">Blog</a></div>
   </div>
-  <div class="hero-chart">{speedup_chart(board)}</div>
+  <div class="hero-chart">{speedup_chart(board, title="Best valid speedup over 24h (hover checkpoints)")}</div>
 </section>
 <div class="col">
 {featured}
+
+<div class="sec-head-row"><h2 class="px-h">Where the speedup comes from</h2><a class="mini-btn" href="{BASE}/calibration/">Calibration &rarr;</a></div>
+{hw_vis}
+
+<div class="sec-head-row"><h2 class="px-h">Leaderboard</h2><a class="mini-btn" href="{BASE}/leaderboard/">Full leaderboard &rarr;</a></div>
+{board_cards(board)}
 
 <h2 class="px-h">Scoring</h2>
 <div class="box">
@@ -1074,16 +1260,17 @@ console's four units, which run in parallel: <code>max(CPU, RSP, RDP, RDRAM bus)
 <a href="{BASE}/blog/what-the-emulator-measures/">What the emulator measures</a> and
 <a href="{BASE}/blog/calibrating-the-grader/">Calibrating the grader</a>.</p>
 <div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup</span><span class="w">score</span>
-<p>Geometric mean over routes of the 1996 build's frame time divided by the candidate's. Unbounded above.
+<p>Section-weighted geometric mean over routes (40% public courses, 50% private scripted routes, 10% private button-mash routes)
+of the 1996 build's frame time divided by the candidate's. Unbounded above.
 FPS figures are 1000 / frame time: the work rate, not the 30 FPS the game displays.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--amber)">Gameplay</span><span class="w">gate</span>
 <p>Mario's position, speed, action and stats, the camera, and every actor within 2000 units match the 1996 game on every frame.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--cyan)">Video</span><span class="w">gate</span>
-<p>Each frame matches the original picture, or an accepted variant such as Nintendo's F3DEX2 microcode, on 99.8% of pixels within &plusmn;2/31 per channel.</p></div>
+<p>Each frame matches the original picture, or one consistent accepted variant (such as Nintendo's F3DEX2 microcode) across the replay, on 99.8% of pixels within &plusmn;2/31 per channel.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--red-soft)">Audio</span><span class="w">gate</span>
-<p>At least 40 dB signal-to-noise against the original sound output.</p></div>
+<p>At least 40 dB signal-to-noise against the original sound output, or a perceptual 40-band log-mel match (both stereo channels, loudness-guarded) for timing-preserving audio rewrites.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--indigo-lit)">Hardware</span><span class="w">gate</span>
-<p>Fits in 4 MB of RAM, leaves the harness untouched, and the real-time console build links. No route may get more
+<p>Fits in 4 MB of RAM, leaves the harness and benchmark-only <code>PLAY</code> glue untouched, and the real-time <code>PLAY=1</code> console build links and passes boot smoke. No route may get more
 than 5% slower. Failing any gate scores &minus;1.</p></div>
 </div>
 
@@ -1334,7 +1521,11 @@ def render_sections(rows, patch_dir, anchor_prefix=""):
                     elif "worst_bad_fraction" in x:
                         items.append(f"<li><b>{g}</b> on {esc(wid)}: {100 * x['worst_bad_fraction']:.2f}% of pixels "
                                      f"fail on frame {x['worst_frame']} (limit 0.20%)</li>")
-                    elif "snr_db" in x:
+                    elif "logmel_score" in x:
+                        snr_part = f"SNR {x['snr_db']:.1f} dB, " if x.get("snr_db") is not None else ""
+                        items.append(f"<li><b>{g}</b> on {esc(wid)}: {snr_part}log-mel {x['logmel_score']:.3f} "
+                                     f"(min frame {x.get('worst_logmel_frame_score', 0):.3f}, RMS ratio {x.get('rms_ratio', 0):.2f})</li>")
+                    elif x.get("snr_db") is not None:
                         items.append(f"<li><b>{g}</b> on {esc(wid)}: SNR {x['snr_db']:.1f} dB (limit 40 dB)</li>")
                     else:
                         items.append(f"<li><b>{g}</b> on {esc(wid)}: {esc(x.get('reason', x.get('status')))}</li>")
@@ -1396,7 +1587,7 @@ def main():
     board = build_board(trial_rows, agent_runs)
     if board is None:
         sys.exit("no agent runs with a workload_set under results/agents/")
-    build_index(out, board, post_items, clips)
+    build_index(out, board, sm64_rows, post_items, clips)
     build_leaderboard(out, board, sm64_rows, agent_runs)
     for e in board["entries"]:
         if e["kind"] in AGENT_KINDS and e["valid"]:

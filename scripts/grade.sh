@@ -74,7 +74,8 @@ docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
 if [ -f "$BUILD/build.log" ] && [ ! -L "$BUILD/build.log" ]; then
   cp --remove-destination "$BUILD/build.log" "$OUT/build.log"
 fi
-docker run --rm --network none -u "$(id -u):$(id -g)" \
+docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+  -u "$(id -u):$(id -g)" \
   -v "$REPO":/repo:ro -v "$SUB":/submission:ro -v "$OUT":/out \
   -v "$BUILD":/handoff:ro "${CACHE_MOUNTS[@]}" "${HELDOUT_MOUNTS[@]}" \
   -w /repo mario-eval \

@@ -8,5 +8,5 @@
  "commit": "4b54858",
  "hours": "~26",
  "repo_url": "https://github.com/IlyaasK/mario-eval-attempt-kimi-k3.1-pro-trial",
- "notes": "Bring-up trial run on omp, used to shake out harness, profiler and held-out-route bugs; the environment changed mid-run. Its best valid checkpoint (4b54858, 15.7 h) scores 1.695x on all 25 routes, level with the Kaze master reference (1.693x) on the same routes, and passes the PLAY=1 runtime smoke. Its final commit (d6af2f6) reached 1.79x but failed the video gate on 7 of 19 private routes because of a one-line typo in a 4-vertex shadow lookup table (253312a). The run ended when Cerebras withdrew the trial model."
+ "notes": "Bring-up trial run on omp, used to shake out harness, profiler and held-out-route bugs; the environment changed mid-run. Re-graded on v2.1 (section-weighted 40/50/10), its best valid checkpoint (4b54858, 15.7 h) scores 1.707x across all 25 routes (1.695x flat, 1.247x vs GCC -O2), level with the Kaze master reference (1.705x weighted / 1.693x flat) on the same routes, and passes the PLAY=1 runtime smoke. Its final commit (d6af2f6) reached 1.79x flat but failed the video gate on 7 of 19 private routes because of a one-line typo in a 4-vertex shadow lookup table (253312a). The run ended when Cerebras withdrew the trial model."
 }

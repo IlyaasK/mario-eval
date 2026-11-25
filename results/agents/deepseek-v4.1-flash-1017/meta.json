@@ -1,0 +1,12 @@
+{
+ "title": "DeepSeek-V4.1-Flash (1017)",
+ "model": "DeepSeek-V4.1-Flash (1017)",
+ "kind": "agent",
+ "provider": "DeepSeek · River (high reasoning)",
+ "harness": "deepseek-harness",
+ "graded": "2026-11-24",
+ "commit": "b4c0cd1",
+ "hours": 24,
+ "repo_url": "https://github.com/IlyaasK/mario-eval-attempt-deepseek-v4.1-flash-1017",
+ "notes": "24-hour autonomous run on DeepSeek Harness (95 commits, 3,252 tool calls, 1.16B total tokens / 1.15B cached). Its best 100%-valid 25-route checkpoint (b4c0cd1, 4.0 h) scores 1.611x section-weighted (1.600x flat, 1.177x vs GCC -O2) and passes the PLAY=1 console boot smoke. At 7.2 h it added -mdivide-traps (2b720e6), which passed all 6 public courses (eventually reaching 1.986x console / 2.035x CPU on public) but triggered unhandled divide-by-zero traps on 4 private HMC/LLL routes; later 6,500-unit object hibernation (5614fd4/5b5440e) broke gameplay/video/audio on 9 more private routes."
+}

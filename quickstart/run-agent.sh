@@ -102,8 +102,8 @@ if p.is_file():
   if [ "${last_commit_age:-0}" -ge 90 ]; then
     nudge=" You have not landed a new commit in ${last_commit_age}m — avoid prolonged analysis without testing: pick a concrete bottleneck from 'mev profile', edit, verify with 'mev check <course> --fast', and commit or revert in small verified increments."
   fi
-  printf 'Continue working on the %sh optimization task in /task/TASK.md (profile: %s; time remaining: %s). Current HEAD: %s (dirty files: %s). Last full check: %s.%s Always wait for mev check to finish before ending your turn (backgrounded jobs are killed when a turn ends). Review git log -n 10 --oneline and /task/OPTIMIZATION_LOG.md (if present), commit working milestones in /task/game, and leave a clean, mev-check-passing tree before $MEV_DEADLINE_EPOCH.' \
-    "$HOURS" "$PROFILE" "$rem" "$head_info" "$dirty_count" "${last_score:-none yet}" "$nudge"
+  printf 'Continue working on the %sh optimization task in /task/TASK.md (profile: %s; time remaining: %s). Do NOT declare the task complete or end your turn after merely checking git status or running mev check — you still have %s remaining to push the score higher. Current HEAD: %s (dirty files: %s). Last full check: %s.%s Pick an unexploited bottleneck from `mev profile` or `mev run --all` (compiler/flags, microcode, CPU, cache, RSP, RDP, or memory layout), verify assumptions directly in Makefile/source rather than trusting stale notes, test multiple concrete hypotheses in this session, commit verified wins in /task/game, and always wait for mev check to finish before ending your turn.' \
+    "$HOURS" "$PROFILE" "$rem" "$rem" "$head_info" "$dirty_count" "${last_score:-none yet}" "$nudge"
 }
 
 # Snapshot /task/game onto refs/mev/checkpoints using a temporary index so we
@@ -137,7 +137,7 @@ grade_checkpoint() {
   date +%s > "$dir/snapshot-epoch"
   local args=()
   if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
-  if [ "$name" = "final" ] && [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
+  if [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
   "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
   dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true
@@ -213,10 +213,12 @@ for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_di
         "name": name,
         "elapsed_hours": round(max(0.0, (captured - t0) / 3600.0), 4),
         "workload_set": s.get("workload_set"),
+        "version": s.get("version"),
         "status": s.get("status"),
         "rewards": s.get("rewards", {}),
         "speedups": s.get("speedups", {}),
         "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
+        **({"diagnostics": s["diagnostics"]} if s.get("diagnostics") else {}),
     }
     lv_sum = cp_dir / "last-valid-grade" / "summary.json"
     lv_sha = cp_dir / "last-valid-commit"
@@ -228,10 +230,31 @@ for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_di
             "rewards": ls.get("rewards", {}),
             "speedups": ls.get("speedups", {}),
             "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in ls.get("profiles", {}).items()},
+            **({"diagnostics": ls["diagnostics"]} if ls.get("diagnostics") else {}),
         }
     checkpoints.append(entry)
+best_valid = None
+for cp in checkpoints:
+    cands = []
+    if cp.get("status") == "valid":
+        cands.append((cp.get("speedups", {}).get(profile, 0.0), {
+            "name": cp["name"], "source": "working_tree", "elapsed_hours": cp["elapsed_hours"],
+            "speedup": cp.get("speedups", {}).get(profile), "vs_o2_speedup": cp.get("vs_o2_speedups", {}).get(profile),
+            "reward": cp.get("rewards", {}).get(profile),
+        }))
+    lv = cp.get("last_valid")
+    if isinstance(lv, dict) and lv.get("status") == "valid":
+        cands.append((lv.get("speedups", {}).get(profile, 0.0), {
+            "name": cp["name"], "source": "last_valid", "git_head": lv.get("git_head"),
+            "elapsed_hours": cp["elapsed_hours"], "speedup": lv.get("speedups", {}).get(profile),
+            "vs_o2_speedup": lv.get("vs_o2_speedups", {}).get(profile), "reward": lv.get("rewards", {}).get(profile),
+        }))
+    for sp, rec in cands:
+        if sp and (best_valid is None or sp > best_valid["speedup"]):
+            best_valid = rec
 (run_dir / "trajectory.json").write_text(json.dumps({
     "run": run_dir.name, "game": game, "primary_profile": profile,
+    "best_valid_checkpoint": best_valid,
     "mev_checks": checks, "host_checkpoints": checkpoints,
 }, indent=1))
 PY
@@ -241,15 +264,24 @@ PY
   fi
 }
 
-AGENT_PID=""; AGENT_LOG=""; AGENT_STARTED=0; N=0; RAPID_FAILS=0; FATAL_FAILS=0
+AGENT_PID=""; AGENT_LOG=""; AGENT_STARTED=0; AGENT_START_HEAD=""; N=0; RAPID_FAILS=0; FATAL_FAILS=0; NOOP_STREAK=0; NEXT_FRESH="${MEV_START_FRESH:-0}"
 start_agent() {
   N=$((N + 1)); AGENT_LOG="$RUN_DIR/agent-$(printf %03d $N).log"; AGENT_STARTED=$(now)
-  local prompt="$PROMPT"; [ "$N" -gt 1 ] && prompt="$(continue_prompt)"
-  log "starting agent invocation $N (remaining $(format_remaining))"
+  AGENT_START_HEAD="$(in_task git -C /task/game rev-parse HEAD 2>/dev/null || true)"
+  local fresh="$NEXT_FRESH"; NEXT_FRESH=0
+  local prompt="$PROMPT"
+  if [ "$N" -gt 1 ]; then
+    if [ "$fresh" = "1" ]; then
+      prompt="$(in_task cat /task/TASK.md)"$'\n\n'"$(continue_prompt)"
+    else
+      prompt="$(continue_prompt)"
+    fi
+  fi
+  log "starting agent invocation $N (remaining $(format_remaining), fresh=$fresh)"
   # Drop omp's high-volume streaming delta lines (`tool_execution_update`,
   # `tool_stream_update`, and `message_update` balloon logs to 100-800 MB) while
   # preserving every full message (`message_start`/`message_end`), tool call, and tool result.
-  dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" task setsid --wait bash -lc \
+  dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" -e "MEV_FRESH_SESSION=$fresh" task setsid --wait bash -lc \
     "echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
     | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
@@ -271,6 +303,29 @@ trap 'stop_agent; commit; log "interrupted"; exit 130' INT TERM
 
 START=$(now); DEADLINE=$((START + TOTAL_S)); NEXT_COMMIT=$((START + COMMIT_S)); NEXT_GRADE=$((START + GRADE_S)); G=0
 log "run $RUN: game=$GAME, ${HOURS}h, profile=$PROFILE, AGENT_CMD: $AGENT_CMD"
+python3 - "$RUN_DIR/run_manifest.json" "$RUN" "$GAME" "$PROFILE" "$HOURS" "$START" "$DEADLINE" "$AGENT_CMD" "${HELDOUT:+1}" "$REPO" <<'PY' || true
+import json, os, pathlib, subprocess, sys
+out, run, game, profile, hours, start, deadline, agent_cmd, has_heldout, repo = sys.argv[1:11]
+def git_rev(path):
+    try:
+        return subprocess.check_output(["git", "-C", path, "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return None
+manifest = {
+    "benchmark": "mario-eval",
+    "benchmark_git_commit": git_rev(repo),
+    "run": run,
+    "game": game,
+    "primary_profile": profile,
+    "hours": float(hours),
+    "start_epoch": int(start),
+    "deadline_epoch": int(deadline),
+    "agent_cmd": agent_cmd,
+    "compose_project": os.environ.get("COMPOSE_PROJECT_NAME", ""),
+    "heldout_enabled": bool(has_heldout),
+}
+pathlib.Path(out).write_text(json.dumps(manifest, indent=2) + "\n")
+PY
 start_agent
 while [ "$(now)" -lt "$DEADLINE" ]; do
   sleep 10
@@ -286,6 +341,22 @@ reason = ""
 for line in p.read_text(errors="replace").splitlines()[-80:]:
     try:
         d = json.loads(line)
+        if not isinstance(d, dict):
+            continue
+        t = d.get("type")
+        if t == "final":
+            r = d.get("reason")
+            if isinstance(r, dict) and r.get("kind"):
+                reason = str(r["kind"])
+                err = r.get("error")
+                if isinstance(err, dict) and err.get("message"):
+                    reason += ":" + str(err["message"])[:120]
+            elif r:
+                reason = str(r)
+            continue
+        if t == "error" and d.get("message"):
+            reason = "error:" + str(d["message"])[:120]
+            continue
         msg = d.get("message") or d
         if isinstance(msg, dict) and msg.get("stopReason"):
             reason = str(msg["stopReason"])
@@ -297,7 +368,18 @@ print(reason)
 PY
 )"
     log "agent invocation $N exited (rc=$exit_rc elapsed=${elapsed}s stop=${stop_reason:-unknown})"
-    if [ "$elapsed" -lt 60 ]; then
+    cur_head="$(in_task git -C /task/game rev-parse HEAD 2>/dev/null || true)"
+    if [ "$elapsed" -lt 120 ] && [ "$cur_head" = "$AGENT_START_HEAD" ]; then
+      NOOP_STREAK=$((NOOP_STREAK + 1))
+      if [ "$NOOP_STREAK" -ge 3 ]; then
+        log "agent exited quickly without a new commit ($NOOP_STREAK consecutive times); next invocation will start a fresh session"
+        NEXT_FRESH=1
+        NOOP_STREAK=0
+      fi
+    else
+      NOOP_STREAK=0
+    fi
+    if [ "$exit_rc" -ne 0 ] && [ "$elapsed" -lt 60 ]; then
       RAPID_FAILS=$((RAPID_FAILS + 1))
       if tail -c 8192 "$AGENT_LOG" 2>/dev/null | grep -qiE 'Model does not exist|do not have access to it|404[^0-9].*model|invalid_api_key|401[^0-9].*unauthorized'; then
         FATAL_FAILS=$((FATAL_FAILS + 1))
@@ -310,8 +392,12 @@ PY
       fi
       backoff=$(( 30 * (1 << (RAPID_FAILS > 4 ? 4 : RAPID_FAILS - 1)) ))
       [ "$backoff" -gt 300 ] && backoff=300
-      log "agent exited in ${elapsed}s (rapid failure #$RAPID_FAILS); backing off ${backoff}s"
+      log "agent failed (rc=$exit_rc) in ${elapsed}s (rapid failure #$RAPID_FAILS); backing off ${backoff}s"
       sleep "$backoff"
+    elif [ "$exit_rc" -eq 0 ] && [ "$elapsed" -lt 60 ]; then
+      RAPID_FAILS=0
+      FATAL_FAILS=0
+      sleep 5
     else
       RAPID_FAILS=0
       FATAL_FAILS=0

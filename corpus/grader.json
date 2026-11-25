@@ -1,5 +1,5 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "target": "pips-garden",
   "contract": "pips-garden",
   "rom": "pips-garden.z64",
@@ -9,6 +9,7 @@
   "o2_reference_patch": "../calibration/r1-o2-ieee.patch",
   "protected_files": ["src/mev.c", "src/mev.h"],
   "allowed_play_guards": {
+    "Makefile": 1,
     "src/main.c": 2
   },
   "elf_harness_check": {
@@ -38,7 +39,12 @@
     "min_snr_db": 40.0,
     "min_frame_snr_db": 20.0,
     "silence_rms": 64.0,
-    "silence_max_abs": 256
+    "silence_max_abs": 256,
+    "sample_rate": 32000,
+    "channels": 2,
+    "min_logmel_score": 0.95,
+    "min_logmel_frame_score": 0.75,
+    "max_rms_ratio_err": 0.15
   },
   "hardware": {
     "rdram_bytes": 4194304,
