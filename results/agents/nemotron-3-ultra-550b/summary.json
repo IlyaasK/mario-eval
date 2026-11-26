@@ -1,11 +1,11 @@
 {
- "version": "2.1",
+ "version": "3.1",
  "target": "sm64",
  "fingerprint": {
-  "grader_version": "2.1",
-  "grader_sha256": "8bd88a9970d551fa14abee6d83ee8828a407435ea1cc06149819fbd59d6d7f25",
-  "n64run_sha256": "efad72e8e7bd3da94ee9abf5ff87922f6cd9aed6ec0663ebb4af949b5380111f",
-  "corpus_config_sha256": "811be5da23053da6680781ab4153fb06fe5aad831915b295066cfc5c60fe868e",
+  "grader_version": "3.1",
+  "grader_sha256": "5c326562e0036868a47425e7f445b9511e9a1ac73a92f64dc5bf7a292bd526d1",
+  "n64run_sha256": "ff75e47479143b32281198cc5f90e7de02b2166c6d594af649e0238f1758bebd",
+  "corpus_config_sha256": "f752b3db2b2079b3243df788dd495e77c407300a54c0c020325bb54e35bbd8a0",
   "reference_rom_sha256": "4e5b65ee04aa3ed01e361acb689f2d64b4ae486d3e748db3fdf567526c9e836a"
  },
  "gates": {
@@ -28,12 +28,15 @@
      "footprint_lines": 165008,
      "play_video_fields": 1142,
      "play_video_changes": 899,
+     "play_rsp_aud_cycles": 257466078,
      "play_final_video_hash": "1f6ffd60f6ce508c",
      "footprint_bytes": 2640128,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 1,
-     "host_seconds": 27.1758
+     "host_seconds": 26.6545
     },
     "controller": {
      "status": "completed",
@@ -43,12 +46,15 @@
      "footprint_lines": 185425,
      "play_video_fields": 1142,
      "play_video_changes": 899,
+     "play_rsp_aud_cycles": 151524147,
      "play_final_video_hash": "d2052bfa62f7f05f",
      "footprint_bytes": 2966800,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 1,
-     "host_seconds": 23.9377
+     "host_seconds": 23.6882
     }
    }
   },
@@ -65,8 +71,10 @@
      "footprint_bytes": 2988576,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 42.3084
+     "host_seconds": 42.5162
     },
     "wf": {
      "pass": true,
@@ -78,8 +86,10 @@
      "footprint_bytes": 2925664,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 36.4756
+     "host_seconds": 37.2244
     },
     "jrb": {
      "pass": true,
@@ -91,8 +101,10 @@
      "footprint_bytes": 2890416,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 44.5171
+     "host_seconds": 44.8032
     },
     "ddd": {
      "pass": true,
@@ -104,8 +116,10 @@
      "footprint_bytes": 2888416,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 39.1598
+     "host_seconds": 39.5294
     },
     "bitfs": {
      "pass": true,
@@ -117,8 +131,10 @@
      "footprint_bytes": 2775024,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 32.3656
+     "host_seconds": 33.5018
     },
     "rr": {
      "pass": true,
@@ -130,8 +146,10 @@
      "footprint_bytes": 2909952,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 39.7837
+     "host_seconds": 39.2156
     },
     "heldout-bob2": {
      "pass": true,
@@ -143,8 +161,10 @@
      "footprint_bytes": 3001936,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 42.8385
+     "host_seconds": 42.8649
     },
     "heldout-ccm": {
      "pass": true,
@@ -156,8 +176,10 @@
      "footprint_bytes": 2931104,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 42.0157
+     "host_seconds": 41.829
     },
     "heldout-ddd2": {
      "pass": true,
@@ -169,8 +191,10 @@
      "footprint_bytes": 2891840,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 40.1867
+     "host_seconds": 40.7165
     },
     "heldout-hmc": {
      "pass": true,
@@ -182,8 +206,10 @@
      "footprint_bytes": 3033456,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 33.2842
+     "host_seconds": 35.1895
     },
     "heldout-jrb2": {
      "pass": true,
@@ -195,8 +221,10 @@
      "footprint_bytes": 2888736,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 43.783
+     "host_seconds": 43.5939
     },
     "heldout-lll": {
      "pass": true,
@@ -208,8 +236,10 @@
      "footprint_bytes": 2980640,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 38.7596
+     "host_seconds": 39.3737
     },
     "heldout-mash-bitfs": {
      "pass": true,
@@ -221,8 +251,10 @@
      "footprint_bytes": 2864976,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 34.4683
+     "host_seconds": 34.9678
     },
     "heldout-mash-bob": {
      "pass": true,
@@ -234,8 +266,10 @@
      "footprint_bytes": 2980352,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 41.1344
+     "host_seconds": 41.8521
     },
     "heldout-mash-ccm": {
      "pass": true,
@@ -247,8 +281,10 @@
      "footprint_bytes": 2937104,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 40.9742
+     "host_seconds": 41.1574
     },
     "heldout-mash-ddd": {
      "pass": true,
@@ -260,8 +296,10 @@
      "footprint_bytes": 2895568,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 39.5932
+     "host_seconds": 40.613
     },
     "heldout-mash-hmc": {
      "pass": true,
@@ -273,8 +311,10 @@
      "footprint_bytes": 2982304,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 36.4521
+     "host_seconds": 37.0917
     },
     "heldout-mash-jrb": {
      "pass": true,
@@ -286,8 +326,10 @@
      "footprint_bytes": 2883856,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 40.5339
+     "host_seconds": 40.0778
     },
     "heldout-mash-lll": {
      "pass": true,
@@ -299,8 +341,10 @@
      "footprint_bytes": 2937680,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 36.7861
+     "host_seconds": 36.6933
     },
     "heldout-mash-rr": {
      "pass": true,
@@ -312,8 +356,10 @@
      "footprint_bytes": 2947280,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 42.9918
+     "host_seconds": 40.6071
     },
     "heldout-mash-ssl": {
      "pass": true,
@@ -325,8 +371,10 @@
      "footprint_bytes": 2934832,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 38.6853
+     "host_seconds": 40.8703
     },
     "heldout-mash-wdw": {
      "pass": true,
@@ -338,8 +386,10 @@
      "footprint_bytes": 2933584,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 40.6241
+     "host_seconds": 40.9771
     },
     "heldout-mash-wf": {
      "pass": true,
@@ -351,8 +401,10 @@
      "footprint_bytes": 2927600,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 34.6489
+     "host_seconds": 34.7969
     },
     "heldout-ssl": {
      "pass": true,
@@ -364,8 +416,10 @@
      "footprint_bytes": 2929472,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 39.5162
+     "host_seconds": 40.1886
     },
     "heldout-wdw": {
      "pass": true,
@@ -377,8 +431,10 @@
      "footprint_bytes": 2909632,
      "highest_line": 262143,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 19.0209
+     "host_seconds": 18.6446
     }
    }
   },
@@ -387,103 +443,153 @@
    "workloads": {
     "bob": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "wf": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "jrb": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "ddd": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "bitfs": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "rr": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-bob2": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-ccm": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-ddd2": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-hmc": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-jrb2": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-lll": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-bitfs": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-bob": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-ccm": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-ddd": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-hmc": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-jrb": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-lll": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-rr": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-ssl": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-wdw": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-mash-wf": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-ssl": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     },
     "heldout-wdw": {
      "pass": true,
-     "max_pos_drift": 0.0
+     "max_pos_drift": 0.0,
+     "gameplay_score": 1.0,
+     "failed_frames": 0
     }
    }
   },
@@ -497,7 +603,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "wf": {
      "pass": true,
@@ -506,7 +620,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "jrb": {
      "pass": true,
@@ -515,7 +637,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "ddd": {
      "pass": true,
@@ -524,7 +654,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "bitfs": {
      "pass": true,
@@ -533,7 +671,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "rr": {
      "pass": true,
@@ -542,7 +688,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-bob2": {
      "pass": true,
@@ -551,7 +705,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-ccm": {
      "pass": true,
@@ -560,7 +722,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-ddd2": {
      "pass": true,
@@ -569,7 +739,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-hmc": {
      "pass": true,
@@ -578,7 +756,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-jrb2": {
      "pass": true,
@@ -587,7 +773,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-lll": {
      "pass": true,
@@ -596,7 +790,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-bitfs": {
      "pass": true,
@@ -605,7 +807,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-bob": {
      "pass": true,
@@ -614,7 +824,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-ccm": {
      "pass": true,
@@ -623,7 +841,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-ddd": {
      "pass": true,
@@ -632,7 +858,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-hmc": {
      "pass": true,
@@ -641,7 +875,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-jrb": {
      "pass": true,
@@ -650,7 +892,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-lll": {
      "pass": true,
@@ -659,7 +909,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-rr": {
      "pass": true,
@@ -668,7 +926,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-ssl": {
      "pass": true,
@@ -677,7 +943,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-wdw": {
      "pass": true,
@@ -686,7 +960,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-mash-wf": {
      "pass": true,
@@ -695,7 +977,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-ssl": {
      "pass": true,
@@ -704,7 +994,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     },
     "heldout-wdw": {
      "pass": true,
@@ -713,7 +1011,15 @@
      "max_bad_fraction": 0.002,
      "failed_frames": 0,
      "variant_frames": 0,
-     "matched_variant": "orig"
+     "matched_variant": "orig",
+     "mean_bad_fraction": 0.0,
+     "ssim_score": 1.0,
+     "worst_ssim_frame_score": 1.0,
+     "worst_ssim_frame": -1,
+     "ssim_tau": 0.05,
+     "worst_ssim_defect": 0.0,
+     "min_ssim_score": 0.98,
+     "min_ssim_frame_score": 0.85
     }
    }
   },
@@ -727,7 +1033,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "wf": {
      "pass": true,
@@ -736,7 +1044,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "jrb": {
      "pass": true,
@@ -745,7 +1055,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "ddd": {
      "pass": true,
@@ -754,7 +1066,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "bitfs": {
      "pass": true,
@@ -763,7 +1077,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "rr": {
      "pass": true,
@@ -772,7 +1088,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-bob2": {
      "pass": true,
@@ -781,7 +1099,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-ccm": {
      "pass": true,
@@ -790,7 +1110,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-ddd2": {
      "pass": true,
@@ -799,7 +1121,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-hmc": {
      "pass": true,
@@ -808,7 +1132,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-jrb2": {
      "pass": true,
@@ -817,7 +1143,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-lll": {
      "pass": true,
@@ -826,7 +1154,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-bitfs": {
      "pass": true,
@@ -835,7 +1165,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-bob": {
      "pass": true,
@@ -844,7 +1176,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-ccm": {
      "pass": true,
@@ -853,7 +1187,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-ddd": {
      "pass": true,
@@ -862,7 +1198,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-hmc": {
      "pass": true,
@@ -871,7 +1209,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-jrb": {
      "pass": true,
@@ -880,7 +1220,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-lll": {
      "pass": true,
@@ -889,7 +1231,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-rr": {
      "pass": true,
@@ -898,7 +1242,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-ssl": {
      "pass": true,
@@ -907,7 +1253,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-wdw": {
      "pass": true,
@@ -916,7 +1264,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-mash-wf": {
      "pass": true,
@@ -925,7 +1275,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-ssl": {
      "pass": true,
@@ -934,7 +1286,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     },
     "heldout-wdw": {
      "pass": true,
@@ -943,7 +1297,9 @@
      "worst_frame_snr_db": null,
      "worst_frame": -1,
      "min_snr_db": 40.0,
-     "min_frame_snr_db": 20.0
+     "min_frame_snr_db": 20.0,
+     "logmel_score": 1.0,
+     "audio_score": 1.0
     }
    }
   },
@@ -955,200 +1311,300 @@
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "wf": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "jrb": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "ddd": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "bitfs": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "rr": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-bob2": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-ccm": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-ddd2": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-hmc": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-jrb2": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-lll": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-bitfs": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-bob": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-ccm": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-ddd": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-hmc": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-jrb": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-lll": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-rr": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-ssl": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-wdw": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-mash-wf": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-ssl": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     },
     "heldout-wdw": {
      "pass": true,
      "highest_byte": 4194304,
      "limit_bytes": 4194304,
      "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "max_kseg1_dirty_synonyms": 0,
      "dcache_coherence_errors": 0,
-     "max_dcache_coherence_errors": 252
+     "max_dcache_coherence_errors": 252,
+     "hardware_score": 1.0
     }
    }
   }
@@ -1170,7 +1626,9 @@
     "rsp_gfx_ms": 20.12734982426778,
     "rsp_aud_ms": 2.3033933389121337,
     "rdp_busy": 786453.9623430963,
-    "rdp_ms": 12.583263397489539,
+    "rdp_effective_cycles": 1116604.7607348904,
+    "rdp_bus_contention_cycles": 330150.7983917939,
+    "rdp_ms": 17.865676171758246,
     "mem_ms": 11.734608803347278,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1220,6 +1678,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2988576,
     "highest_byte": 4194304
@@ -1231,8 +1691,11 @@
     "cpu_busy_cycles": 0.9459539739501216,
     "frame_ticks": 0.9726516216960653,
     "frame_ticks_p99": 0.9751956101744021,
+    "rdp_effective_cycles": 0.9947159913084708,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9807851003455211,
     "footprint_bytes": 1.000037477446608
    }
@@ -1253,7 +1716,9 @@
     "rsp_gfx_ms": 13.02403581589958,
     "rsp_aud_ms": 2.1726291548117156,
     "rdp_busy": 658688.4853556486,
-    "rdp_ms": 10.539015765690378,
+    "rdp_effective_cycles": 963382.1732156539,
+    "rdp_bus_contention_cycles": 304693.6878600053,
+    "rdp_ms": 15.41411477145046,
     "mem_ms": 11.059182794979082,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1303,6 +1768,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2925664,
     "highest_byte": 4194304
@@ -1314,8 +1781,11 @@
     "cpu_busy_cycles": 0.9466889519209679,
     "frame_ticks": 0.9694169071907777,
     "frame_ticks_p99": 0.9669424412361827,
+    "rdp_effective_cycles": 0.9947212917102924,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9816337497143083,
     "footprint_bytes": 0.9998687649689957
    }
@@ -1336,12 +1806,14 @@
     "rsp_gfx_ms": 19.58341449372385,
     "rsp_aud_ms": 3.7354005020920504,
     "rdp_busy": 1447295.0292887029,
-    "rdp_ms": 23.156720468619245,
+    "rdp_effective_cycles": 2014951.5852392886,
+    "rdp_bus_contention_cycles": 567656.5559505858,
+    "rdp_ms": 32.239225363828616,
     "mem_ms": 16.102597723849374,
     "bottleneck_share": {
-     "cpu": 1.0,
+     "cpu": 0.9372384937238494,
      "rsp": 0.0,
-     "rdp": 0.0,
+     "rdp": 0.06276150627615062,
      "rdram": 0.0
     },
     "rdp_fill_cycles": 1142014.9748953974,
@@ -1361,11 +1833,11 @@
     "rdp_tmem_loads": 144.73640167364016,
     "rdp_tmem_bytes": 304881.0041841004,
     "rdp_syncs": 499.1464435146444,
-    "est_console_ms": 35.94847353267807,
+    "est_console_ms": 36.13726311884421,
     "est_console_p99_ms": 42.33703219923627,
-    "est_fps": 27.817592841347622,
-    "est_fps_30hz": 20.603448275862068,
-    "frames_over_33ms": 0.9121338912133892,
+    "est_fps": 27.67226717505726,
+    "est_fps_30hz": 20.456490727532096,
+    "frames_over_33ms": 0.9330543933054394,
     "frames_under_16ms": 0.0,
     "rdram_bytes": 3718449.4309623432,
     "rdram_bytes_by_device": {
@@ -1386,19 +1858,24 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2890416,
     "highest_byte": 4194304
    },
    "ratios": {
-    "est_console_ms": 0.9331119087680387,
+    "est_console_ms": 0.9365835425138777,
     "est_console_p99_ms": 0.9325544054359206,
     "cpu_effective_cycles": 0.9331119087680391,
     "cpu_busy_cycles": 0.9346417826706049,
     "frame_ticks": 0.9646958393292802,
     "frame_ticks_p99": 0.9676262153208776,
+    "rdp_effective_cycles": 0.9929995873848881,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9800091282907946,
     "footprint_bytes": 1.0000276784429216
    }
@@ -1419,7 +1896,9 @@
     "rsp_gfx_ms": 13.020864736401675,
     "rsp_aud_ms": 4.3413587949790795,
     "rdp_busy": 783447.4644351464,
-    "rdp_ms": 12.535159430962345,
+    "rdp_effective_cycles": 1134577.3726366945,
+    "rdp_bus_contention_cycles": 351129.90820154815,
+    "rdp_ms": 18.153237962187113,
     "mem_ms": 11.818069924686192,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1469,6 +1948,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2888416,
     "highest_byte": 4194304
@@ -1480,8 +1961,11 @@
     "cpu_busy_cycles": 0.9471439118556871,
     "frame_ticks": 0.971136851632024,
     "frame_ticks_p99": 0.9700464214215188,
+    "rdp_effective_cycles": 0.9947776709536081,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9831250071418127,
     "footprint_bytes": 1.0000387770816368
    }
@@ -1502,7 +1986,9 @@
     "rsp_gfx_ms": 7.426236251046025,
     "rsp_aud_ms": 3.9069561841004186,
     "rdp_busy": 418294.5941422594,
-    "rdp_ms": 6.692713506276151,
+    "rdp_effective_cycles": 592435.5957647907,
+    "rdp_bus_contention_cycles": 174141.0016225314,
+    "rdp_ms": 9.478969532236652,
     "mem_ms": 8.043363046025105,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1552,6 +2038,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2775024,
     "highest_byte": 4194304
@@ -1563,8 +2051,11 @@
     "cpu_busy_cycles": 0.9584621106022583,
     "frame_ticks": 0.973641902243537,
     "frame_ticks_p99": 0.9733751204730196,
+    "rdp_effective_cycles": 0.9954946276215242,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9776892622373374,
     "footprint_bytes": 1.0000288294106114
    }
@@ -1585,7 +2076,9 @@
     "rsp_gfx_ms": 14.773104535564855,
     "rsp_aud_ms": 3.7315669958159,
     "rdp_busy": 434345.06694560667,
-    "rdp_ms": 6.949521071129708,
+    "rdp_effective_cycles": 631630.1634981852,
+    "rdp_bus_contention_cycles": 197285.09655257844,
+    "rdp_ms": 10.106082615970964,
     "mem_ms": 8.991351062761508,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1635,6 +2128,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2909952,
     "highest_byte": 4194304
@@ -1646,8 +2141,11 @@
     "cpu_busy_cycles": 0.9331543929331794,
     "frame_ticks": 0.9635177216114383,
     "frame_ticks_p99": 0.9693904950796683,
+    "rdp_effective_cycles": 0.9931620471038028,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9700115758724254,
     "footprint_bytes": 1.0000384900888022
    }
@@ -1668,7 +2166,9 @@
     "rsp_gfx_ms": 20.08488810041841,
     "rsp_aud_ms": 2.3677453389121337,
     "rdp_busy": 882469.7238493724,
-    "rdp_ms": 14.119515581589956,
+    "rdp_effective_cycles": 1225092.0795930072,
+    "rdp_bus_contention_cycles": 342622.3557436349,
+    "rdp_ms": 19.601473273488118,
     "mem_ms": 11.970699179916318,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1718,6 +2218,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 3001936,
     "highest_byte": 4194304
@@ -1729,8 +2231,11 @@
     "cpu_busy_cycles": 0.9495242260097436,
     "frame_ticks": 0.9742593502531434,
     "frame_ticks_p99": 0.9767739938426624,
+    "rdp_effective_cycles": 0.9951138722091701,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9816808433669625,
     "footprint_bytes": 1.000079954798887
    }
@@ -1751,7 +2256,9 @@
     "rsp_gfx_ms": 18.27531648535565,
     "rsp_aud_ms": 2.6984473974895398,
     "rdp_busy": 825008.359832636,
-    "rdp_ms": 13.200133757322174,
+    "rdp_effective_cycles": 1193850.0032120503,
+    "rdp_bus_contention_cycles": 368841.64337941416,
+    "rdp_ms": 19.101600051392804,
     "mem_ms": 12.49754922175732,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1801,6 +2308,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2931104,
     "highest_byte": 4194304
@@ -1812,8 +2321,11 @@
     "cpu_busy_cycles": 0.9835277306944387,
     "frame_ticks": 0.9913427803284756,
     "frame_ticks_p99": 0.9920143372760232,
+    "rdp_effective_cycles": 0.9975107144065595,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9917834787205153,
     "footprint_bytes": 1.0000327532371116
    }
@@ -1834,12 +2346,14 @@
     "rsp_gfx_ms": 14.4621930041841,
     "rsp_aud_ms": 4.147815029288703,
     "rdp_busy": 839487.3179916318,
-    "rdp_ms": 13.431797087866109,
+    "rdp_effective_cycles": 1219207.8886440585,
+    "rdp_bus_contention_cycles": 379720.5706524268,
+    "rdp_ms": 19.507326218304936,
     "mem_ms": 12.412352635983263,
     "bottleneck_share": {
-     "cpu": 1.0,
+     "cpu": 0.9874476987447699,
      "rsp": 0.0,
-     "rdp": 0.0,
+     "rdp": 0.012552301255230125,
      "rdram": 0.0
     },
     "rdp_fill_cycles": 658480.4225941423,
@@ -1859,9 +2373,9 @@
     "rdp_tmem_loads": 122.57322175732217,
     "rdp_tmem_bytes": 229483.11297071129,
     "rdp_syncs": 392.9539748953975,
-    "est_console_ms": 27.425357564855705,
-    "est_console_p99_ms": 38.03373872641707,
-    "est_fps": 36.46260573395231,
+    "est_console_ms": 27.434497452664953,
+    "est_console_p99_ms": 38.4522327774592,
+    "est_fps": 36.450458103903095,
     "est_fps_30hz": 27.576923076923077,
     "frames_over_33ms": 0.17573221757322174,
     "frames_under_16ms": 0.04184100418410042,
@@ -1884,19 +2398,24 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2891840,
     "highest_byte": 4194304
    },
    "ratios": {
-    "est_console_ms": 0.9465925420009451,
-    "est_console_p99_ms": 0.936789544352959,
+    "est_console_ms": 0.9469080073367936,
+    "est_console_p99_ms": 0.9470972570448455,
     "cpu_effective_cycles": 0.9465925420009452,
     "cpu_busy_cycles": 0.9477755052911049,
     "frame_ticks": 0.9721306575737239,
     "frame_ticks_p99": 0.9737843449394289,
+    "rdp_effective_cycles": 0.9946870898809097,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9835929050157871,
     "footprint_bytes": 1.0000165987041945
    }
@@ -1917,7 +2436,9 @@
     "rsp_gfx_ms": 10.077250543933054,
     "rsp_aud_ms": 2.998159665271966,
     "rdp_busy": 647067.4309623431,
-    "rdp_ms": 10.35307889539749,
+    "rdp_effective_cycles": 904812.9739416685,
+    "rdp_bus_contention_cycles": 257745.5429793253,
+    "rdp_ms": 14.477007583066696,
     "mem_ms": 10.02466657740586,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -1967,6 +2488,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 3033456,
     "highest_byte": 4194304
@@ -1978,8 +2501,11 @@
     "cpu_busy_cycles": 0.96264939135592,
     "frame_ticks": 0.9769727469672204,
     "frame_ticks_p99": 0.9771943858426599,
+    "rdp_effective_cycles": 0.9964397195014854,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9849007369327616,
     "footprint_bytes": 1.0000527479019523
    }
@@ -2000,12 +2526,14 @@
     "rsp_gfx_ms": 18.35692217573222,
     "rsp_aud_ms": 3.7663854728033472,
     "rdp_busy": 1309860.0502092051,
-    "rdp_ms": 20.95776080334728,
+    "rdp_effective_cycles": 1823960.6462502037,
+    "rdp_bus_contention_cycles": 514100.59604099893,
+    "rdp_ms": 29.183370340003265,
     "mem_ms": 15.089624133891213,
     "bottleneck_share": {
-     "cpu": 1.0,
+     "cpu": 0.9372384937238494,
      "rsp": 0.0,
-     "rdp": 0.0,
+     "rdp": 0.06276150627615062,
      "rdram": 0.0
     },
     "rdp_fill_cycles": 1041133.0167364017,
@@ -2025,11 +2553,11 @@
     "rdp_tmem_loads": 134.3347280334728,
     "rdp_tmem_bytes": 277916.3849372385,
     "rdp_syncs": 457.65271966527195,
-    "est_console_ms": 33.43054108091216,
+    "est_console_ms": 33.62485840902516,
     "est_console_p99_ms": 40.42190248677376,
-    "est_fps": 29.912767417664387,
-    "est_fps_30hz": 23.129032258064516,
-    "frames_over_33ms": 0.5941422594142259,
+    "est_fps": 29.73990218295143,
+    "est_fps_30hz": 22.98076923076923,
+    "frames_over_33ms": 0.6108786610878661,
     "frames_under_16ms": 0.0,
     "rdram_bytes": 3465206.0334728034,
     "rdram_bytes_by_device": {
@@ -2050,19 +2578,24 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2888736,
     "highest_byte": 4194304
    },
    "ratios": {
-    "est_console_ms": 0.9309044946604553,
+    "est_console_ms": 0.9347146650421928,
     "est_console_p99_ms": 0.9330865044104892,
     "cpu_effective_cycles": 0.9309044946604553,
     "cpu_busy_cycles": 0.9324655097978459,
     "frame_ticks": 0.9637010583208582,
     "frame_ticks_p99": 0.9642141257753101,
+    "rdp_effective_cycles": 0.9931865987558408,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9796442470503506,
     "footprint_bytes": 1.0000276945402984
    }
@@ -2083,12 +2616,14 @@
     "rsp_gfx_ms": 15.699206761506277,
     "rsp_aud_ms": 1.4239214058577405,
     "rdp_busy": 661139.610878661,
-    "rdp_ms": 10.578233774058576,
+    "rdp_effective_cycles": 926957.6590800051,
+    "rdp_bus_contention_cycles": 265818.04820134415,
+    "rdp_ms": 14.831322545280083,
     "mem_ms": 10.142699882845188,
     "bottleneck_share": {
      "cpu": 0.7112970711297071,
-     "rsp": 0.28870292887029286,
-     "rdp": 0.0,
+     "rsp": 0.2594142259414226,
+     "rdp": 0.029288702928870293,
      "rdram": 0.0
     },
     "rdp_fill_cycles": 490342.2552301255,
@@ -2108,9 +2643,9 @@
     "rdp_tmem_loads": 117.23849372384937,
     "rdp_tmem_bytes": 155630.32635983263,
     "rdp_syncs": 302.6652719665272,
-    "est_console_ms": 22.48927248311556,
+    "est_console_ms": 22.51506326020644,
     "est_console_p99_ms": 27.150275929695574,
-    "est_fps": 44.46564470908419,
+    "est_fps": 44.41470976310422,
     "est_fps_30hz": 30.0,
     "frames_over_33ms": 0.0,
     "frames_under_16ms": 0.0041841004184100415,
@@ -2133,19 +2668,24 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2980640,
     "highest_byte": 4194304
    },
    "ratios": {
-    "est_console_ms": 0.9540541439568195,
+    "est_console_ms": 0.954056571390456,
     "est_console_p99_ms": 0.943993430974144,
     "cpu_effective_cycles": 0.9404762542221752,
     "cpu_busy_cycles": 0.9424647410135413,
     "frame_ticks": 0.9708093189948104,
     "frame_ticks_p99": 0.978238871484831,
+    "rdp_effective_cycles": 0.9954785349982663,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9814171129325757,
     "footprint_bytes": 0.9997048485336338
    }
@@ -2166,7 +2706,9 @@
     "rsp_gfx_ms": 8.624383732217572,
     "rsp_aud_ms": 4.183602343096235,
     "rdp_busy": 422198.93305439333,
-    "rdp_ms": 6.755182928870292,
+    "rdp_effective_cycles": 603604.2166759204,
+    "rdp_bus_contention_cycles": 181405.2836215272,
+    "rdp_ms": 9.657667466814726,
     "mem_ms": 8.382437656903766,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2216,6 +2758,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2864976,
     "highest_byte": 4194304
@@ -2227,8 +2771,11 @@
     "cpu_busy_cycles": 0.9607714603716304,
     "frame_ticks": 0.9754274534531926,
     "frame_ticks_p99": 0.9788681450484898,
+    "rdp_effective_cycles": 0.995717664172856,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9795427816370968,
     "footprint_bytes": 1.0000279242248236
    }
@@ -2249,7 +2796,9 @@
     "rsp_gfx_ms": 17.60933107949791,
     "rsp_aud_ms": 2.926841238493724,
     "rdp_busy": 715625.6652719665,
-    "rdp_ms": 11.450010644351465,
+    "rdp_effective_cycles": 1003746.9737276726,
+    "rdp_bus_contention_cycles": 288121.308455706,
+    "rdp_ms": 16.05995157964276,
     "mem_ms": 10.800546142259416,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2299,6 +2848,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2980352,
     "highest_byte": 4194304
@@ -2310,8 +2861,11 @@
     "cpu_busy_cycles": 0.9470484152029887,
     "frame_ticks": 0.9726295760432017,
     "frame_ticks_p99": 0.9778105408899384,
+    "rdp_effective_cycles": 0.995051811034208,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9801427831634757,
     "footprint_bytes": 1.0000375808659705
    }
@@ -2332,7 +2886,9 @@
     "rsp_gfx_ms": 16.33559979916318,
     "rsp_aud_ms": 3.103730209205021,
     "rdp_busy": 641707.9330543933,
-    "rdp_ms": 10.267326928870293,
+    "rdp_effective_cycles": 939608.5542501621,
+    "rdp_bus_contention_cycles": 297900.6211957688,
+    "rdp_ms": 15.033736868002594,
     "mem_ms": 11.102093054393306,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2382,6 +2938,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2937104,
     "highest_byte": 4194304
@@ -2393,8 +2951,11 @@
     "cpu_busy_cycles": 0.9791266635443425,
     "frame_ticks": 0.9888566085068428,
     "frame_ticks_p99": 0.9884324208152507,
+    "rdp_effective_cycles": 0.9977690382674606,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9920965293425398,
     "footprint_bytes": 1.0000326863256757
    }
@@ -2415,7 +2976,9 @@
     "rsp_gfx_ms": 13.66257579916318,
     "rsp_aud_ms": 4.4010633640167365,
     "rdp_busy": 759525.0920502092,
-    "rdp_ms": 12.152401472803348,
+    "rdp_effective_cycles": 1105369.692206564,
+    "rdp_bus_contention_cycles": 345844.6001563546,
+    "rdp_ms": 17.68591507530502,
     "mem_ms": 11.812196619246862,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2465,6 +3028,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2895568,
     "highest_byte": 4194304
@@ -2476,8 +3041,11 @@
     "cpu_busy_cycles": 0.9480107825401081,
     "frame_ticks": 0.9717521582263122,
     "frame_ticks_p99": 0.9716989083791884,
+    "rdp_effective_cycles": 0.9946613530205549,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.982605739774961,
     "footprint_bytes": 1.0000386812992497
    }
@@ -2498,7 +3066,9 @@
     "rsp_gfx_ms": 11.015117589958159,
     "rsp_aud_ms": 3.250322811715481,
     "rdp_busy": 684427.6527196653,
-    "rdp_ms": 10.950842443514643,
+    "rdp_effective_cycles": 962028.0340266998,
+    "rdp_bus_contention_cycles": 277600.3813070345,
+    "rdp_ms": 15.392448544427197,
     "mem_ms": 10.51418279497908,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2548,6 +3118,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2982304,
     "highest_byte": 4194304
@@ -2559,8 +3131,11 @@
     "cpu_busy_cycles": 0.9576072238751311,
     "frame_ticks": 0.9743910991757119,
     "frame_ticks_p99": 0.9790515591509631,
+    "rdp_effective_cycles": 0.996287619065221,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9850490585843715,
     "footprint_bytes": 1.0000536526740493
    }
@@ -2581,12 +3156,14 @@
     "rsp_gfx_ms": 13.187832100418412,
     "rsp_aud_ms": 3.8576897740585774,
     "rdp_busy": 977391.0878661087,
-    "rdp_ms": 15.638257405857741,
+    "rdp_effective_cycles": 1351827.5502306225,
+    "rdp_bus_contention_cycles": 374436.4623645136,
+    "rdp_ms": 21.629240803689957,
     "mem_ms": 12.231925121338913,
     "bottleneck_share": {
-     "cpu": 1.0,
+     "cpu": 0.9372384937238494,
      "rsp": 0.0,
-     "rdp": 0.0,
+     "rdp": 0.06276150627615062,
      "rdram": 0.0
     },
     "rdp_fill_cycles": 793751.9330543933,
@@ -2606,11 +3183,11 @@
     "rdp_tmem_loads": 81.0418410041841,
     "rdp_tmem_bytes": 174725.35564853557,
     "rdp_syncs": 255.34309623430963,
-    "est_console_ms": 26.696604702556115,
+    "est_console_ms": 26.839401920576307,
     "est_console_p99_ms": 38.69482440431019,
-    "est_fps": 37.45794684910824,
-    "est_fps_30hz": 28.228346456692915,
-    "frames_over_33ms": 0.12552301255230125,
+    "est_fps": 37.25865438280704,
+    "est_fps_30hz": 27.953216374269005,
+    "frames_over_33ms": 0.14644351464435146,
     "frames_under_16ms": 0.0,
     "rdram_bytes": 2750781.280334728,
     "rdram_bytes_by_device": {
@@ -2631,19 +3208,24 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2883856,
     "highest_byte": 4194304
    },
    "ratios": {
-    "est_console_ms": 0.9322799188676142,
+    "est_console_ms": 0.9357930604413925,
     "est_console_p99_ms": 0.9386125918957625,
     "cpu_effective_cycles": 0.9322799188676143,
     "cpu_busy_cycles": 0.9338236412163634,
     "frame_ticks": 0.9635269007899371,
     "frame_ticks_p99": 0.9659553664226547,
+    "rdp_effective_cycles": 0.9944532834243881,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9806974673854041,
     "footprint_bytes": 1.0000388383989702
    }
@@ -2664,7 +3246,9 @@
     "rsp_gfx_ms": 12.087015564853557,
     "rsp_aud_ms": 2.2111015230125526,
     "rdp_busy": 524624.2217573222,
-    "rdp_ms": 8.393987548117154,
+    "rdp_effective_cycles": 752230.6552218044,
+    "rdp_bus_contention_cycles": 227606.43346448222,
+    "rdp_ms": 12.035690483548871,
     "mem_ms": 9.481498610878663,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2714,6 +3298,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2937680,
     "highest_byte": 4194304
@@ -2725,8 +3311,11 @@
     "cpu_busy_cycles": 0.9437266529748634,
     "frame_ticks": 0.9673394885091078,
     "frame_ticks_p99": 0.969886335690058,
+    "rdp_effective_cycles": 0.9947704954263931,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9778033512156724,
     "footprint_bytes": 1.0000272331154685
    }
@@ -2747,7 +3336,9 @@
     "rsp_gfx_ms": 15.698257338912134,
     "rsp_aud_ms": 3.999425807531381,
     "rdp_busy": 475206.9874476987,
-    "rdp_ms": 7.603311799163179,
+    "rdp_effective_cycles": 696061.0999230125,
+    "rdp_bus_contention_cycles": 220854.1124753138,
+    "rdp_ms": 11.136977598768201,
     "mem_ms": 9.64052779916318,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2797,6 +3388,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2947280,
     "highest_byte": 4194304
@@ -2808,8 +3401,11 @@
     "cpu_busy_cycles": 0.9371373458118364,
     "frame_ticks": 0.9653705511357602,
     "frame_ticks_p99": 0.9678101092675856,
+    "rdp_effective_cycles": 0.9934200620346132,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9728636703861877,
     "footprint_bytes": 1.0000380025841757
    }
@@ -2830,7 +3426,9 @@
     "rsp_gfx_ms": 15.998950158995816,
     "rsp_aud_ms": 2.152140184100418,
     "rdp_busy": 604514.0083682009,
-    "rdp_ms": 9.672224133891213,
+    "rdp_effective_cycles": 870626.7663669352,
+    "rdp_bus_contention_cycles": 266112.75799873436,
+    "rdp_ms": 13.930028261870964,
     "mem_ms": 10.381416535564853,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2880,6 +3478,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2934832,
     "highest_byte": 4194304
@@ -2891,8 +3491,11 @@
     "cpu_busy_cycles": 0.9625507192826555,
     "frame_ticks": 0.9803126261778545,
     "frame_ticks_p99": 0.9843366889581605,
+    "rdp_effective_cycles": 0.9965028510862711,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9862176871905902,
     "footprint_bytes": 1.000043615983077
    }
@@ -2913,7 +3516,9 @@
     "rsp_gfx_ms": 14.196534092050209,
     "rsp_aud_ms": 3.4934461589958157,
     "rdp_busy": 893187.10041841,
-    "rdp_ms": 14.290993606694562,
+    "rdp_effective_cycles": 1272332.728183682,
+    "rdp_bus_contention_cycles": 379145.627765272,
+    "rdp_ms": 20.357323650938916,
     "mem_ms": 12.520982527196654,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -2963,6 +3568,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2933584,
     "highest_byte": 4194304
@@ -2974,8 +3581,11 @@
     "cpu_busy_cycles": 0.9603364443712792,
     "frame_ticks": 0.9776683599975767,
     "frame_ticks_p99": 0.9795249442092301,
+    "rdp_effective_cycles": 0.9957933146383992,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9861016570414753,
     "footprint_bytes": 1.0000327255471984
    }
@@ -2996,7 +3606,9 @@
     "rsp_gfx_ms": 11.653323715481172,
     "rsp_aud_ms": 2.3260135230125525,
     "rdp_busy": 516958.5020920502,
-    "rdp_ms": 8.271336033472803,
+    "rdp_effective_cycles": 747974.3137985723,
+    "rdp_bus_contention_cycles": 231015.81170652193,
+    "rdp_ms": 11.967589020777156,
     "mem_ms": 9.344766861924684,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -3046,6 +3658,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2927600,
     "highest_byte": 4194304
@@ -3057,8 +3671,11 @@
     "cpu_busy_cycles": 0.9452898686783504,
     "frame_ticks": 0.9691782155178885,
     "frame_ticks_p99": 0.9745891829502702,
+    "rdp_effective_cycles": 0.9953041094517673,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9807572581786034,
     "footprint_bytes": 0.9987609305575267
    }
@@ -3079,7 +3696,9 @@
     "rsp_gfx_ms": 16.5889909958159,
     "rsp_aud_ms": 1.5887176569037658,
     "rdp_busy": 619821.8577405858,
-    "rdp_ms": 9.917149723849374,
+    "rdp_effective_cycles": 893521.0676026935,
+    "rdp_bus_contention_cycles": 273699.2098621077,
+    "rdp_ms": 14.296337081643097,
     "mem_ms": 10.563524753138076,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -3129,6 +3748,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2929472,
     "highest_byte": 4194304
@@ -3140,8 +3761,11 @@
     "cpu_busy_cycles": 0.9626670195488611,
     "frame_ticks": 0.9803237059994225,
     "frame_ticks_p99": 0.9820143053904155,
+    "rdp_effective_cycles": 0.9963549049320787,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9859139564349437,
     "footprint_bytes": 1.0000436957899106
    }
@@ -3162,7 +3786,9 @@
     "rsp_gfx_ms": 12.311711866108787,
     "rsp_aud_ms": 3.1672633974895397,
     "rdp_busy": 828576.439330544,
-    "rdp_ms": 13.257223029288703,
+    "rdp_effective_cycles": 1183306.676995821,
+    "rdp_bus_contention_cycles": 354730.23766527727,
+    "rdp_ms": 18.93290683193314,
     "mem_ms": 11.930836184100418,
     "bottleneck_share": {
      "cpu": 1.0,
@@ -3212,6 +3838,8 @@
     "uncached_reads": 0.0,
     "uncached_writes": 0.0,
     "cache_uncached_ops": 0,
+    "cache_cde_unaligned_ops": 0,
+    "cache_kseg1_dirty_synonyms": 0,
     "dcache_coherence_errors": 0,
     "footprint_bytes": 2909632,
     "highest_byte": 4194304
@@ -3223,16 +3851,19 @@
     "cpu_busy_cycles": 0.9536916880546377,
     "frame_ticks": 0.9736408805372923,
     "frame_ticks_p99": 0.978319696066803,
+    "rdp_effective_cycles": 0.9955456769183113,
     "rdp_busy": 1.0,
     "rsp_busy": 1.0,
+    "rsp_gfx_ms": 1.0,
+    "rsp_aud_ms": 1.0,
     "rdram_bytes": 0.9851453024420186,
     "footprint_bytes": 0.9999890021665732
    }
   }
  },
  "rewards": {
-  "console": 0.018773,
-  "stutter": 0.01819175,
+  "console": 0.01857175,
+  "stutter": 0.017945,
   "speed": 0.01909625,
   "rdp": -0.0,
   "rsp": -0.0,
@@ -3240,17 +3871,59 @@
   "memory": -1.0
  },
  "speedups": {
-  "console": 1.053428,
-  "stutter": 1.051732,
+  "console": 1.052841,
+  "stutter": 1.051013,
   "speed": 1.054373,
   "rdp": 1.0,
   "rsp": 1.0,
   "traffic": 1.018448,
   "memory": 0.0
  },
+ "cost_saved": {
+  "console": 0.050189,
+  "stutter": 0.048537,
+  "speed": 0.051569,
+  "rdp": 0.0,
+  "rsp": 0.0,
+  "traffic": 0.018114,
+  "memory": 0.0
+ },
  "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
+ "toolchain": {
+  "compiler": "ido",
+  "ucode": "f3d_old",
+  "opt_flags": "-g",
+  "elf_bytes": 8916444
+ },
  "rom_sha256": "3526b9490368bc853f9f408abf77604aed772ad05bf25a10a378e6771985cd0d",
  "rom_bytes": 8388608,
+ "fidelity": {
+  "execution": 1.0,
+  "gameplay": 1.0,
+  "video_ssim": 1.0,
+  "audio": 1.0,
+  "hardware": 1.0,
+  "overall": 1.0,
+  "effective_speedups": {
+   "console": 1.052841,
+   "stutter": 1.051013,
+   "speed": 1.054373,
+   "rdp": 1.0,
+   "rsp": 1.0,
+   "traffic": 1.018448,
+   "memory": 1.000009
+  },
+  "effective_cost_saved": {
+   "console": 0.050189,
+   "stutter": 0.048537,
+   "speed": 0.051569,
+   "rdp": 0.0,
+   "rsp": 0.0,
+   "traffic": 0.018114,
+   "memory": 9e-06
+  },
+  "generalization_ratio": 0.988004
+ },
  "diagnostics": {
   "workloads_total": 25,
   "workloads_completed": 25,
@@ -3274,8 +3947,9 @@
   },
   "public_valid": true,
   "heldout_valid": true,
+  "generalization_ratio": 0.988004,
   "unverified_public_speedups": {
-   "console": 1.061149,
+   "console": 1.060492,
    "stutter": 1.058452,
    "speed": 1.061149,
    "rdp": 1.0,
@@ -3284,8 +3958,8 @@
    "memory": 0.999993
   },
   "unverified_passed_speedups": {
-   "console": 1.052615,
-   "stutter": 1.049733,
+   "console": 1.052114,
+   "stutter": 1.049273,
    "speed": 1.053218,
    "rdp": 1.0,
    "rsp": 1.0,
@@ -3293,72 +3967,154 @@
    "memory": 1.000035
   }
  },
+ "capability_ruler": {
+  "verified": true,
+  "toolchain": {
+   "compiler": "ido",
+   "ucode": "f3d_old",
+   "opt_flags": "-g",
+   "elf_bytes": 8916444
+  },
+  "subsystem_speedups": {
+   "console": 1.052841,
+   "stutter_p99": 1.051013,
+   "cpu": 1.054373,
+   "rsp": 1.0,
+   "rsp_gfx": 1.0,
+   "rsp_aud": 1.0,
+   "rdp_effective": 1.004988,
+   "rdp_raw": 1.0,
+   "rdram_traffic": 1.018448,
+   "memory_footprint": 1.000009
+  },
+  "subsystem_cost_saved": {
+   "console": 0.050189,
+   "stutter_p99": 0.048537,
+   "cpu": 0.051569,
+   "rsp": 0.0,
+   "rsp_gfx": 0.0,
+   "rsp_aud": 0.0,
+   "rdp_effective": 0.004963,
+   "rdp_raw": 0.0,
+   "rdram_traffic": 0.018114,
+   "memory_footprint": 9e-06
+  },
+  "dominant_bottleneck_share": {
+   "cpu": 1.0,
+   "rsp": 0.0,
+   "rdp": 0.0,
+   "mem": 0.0
+  },
+  "raw_vs_o2_speedup": 0.783945,
+  "compiler_tier_progress": 0.1746,
+  "splits": {
+   "public": {
+    "passed": 6,
+    "total": 6,
+    "pass_rate": 1.0,
+    "raw_console_speedup": 1.060492
+   },
+   "heldout_scripted": {
+    "passed": 8,
+    "total": 8,
+    "pass_rate": 1.0,
+    "raw_console_speedup": 1.047079
+   },
+   "heldout_mash": {
+    "passed": 11,
+    "total": 11,
+    "pass_rate": 1.0,
+    "raw_console_speedup": 1.051232
+   }
+  },
+  "generalization_ratio": 0.988004
+ },
  "profiles": {
   "console": {
    "metric": "est_console_ms",
-   "geomean_ratio": 0.9492814001886629,
-   "unweighted_geomean_ratio": 0.9500153771666253,
+   "geomean_ratio": 0.9498112841837117,
+   "unweighted_geomean_ratio": 0.9504675101534167,
    "valid": true,
-   "speedup": 1.053428,
-   "unweighted_speedup": 1.052615,
-   "log2_speedup": 0.075092,
-   "reward": 0.018773,
-   "vs_o2_ratio": 1.2994423466276357,
-   "vs_o2_speedup": 0.769561,
-   "unweighted_vs_o2_speedup": 0.767988,
+   "speedup": 1.052841,
+   "unweighted_speedup": 1.052114,
+   "cost_saved": 0.050189,
+   "unweighted_cost_saved": 0.049532,
+   "log2_speedup": 0.074287,
+   "reward": 0.01857175,
+   "vs_o2_ratio": 1.275599865468397,
+   "vs_o2_speedup": 0.783945,
+   "vs_o2_cost_saved": -0.2756,
+   "unweighted_vs_o2_speedup": 0.778505,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
-     "speedup": 1.061149,
-     "vs_o2_speedup": 0.76792
+     "speedup": 1.060492,
+     "cost_saved": 0.057042,
+     "vs_o2_speedup": 0.787088,
+     "vs_o2_cost_saved": -0.270506
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
-     "speedup": 1.047658,
-     "vs_o2_speedup": 0.77173
+     "speedup": 1.047079,
+     "cost_saved": 0.044963,
+     "vs_o2_speedup": 0.784312,
+     "vs_o2_cost_saved": -0.275003
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
-     "speedup": 1.051592,
-     "vs_o2_speedup": 0.765315
+     "speedup": 1.051232,
+     "cost_saved": 0.048736,
+     "vs_o2_speedup": 0.769692,
+     "vs_o2_cost_saved": -0.299221
     }
-   }
+   },
+   "generalization_ratio": 0.988004
   },
   "stutter": {
    "metric": "est_console_p99_ms",
-   "geomean_ratio": 0.9508128552230806,
-   "unweighted_geomean_ratio": 0.9526234963338287,
+   "geomean_ratio": 0.9514633823611311,
+   "unweighted_geomean_ratio": 0.9530405751823593,
    "valid": true,
-   "speedup": 1.051732,
-   "unweighted_speedup": 1.049733,
-   "log2_speedup": 0.072767,
-   "reward": 0.01819175,
-   "vs_o2_ratio": 1.3074251316899157,
-   "vs_o2_speedup": 0.764862,
-   "unweighted_vs_o2_speedup": 0.762464,
+   "speedup": 1.051013,
+   "unweighted_speedup": 1.049273,
+   "cost_saved": 0.048537,
+   "unweighted_cost_saved": 0.046959,
+   "log2_speedup": 0.07178,
+   "reward": 0.017945,
+   "vs_o2_ratio": 1.2459674117417971,
+   "vs_o2_speedup": 0.802589,
+   "vs_o2_cost_saved": -0.245967,
+   "unweighted_vs_o2_speedup": 0.791185,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 1.058452,
-     "vs_o2_speedup": 0.766372
+     "cost_saved": 0.055224,
+     "vs_o2_speedup": 0.802167,
+     "vs_o2_cost_saved": -0.246624
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
-     "speedup": 1.047389,
-     "vs_o2_speedup": 0.76492
+     "speedup": 1.045957,
+     "cost_saved": 0.043938,
+     "vs_o2_speedup": 0.809067,
+     "vs_o2_cost_saved": -0.235992
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.046707,
-     "vs_o2_speedup": 0.758564
+     "cost_saved": 0.044623,
+     "vs_o2_speedup": 0.772599,
+     "vs_o2_cost_saved": -0.294333
     }
-   }
+   },
+   "generalization_ratio": 0.988314
   },
   "speed": {
    "metric": "cpu_effective_cycles",
@@ -3367,31 +4123,41 @@
    "valid": true,
    "speedup": 1.054373,
    "unweighted_speedup": 1.053218,
+   "cost_saved": 0.051569,
+   "unweighted_cost_saved": 0.050529,
    "log2_speedup": 0.076385,
    "reward": 0.01909625,
    "vs_o2_ratio": 1.319553157091443,
    "vs_o2_speedup": 0.757832,
+   "vs_o2_cost_saved": -0.319553,
    "unweighted_vs_o2_speedup": 0.758463,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 1.061149,
-     "vs_o2_speedup": 0.760837
+     "cost_saved": 0.057625,
+     "vs_o2_speedup": 0.760837,
+     "vs_o2_cost_saved": -0.314342
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
      "speedup": 1.049537,
-     "vs_o2_speedup": 0.755077
+     "cost_saved": 0.047199,
+     "vs_o2_speedup": 0.755077,
+     "vs_o2_cost_saved": -0.324368
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.051592,
-     "vs_o2_speedup": 0.75964
+     "cost_saved": 0.049061,
+     "vs_o2_speedup": 0.75964,
+     "vs_o2_cost_saved": -0.316414
     }
-   }
+   },
+   "generalization_ratio": 0.98938
   },
   "rdp": {
    "metric": "rdp_busy",
@@ -3400,31 +4166,41 @@
    "valid": true,
    "speedup": 1.0,
    "unweighted_speedup": 1.0,
+   "cost_saved": 0.0,
+   "unweighted_cost_saved": 0.0,
    "log2_speedup": -0.0,
    "reward": -0.0,
    "vs_o2_ratio": 0.9991075247511917,
    "vs_o2_speedup": 1.000893,
+   "vs_o2_cost_saved": 0.000892,
    "unweighted_vs_o2_speedup": 1.000973,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.001033
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.001033,
+     "vs_o2_cost_saved": 0.001032
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.000738
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.000738,
+     "vs_o2_cost_saved": 0.000737
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.00111
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.00111,
+     "vs_o2_cost_saved": 0.001109
     }
-   }
+   },
+   "generalization_ratio": 1.0
   },
   "rsp": {
    "metric": "rsp_busy",
@@ -3433,31 +4209,41 @@
    "valid": true,
    "speedup": 1.0,
    "unweighted_speedup": 1.0,
+   "cost_saved": 0.0,
+   "unweighted_cost_saved": 0.0,
    "log2_speedup": -0.0,
    "reward": -0.0,
    "vs_o2_ratio": 0.999999838892466,
    "vs_o2_speedup": 1.0,
+   "vs_o2_cost_saved": 0.0,
    "unweighted_vs_o2_speedup": 1.0,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.0
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.0,
+     "vs_o2_cost_saved": 0.0
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.0
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.0,
+     "vs_o2_cost_saved": 0.0
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.0,
-     "vs_o2_speedup": 1.0
+     "cost_saved": 0.0,
+     "vs_o2_speedup": 1.0,
+     "vs_o2_cost_saved": 0.0
     }
-   }
+   },
+   "generalization_ratio": 1.0
   },
   "traffic": {
    "metric": "rdram_bytes",
@@ -3466,31 +4252,41 @@
    "valid": true,
    "speedup": 1.018448,
    "unweighted_speedup": 1.018292,
+   "cost_saved": 0.018114,
+   "unweighted_cost_saved": 0.017963,
    "log2_speedup": 0.026373,
    "reward": 0.00659325,
    "vs_o2_ratio": 1.0888707151725017,
    "vs_o2_speedup": 0.918383,
+   "vs_o2_cost_saved": -0.088871,
    "unweighted_vs_o2_speedup": 0.91686,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 1.02159,
-     "vs_o2_speedup": 0.918728
+     "cost_saved": 0.021134,
+     "vs_o2_speedup": 0.918728,
+     "vs_o2_cost_saved": -0.088461
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
      "speedup": 1.015998,
-     "vs_o2_speedup": 0.918914
+     "cost_saved": 0.015746,
+     "vs_o2_speedup": 0.918914,
+     "vs_o2_cost_saved": -0.088241
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.018165,
-     "vs_o2_speedup": 0.914352
+     "cost_saved": 0.017841,
+     "vs_o2_speedup": 0.914352,
+     "vs_o2_cost_saved": -0.093671
     }
-   }
+   },
+   "generalization_ratio": 0.99488
   },
   "memory": {
    "metric": "footprint_bytes",
@@ -3500,33 +4296,53 @@
    "reason": "footprint_bytes regressed 0.008% on heldout-bob2 (limit 0%)",
    "speedup": 0.0,
    "unweighted_speedup": 0.0,
+   "cost_saved": 0.0,
+   "unweighted_cost_saved": 0.0,
    "log2_speedup": null,
    "reward": -1.0,
    "vs_o2_ratio": 1.0223984305219986,
    "vs_o2_speedup": 0.0,
+   "vs_o2_cost_saved": 0.0,
    "unweighted_vs_o2_speedup": 0.0,
    "sections": {
     "public": {
      "count": 6,
      "weight": 0.4,
      "speedup": 0.999993,
-     "vs_o2_speedup": 0.978721
+     "cost_saved": -7e-06,
+     "vs_o2_speedup": 0.978721,
+     "vs_o2_cost_saved": -0.021742
     },
     "heldout_scripted": {
      "count": 8,
      "weight": 0.5,
      "speedup": 1.000007,
-     "vs_o2_speedup": 0.977485
+     "cost_saved": 7e-06,
+     "vs_o2_speedup": 0.977485,
+     "vs_o2_cost_saved": -0.023034
     },
     "heldout_mash": {
      "count": 11,
      "weight": 0.1,
      "speedup": 1.000079,
-     "vs_o2_speedup": 0.978617
+     "cost_saved": 7.9e-05,
+     "vs_o2_speedup": 0.978617,
+     "vs_o2_cost_saved": -0.021851
     }
-   }
+   },
+   "generalization_ratio": 1.000025
   }
  },
  "status": "valid",
- "grader_seconds": 104.9
+ "failure_attribution": {
+  "primary_category": "profile_budget_regression",
+  "categories": [
+   "profile_budget_regression"
+  ],
+  "subcategories": [
+   "budget:memory"
+  ],
+  "public_only_pass": false
+ },
+ "grader_seconds": 105.2
 }

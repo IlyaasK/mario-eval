@@ -86,9 +86,9 @@ SM64_PATCHES = [
     ("r9-kaze-partial", "Kaze Rung 3 (partial reference): lazy <code>Mtx</code> + fast frustum cull + coin TMEM batch + <code>&minus;304 KB</code> RAM",
      "Full-stack partial Kaze Emanuar reference: defers fixed-point <code>Mtx</code> allocation past frustum cull, batches coin TMEM loads, enables <code>RA_ZB_OPA</code> + <code>CACHE 0x0d</code>, and trims 304 KB of RDRAM."),
     ("r10-kaze-master", "Kaze master reference: reconstructed optimizations from Kaze Emanuar's public work",
-     "Based on transcripts, on-screen code and two public code downloads: F3DEX2, no LOD, size-optimised code, vertical culling, billboard-once-per-camera, fused matrices, audio I-cache blocking, Rainbow Ride decoration baked into the level. Not Kaze's own engine."),
-    ("r11-beyond-kaze", "Beyond Kaze: r10-style build plus our own cache-layout work",
-     "An older Kaze-style build with our own cache-layout experiments: object field ordering, skipped unchanged stores, audio struct reorder, and double buffering. Its score is below the current expert reference."),
+     "Based on transcripts, on-screen code and public releases: F3DEX2, no LOD + full-detail Mario, cold -Os / hot -O3 I-cache sizing, vertical culling, billboard-once-per-camera, fused 4x3 matrices, sequence_unity audio TU, 1-raycast planar shadows, inline skybox quads, targeted D-cache writebacks, and Rainbow Ride statics baked into the level. Not Kaze's own engine."),
+    ("r11-beyond-kaze", "Beyond Kaze: r10-kaze-master plus D-cache layout &amp; conditional-store micro-optimizations",
+     "Stacks microarchitectural VR4300 write-back D-cache optimizations directly on top of r10-kaze-master: 16-byte cache-line packing of struct Object members, store-if-changed guards on stationary object transforms/collision fields, and byte-unpacked audio channel flags."),
     ("i0-gcc-fastmath", "GCC <code>-O2 -ffast-math</code>", "Breaks Mario physics/collision trajectories."),
     ("i1-mute-audio", "Disable audio synthesis (<code>sAudioEnabled = FALSE</code>)", "Caught by the 40 dB audio SNR gate."),
     ("i2-low-poly-mario", "Force low-poly Mario at all distances", "Caught by the video gate."),
@@ -959,8 +959,13 @@ def entry_card(e, rank, top):
     sub = [esc(e["org"])] if e.get("org") else []
     if e["valid"] and e["vs_o2"]:
         sub.append(f'{e["vs_o2"]:.2f}&times; vs GCC -O2')
+    if e["valid"] and e["speedup"] > 1.0:
+        sub.append(f'{100.0 * (1.0 - 1.0 / e["speedup"]):.1f}% time saved')
     if e["valid"] and e["fps"]:
         sub.append(f'{e["fps"]:.0f} uncapped FPS')
+    tc = (e["summary"] or {}).get("toolchain") if e["summary"] else None
+    if isinstance(tc, dict) and tc.get("compiler"):
+        sub.append(f'{esc(tc["compiler"])} &middot; {esc(tc.get("ucode", "f3d_old"))}')
     detail = ""
     if e["summary"]:
         wls = e["summary"]["workloads"]
@@ -1149,15 +1154,24 @@ def hw_speedup_visual_html(sm64_rows, board):
     pills = '<button type="button" class="pill on" data-hwc="avg">6-course avg</button>' + "".join(
         f'<button type="button" class="pill" data-hwc="{c}">{SM64_COURSE_SHORT[c]}</button>' for c in SM64_COURSES
     )
+    def _c_pair(ck):
+        rs = courses_payload.get(ck, [])
+        return (rs[0], next((x for x in rs if x["cls"] == "best"), rs[-1])) if len(rs) >= 2 else (None, None)
+
     notes = {
-        "avg": "Across all 6 courses, <b>~70% of Kaze R10's CPU frame time is the VR4300 stalled waiting on 4 MB RDRAM</b> (I$/D$ misses, writebacks &amp; RCP bus contention) — pure MIPS compute is only ~5 ms.",
-        "bob": "On Bob-omb Battlefield, GCC -O2 hits the <b>22.4 ms Fast3D RSP wall</b>; switching to F3DEX2 cuts RSP in half (12.0 ms), and R10/Kimi cut total frame time from <b>30.3 ms &rarr; 17.4 ms</b>.",
-        "jrb": "Jolly Roger Bay is fill-rate heavy: <b>RA_ZB_OPA</b> trims RDP time from 23.2 &rarr; 20.3 ms and reduces bus contention; once CPU memory stalls drop slightly further, JRB flips <b>RDP-bound</b>.",
-        "wf": "Whomp's Fortress drops from <b>27.8 ms (36 FPS) &rarr; 14.7 ms (68 FPS)</b> — comfortably under the 16.7 ms 60 FPS hardware budget, with only 4.2 ms of actual VR4300 compute.",
-        "ddd": "Dire Dire Docks (Sub) has heavy dynamic collision &amp; water overdraw; cache-friendly surface packing and targeted writebacks cut frame time from <b>28.1 &rarr; 16.6 ms</b>.",
-        "bitfs": "Bowser in the Fire Sea drops from <b>25.8 &rarr; 16.5 ms</b>, fitting inside the 16.7 ms 60 FPS frame budget on original 4 MB hardware.",
-        "rr": "Rainbow Ride's 14 static decoration pieces + F3DEX2 slash RSP from <b>18.5 &rarr; 12.1 ms</b> and lift throughput from <b>35 &rarr; 63 uncapped FPS</b>.",
+        "avg": "Across all 6 courses, <b>~70% of Kaze R10's CPU frame time is the VR4300 stalled waiting on 4 MB RDRAM</b> (I$/D$ misses, writebacks &amp; symmetric RCP bus contention) — pure MIPS compute is only ~5 ms.",
     }
+    for ck, desc in (
+        ("bob", "On Bob-omb Battlefield, GCC -O2 hits the <b>Fast3D RSP wall</b>; switching to F3DEX2 cuts graphics RSP in half, dropping console frame time from"),
+        ("jrb", "Jolly Roger Bay is fill-rate &amp; RDRAM-turnaround heavy: <b>RA_ZB_OPA</b> trims RDP fill + symmetric bus stalls, dropping console frame time from"),
+        ("wf", "Whomp's Fortress drops console frame time from"),
+        ("ddd", "Dire Dire Docks (Sub) has heavy dynamic collision &amp; water overdraw; cache-friendly surface packing and targeted writebacks cut frame time from"),
+        ("bitfs", "Bowser in the Fire Sea drops console frame time from"),
+        ("rr", "Rainbow Ride's 14 static decoration pieces + F3DEX2 slash RSP load and drop console frame time from"),
+    ):
+        b0, bk = _c_pair(ck)
+        if b0 and bk:
+            notes[ck] = f"{desc} <b>{b0['con']:.1f} ms ({b0['fps']:.0f} FPS) &rarr; {bk['con']:.1f} ms ({bk['fps']:.0f} FPS, {bk['sp']:.2f}&times;)</b>."
     blob = json.dumps({"courses": courses_payload, "notes": notes}).replace("</", "<\\/")
     return f"""<div class="hw-vis" id="hw-vis">
 <div class="hw-top">
@@ -1266,12 +1280,11 @@ FPS figures are 1000 / frame time: the work rate, not the 30 FPS the game displa
 <div class="score-sec"><span class="k" style="color:var(--amber)">Gameplay</span><span class="w">gate</span>
 <p>Mario's position, speed, action and stats, the camera, and every actor within 2000 units match the 1996 game on every frame.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--cyan)">Video</span><span class="w">gate</span>
-<p>Each frame matches the original picture, or one consistent accepted variant (such as Nintendo's F3DEX2 microcode) across the replay, on 99.8% of pixels within &plusmn;2/31 per channel.</p></div>
+<p>Each frame matches the original picture, or one consistent accepted variant (such as Nintendo's F3DEX2 microcode) across the replay, on 99.8% of pixels within &plusmn;2/31 per channel and &ge; 0.98 single-scale 16&times;16 block-SSIM.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--red-soft)">Audio</span><span class="w">gate</span>
-<p>At least 40 dB signal-to-noise against the original sound output, or a perceptual 40-band log-mel match (both stereo channels, loudness-guarded) for timing-preserving audio rewrites.</p></div>
+<p>At least 40 dB signal-to-noise against the original sound output, or a perceptual 40-band log-mel spectrogram match (&ge; 0.95 cosine similarity on both stereo channels, loudness-guarded) for timing-preserving audio rewrites.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--indigo-lit)">Hardware</span><span class="w">gate</span>
-<p>Fits in 4 MB of RAM, leaves the harness and benchmark-only <code>PLAY</code> glue untouched, and the real-time <code>PLAY=1</code> console build links and passes boot smoke. No route may get more
-than 5% slower. Failing any gate scores &minus;1.</p></div>
+<p>Fits in 4 MB of RAM with zero unaligned <code>CACHE 0x0d</code> ops, zero KSEG1 dirty-cache synonyms, coherent SP/DP DMA writebacks, untouched harness/<code>PLAY</code> glue, and a linked <code>PLAY=1</code> retail console ROM that cold-boots with active video and RSP audio. No route may regress &gt; 5%. Failing any gate scores &minus;1.</p></div>
 </div>
 
 <h2 class="px-h">How models run</h2>
@@ -1301,8 +1314,8 @@ def ladder_html(sm64_rows):
     """Reference rungs on the 6 public courses, re-rankable by resource profile."""
     by_slug = {slug: (title, s) for slug, title, _p, s in sm64_rows if s["status"] == "valid"}
     order = [
-        ("r11-beyond-kaze", "Beyond Kaze (R11)", "Earlier Kaze-style build with extra D-cache work; below the current expert reference."),
-        ("r10-kaze-master", "Kaze master reference (R10)", "Kaze Emanuar's and ultrasm64's published techniques, reconstructed."),
+        ("r11-beyond-kaze", "Beyond Kaze (R11)", "R10 plus 16B Object cache-line packing, store-if-changed D-cache guards, and byte-unpacked audio flags."),
+        ("r10-kaze-master", "Kaze master reference (R10)", "Kaze Emanuar's and ultrasm64's published techniques, reconstructed across CPU, RSP, RDP, and RDRAM."),
         ("r9-kaze-partial", "Partial Kaze reference (R9)", "I-cache layout, 1-ULP trig, 3-line Surface, Sub cache, lazy Mtx, RA_ZB_OPA, coin batch, −304 KB."),
         ("r8-kaze-collision-objects", "Collision & objects (R8)", "R7 plus cache-line Surface, Bowser's Sub surface cache, single-floor shadows."),
         ("r7-kaze-icache-trig", "I-cache & table-free math (R7)", "16 KB I-cache de-aliasing, polynomial sin/cos, bit-exact atan2s."),

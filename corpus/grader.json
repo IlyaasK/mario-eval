@@ -1,5 +1,5 @@
 {
-  "version": "2.1",
+  "version": "3.1",
   "target": "pips-garden",
   "contract": "pips-garden",
   "rom": "pips-garden.z64",
@@ -26,7 +26,9 @@
   "run_timeout_s": 1800,
   "video": {
     "channel_tolerance": 2,
-    "max_bad_fraction": 0.002
+    "max_bad_fraction": 0.002,
+    "min_ssim_score": 0.98,
+    "min_ssim_frame_score": 0.85
   },
   "accepted_visual_variants": [
     {
@@ -48,10 +50,12 @@
   },
   "hardware": {
     "rdram_bytes": 4194304,
-    "max_dcache_coherence_errors": 0
+    "max_dcache_coherence_errors": 0,
+    "max_kseg1_dirty_synonyms": 0
   },
   "profiles": {
-    "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
+    "console": { "metric": "est_console_ms",     "max_workload_regression": 0.05, "footprint_budget": 0.05 },
+    "stutter": { "metric": "est_console_p99_ms", "max_workload_regression": 0.05, "footprint_budget": 0.05 },
     "speed":   { "metric": "cpu_effective_cycles", "max_workload_regression": 0.05, "rdp_budget": 0.05 },
     "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
     "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },

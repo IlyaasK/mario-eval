@@ -2,11 +2,11 @@
  "title": "Kimi K3.1 Pro (Cerebras, Trial Run)",
  "model": "Kimi K3.1 Pro (trial)",
  "kind": "trial",
- "provider": "Moonshot AI · served by Cerebras",
+ "provider": "Moonshot AI \u00b7 served by Cerebras",
  "harness": "omp",
- "graded": "2026-11-22",
+ "graded": "2026-11-25",
  "commit": "4b54858",
  "hours": "~26",
  "repo_url": "https://github.com/IlyaasK/mario-eval-attempt-kimi-k3.1-pro-trial",
- "notes": "Bring-up trial run on omp, used to shake out harness, profiler and held-out-route bugs; the environment changed mid-run. Re-graded on v2.1 (section-weighted 40/50/10), its best valid checkpoint (4b54858, 15.7 h) scores 1.707x across all 25 routes (1.695x flat, 1.247x vs GCC -O2), level with the Kaze master reference (1.705x weighted / 1.693x flat) on the same routes, and passes the PLAY=1 runtime smoke. Its final commit (d6af2f6) reached 1.79x flat but failed the video gate on 7 of 19 private routes because of a one-line typo in a 4-vertex shadow lookup table (253312a). The run ended when Cerebras withdrew the trial model."
+ "notes": "Bring-up trial run on omp (92 commits, 7,404 tool calls). Re-graded on v3.1 (symmetric RDP bus model, section-weighted 40/50/10), its best valid checkpoint (4b54858, 15.7 h) scores 1.640x across all 25 routes (39.0% console frame time saved, 1.221x vs GCC -O2, PLAY=1 runtime smoke passing) \u2014 right behind the Kaze master reference (1.663x). Later commits extrapolated reduced-aliasing opaque modes to OPA_DECAL/OPA_INTER (cec7905) and added a 4-vertex shadow typo (253312a), reaching 1.82x on public courses while failing video fidelity on 7 of 19 private routes."
 }

@@ -3,8 +3,8 @@
 `/task/game` is the complete US decompilation of **Super Mario 64** (`n64decomp/sm64`),
 wired to the `mario-eval` deterministic frame harness (`src/game/mev.c`,
 `src/game/mev.h`). By default it builds with SGI IDO at `-g`/`-O1`, triple-buffers
-three 150 KB framebuffers, thrashes the 8 KB D-cache with 64 KB trig lookup
-tables and pointer-chasing `SurfaceNode` collision lists, uploads unculled
+three 150 KB framebuffers, thrashes the 8 KB D-cache with 22 KB trig lookup
+tables (`gSineTable` 20 KB, `gArctanTable` 2 KB) and pointer-chasing `SurfaceNode` collision lists, uploads unculled
 skybox tiles and unbatched TMEM blocks, uses naive matrix math and scene-graph
 traversal, and leaves massive VR4300 CPU, I/D-cache, RSP, RDP, RDRAM bus, and
 4 MB RAM wins on the table.
@@ -14,14 +14,14 @@ original 4 MB Nintendo 64 hardware — the kind of deep hardware-aware engineeri
 pioneered by Kaze Emanuar and cracked N64 systems programmers — **without
 changing the game the player experiences**.
 
-The GCC `-O2 -fno-fast-math` reference is about **1.38×** vanilla on the six
+The GCC `-O2 -fno-fast-math` reference is about **1.35×** vanilla on the six
 public routes. Grading builds `/task/game` with `make VERSION=us COMPARE=0 NOEXTRACT=1`:
 you may edit `Makefile` (including `COMPILER`, `OPT_FLAGS`, and `GRUCODE`), linker
 scripts, C source, and MIPS assembly — everything except the protected harness
-files (`src/game/mev.c`, `src/game/mev.h`). Vanilla starts CPU-bound, but once CPU time drops (even at
-`-O2` or after early CPU wins), Fast3D RSP (`bob`, `rr`) and RDP fillrate
-(`jrb`) become active bottlenecks, and RCP RDRAM traffic directly contends
-with CPU cache refills. Start with CPU and cache profiling; remeasure after
+files (`src/game/mev.c`, `src/game/mev.h`). Vanilla starts CPU-bound, but once CPU time drops at
+`-O2`, Fast3D RSP (`bob`) and RDP fillrate + RDRAM turnaround (`jrb` at ~31.4 ms RDP vs
+27.2 ms CPU) immediately become active bottlenecks, and CPU/RCP RDRAM traffic
+symmetrically contend on the shared RDRAM bus. Start with CPU and cache profiling; remeasure after
 each milestone and optimize whichever subsystem limits the resulting frame
 time. This model is not a hardware measurement.
 
@@ -32,11 +32,12 @@ Your submission is scored **solely** on one primary resource profile, named in
 for diagnostics; another profile's budget (such as `memory`'s 0% footprint limit)
 never fails your primary profile:
 
-For `console`, maximize the game's capacity to render frames at unchanged
-quality, simulation cadence, and controls. Aim for a frame budget of **6.94 ms
-(144 FPS equivalent)** or better across courses, including busy scenes. That
-is a work budget, not a claim that actual N64 video output can display 144 FPS.
-Optimize the limiting subsystem and report sustained and slow-frame timing.
+For `console`, minimize `est_console_ms` across all courses, including busy
+scenes, at unchanged quality, simulation cadence, and controls. **There is no
+target cap or finish line**: `est_fps = 1000 / est_console_ms` is uncapped by
+N64 30/60 Hz VI sync, so every microsecond of frame time you eliminate across
+the full 24 hours directly increases your score. Re-profile after each win and
+attack whichever subsystem (`CPU`, `RSP`, `RDP`, or `RDRAM`) limits frame time.
 
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
@@ -69,28 +70,51 @@ where Mario lands on recorded controller replays and fails verification.
 Conversely, internal engine rewrites that deliver the **exact same experience to
 the player** are 100% encouraged (`NON_MATCHING=1` and `AVOID_UB=1` are enabled):
 - Fixing C undefined behavior, uninitialized reads, or IDO workarounds;
+- Hand-tuned MIPS III assembly (`__asm__` inline blocks, `.s` files under `src/` or
+  `lib/rsp.s`, including 16-byte-aligned `CACHE 0x0d` `Create_Dirty_Exclusive` ops)
+  and custom RSP scalar/vector microcode (`rsp/*.s`) — all fully permitted as long
+  as real VR4300/RCP cache/DMA invariants and `PLAY=1` boot hold;
 - Replacing D-cache-thrashing trig lookup tables (`gSineTable`, `gArctanTable`)
-  with register-only minimax/folded polynomials that return the tables' exact
-  values (one ULP off is not enough: it drifts Mario, the camera and sound
-  panning until unscripted input fails a gate);
+  with register-only minimax/folded polynomials (~1–3 ULP / `~1e-6` accuracy with
+  exact cardinal quadrants `sins(0) == 0`, `coss(0) == 1`; SM64 grades
+  player-equivalence tolerances rather than 0-ULP IEEE bit-identity to
+  `trig_tables.inc.c`, though coarse `~1e-3` approximations drift Mario, Lakitu,
+  and audio panning — verify with `mev check` and `mev stress`);
 - Rewriting `surface_collision.c` / `surface_load.c` with flat cache-friendly
   structures, Y-bounds/AABB pre-filtering, finer spatial grids, and stationary
-  floor caching that return the same winning surfaces;
-- Hibernating physics/floor raycasts on distant off-screen objects far outside
-  Mario's interaction radius and Lakitu's camera view *(careful: some actors rest
-  in `oAction == 0` for 100+ frames before moving, so only hibernate genuinely
-  distant actors and verify with `mev stress`)*;
-- Balancing `-Os` vs `-O2` per file (GCC's `libgcc` is linked automatically) so
-  hot code fits the 16 KB direct-mapped I-cache instead of blindly unrolling
-  loops *(note: 16 KB direct-mapped I-cache set collisions can cause ±1–2% layout
-  variance when code addresses shift; use `mev profile` I-cache conflict pairs to
-  diagnose set collisions rather than misattributing them)*;
+  floor caching that return the same winning surfaces *(watch memory limits:
+  `sm64.ld` places `SEG_ENGINE` at `0x80378800` leaving <5 KB BSS before
+  `0x8038F800` framebuffers while ~290 KB sits free below `0x80378800`,
+  `alloc_surface_pools()` caps `sSurfaceNodePool` at `7,000` nodes, and growing
+  `.bss` or `main_pool_alloc` by >32 KB can OOM larger held-out levels'
+  `main_pool` even when `footprint_bytes < 3 MB`)*;
+- Selectively skipping redundant per-frame work on distant off-screen objects
+  *(warning: `ACTIVE_FLAG_FAR_AWAY` is a rendering draw-distance flag only — many
+  actors, spawners, and ambient sound emitters sit stationary in `oAction == 0` or
+  beyond 4,000–7,000 units and still affect gameplay, camera, or audio on other
+  courses, so never blanket-skip `cur_obj_update` on `ACTIVE_FLAG_FAR_AWAY`)*;
+- Shrinking cold/warm surrounding modules (`-Os` on `libultra`, menus, cold
+  behaviors) while keeping hot inner loops at `-O2`/`-O3` (`libgcc` is linked
+  automatically) so hot code fits the 16 KB direct-mapped I-cache instead of
+  blindly unrolling loops *(notes: `Makefile` appends `-fno-inline-functions` by
+  default, wraps its stock per-file `OPT_FLAGS` around line 745 inside
+  `ifeq ($(COMPILER),ido)` and overrides `src/audio/*.o` later, and modern
+  `mips64-elf-gcc` uses `--param max-inline-insns-*` rather than `-finline-limit`;
+  use `mev profile` I-cache conflict pairs & set ranges to diagnose ±1–2% direct-mapped
+  layout shifts)*;
 - Using VR4300 `CACHE 0x0d` (`Create Dirty Exclusive`) on **16-byte-aligned** cached
   KSEG0 addresses (`0x80000000..0x9FFFFFFF` only, `(addr & 0xF) == 0` — never KSEG1
   and never unaligned `main_pool_alloc` / 8-byte pointers, both enforced by the
-  hardware gate), optimizing `math_util`, `rendering_graph_node`, `audio`, Fast3D/RSP,
-  RDP render modes/syncs/TMEM, and compacting RDRAM pools and framebuffers *(always keep
-  CPU D-cache writebacks coherent before SP/DP DMA reads)*.
+  hardware gate), optimizing `math_util` (`AVOID_UB=1` routes `mtxf_to_mtx` to
+  `lib/src/guMtxF2L.c`), `rendering_graph_node`, `audio` (and `rsp/audio.s` via
+  `armips`), Fast3D/`F3DEX2`, RDP render modes/syncs/TMEM, and compacting RDRAM
+  pools and framebuffers *(note: Goddard's Mario head intro in `PLAY=1` boot smoke
+  uses all three `gFramebuffers` in its intro heap; and `struct SPTask` only holds
+  pointers to display lists/matrices/audio buffers, so replacing `osWritebackDCacheAll()`
+  with `osWritebackDCache(spTask, sizeof(*spTask))` leaves the pointed-to buffers
+  dirty in D-cache — always keep `PLAY=1` `dispatch_audio_sptask` / `send_sp_task_message`
+  and `!PLAY` `exec_audio_sptask_sync` equally cache-coherent, and optimize shared
+  functions like `synthesis_execute` rather than `#ifndef PLAY` glue)*.
 
 ## Verification Gates (Player Equivalence)
 
@@ -103,7 +127,11 @@ Grading replays recorded controller inputs across courses and checks these gates
   must build, link, and pass boot smoke.
 - **Execution & Hardware** — every course must complete all 240 frames within
   the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak), with zero
-  uncached KSEG1 `CACHE` ops and zero unaligned `CACHE 0x0d` ops.
+  uncached KSEG1 `CACHE` ops, zero unaligned `CACHE 0x0d` ops, zero KSEG1
+  uncached reads/writes aliasing dirty D-cache lines, and ≤ 1.05 SP/DP DMA
+  D-cache coherence errors per frame (vanilla has 0 RDRAM errors; stock `f3dex2`
+  natively incurs 1.00 benign DMEM scratch read/frame — always write back dirty
+  CPU D-cache lines before SP/DP DMA reads in both graded and `PLAY=1` builds).
 - **Gameplay (Player Equivalence)** — `level_area`, `mario_stats` (health,
   coins, stars, lives), `mario_action` and the actor count must match on every
   frame; `mario_pos`, `mario_vel` and `mario_floor_height` must stay within
@@ -119,19 +147,24 @@ Grading replays recorded controller inputs across courses and checks these gates
   (either the baseline picture or one accepted visual variant combination defined in
   `/opt/mario-eval/corpus/grader.json`: `full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
   `rr-statics`, or any combination of these): at most 0.2% of pixels may differ by
-  more than ±2/31 per channel from their best 3×3 neighbor. Do not extrapolate beyond
+  more than ±2/31 per channel from their best 3×3 neighbor, AND motion-adaptive
+  block-SSIM must stay ≥ 0.98 overall (≥ 0.85 worst frame). Do not extrapolate beyond
   those exact accepted policies (for example, `ra-zb-opa` covers `OPA_SURF` only, not
-  `OPA_DECAL` or `OPA_INTER`). Watch the `vid%` column in `mev check`: a non-zero
-  pixel drift that stays under 0.2% on the 6 public courses often exceeds 0.2% on
-  held-out routes.
+  `OPA_DECAL` or `OPA_INTER`; in `mev run`, `im_rd` measures RDP framebuffer
+  read-modify-write cost eliminated on opaque surfaces by `G_RM_RA_ZB_OPA_SURF`).
+  Watch `vid%` and `ssim` in `mev check`: a non-zero drift that stays under 0.2%
+  on the 6 public courses often exceeds 0.2% on held-out routes.
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
   non-silent frame (with a 40-band log-mel spectral + loudness fallback for tiny
   sub-millisecond phase shifts); a frame the baseline renders silent (RMS ≤ 64 of
   32768) must stay silent (candidate samples there ≤ 256).
 
 Host grading also runs private held-out routes, unseen courses, and randomized
-controller inputs. Never special-case public course IDs or remove subsystem
-support (such as snow, desert, or lava effects) used in other courses.
+controller inputs. Never special-case public course IDs, never assume static
+world state (e.g. Wet-Dry World dynamically mutates `gEnvironmentRegions` water
+levels at runtime, distant spawners/audio objects still matter, and draw
+distances vary), and never remove subsystem support (such as snow, desert, or
+lava effects) used in other courses.
 
 ## Tools
 
@@ -143,9 +176,9 @@ mev run jrb               run a public course; prints CPU/RSP/RDP/RDRAM breakdow
 mev run --all             run all 6 public courses in parallel (~10s; defaults to 120 frames — pass --frames 240 to match check)
 mev profile bob           per-function CPU busy profile (idle excluded) with function sizes, D/I-cache misses,
                           data-symbol miss & writeback attribution, 16 KB I-cache conflicts, and RDP/RDRAM map
-mev check                 full clean + PLAY=1 grader on all 6 public courses; prints per-course timings,
-                          vid% drift, Δcon vs last check, and updates /tmp/mev-last-check/summary.json
-mev check --play-smoke    full clean check + boots and verifies controller response on the PLAY=1 console ROM
+mev check                 full clean + PLAY=1 build + PLAY=1 boot smoke on all 6 public courses; prints per-course
+                          timings, vid% drift, block-SSIM, Δcon vs last check, and updates /tmp/mev-last-check/summary.json
+mev check --no-play-smoke full clean + PLAY=1 build check without PLAY=1 boot smoke
 mev check jrb --fast      fast incremental gate check on 1+ courses (~5s, skips PLAY=1 rebuild)
 mev stress                local seeded button-mash stress test across all 6 courses (checks crashes, RAM, DMA coherence)
 mev workloads             bob, wf, jrb, ddd, bitfs, rr
@@ -153,11 +186,11 @@ mev restore-assets        restore missing extracted SM64 assets offline without 
 ```
 
 Workflow tips:
-- Use `mev check <course> --fast` or `mev run --all` for rapid iteration, and reserve plain `mev check` for verifying milestone commits.
-- Always run `mev build --clean` (or `make clean`) after changing `COMPILER`, `GRUCODE`, or `OPT_FLAGS` in `Makefile`. Use `VERBOSE=1` (not `V=1`) to inspect compiler invocations.
+- Use `mev check <course> --fast` or `mev run --all` synchronously in the foreground (~5–10s) for rapid iteration, and reserve plain `mev check` for verifying milestone commits. Never background `mev` jobs or claim PASS before `Primary profile [...]: PASS` prints.
+- **Never override `COMPILER`, `GRUCODE`, or `OPT_FLAGS` on the `make` command line or via exported env vars** — host grading always runs plain `make VERSION=us COMPARE=0 NOEXTRACT=1` with a clean environment. Edit `Makefile` directly and run `mev build --clean` (always run `mev build --clean` after editing `include/*.h` struct layouts or `sm64.ld`, and check `make -n VERBOSE=1 build/us/...o` when adding per-file rules). Legacy SGI `COMPILER=ido` is strict C90 and rejects `-Os`/`-O3`/`inline`; set `COMPILER := gcc` in `Makefile` to use modern GCC optimization flags.
 - Keep a short scratch log at `/task/OPTIMIZATION_LOG.md` (outside `/task/game`) summarizing tried ideas, measured deltas, and confirmed invariants so context compactions never cause duplicate work.
 - Always wait for `mev check` to finish before ending your turn — ending a turn with a backgrounded job kills the job. Never run overlapping `make`/`mev` jobs simultaneously.
-- `make distclean` keeps extracted assets when `baserom.us.z64` is absent; if extracted assets are ever removed, run `mev restore-assets` before rebuilding. The task image does not contain the original ROM.
+- **`baserom.us.z64` is never present and never needed**: all US assets are pre-extracted in `/task/game` (`NOEXTRACT=1` is automatic; linker errors after switching compilers mean `build/` has mixed IDO/GCC `.o` files — run `mev build --clean`). If extracted assets are ever deleted, run `mev restore-assets` before rebuilding.
 
 `mev run` and `mev check` measure CPU busy time the same way: the idle thread's
 halt loop is excluded from CPU time and nothing else is, so an optimization

@@ -66,13 +66,14 @@ for line in patch_file.read_text(errors="replace").splitlines():
             data = p.read_bytes()
             p.unlink()
             p.write_bytes(data)
-subprocess.run(["patch", "-s", "-p1", "-i", str(patch_file)], cwd=target, check=True)
+subprocess.run(["patch", "--no-backup-if-mismatch", "-s", "-p1", "-i", str(patch_file)], cwd=target, check=True)
 PY
   fi
   out="$OUT_BASE/$name"
   rm -rf "$out"; mkdir -p "$out"
   args=()
   if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
+  if [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
   "$REPO/scripts/grade.sh" --game "$GAME" "$WORK/$name" "$out" "${args[@]}" \
     >/dev/null 2>&1 || true
 done

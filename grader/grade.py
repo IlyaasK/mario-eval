@@ -48,7 +48,8 @@ from grader import contract
 HW_DEVICES = ["VR4300 ICache", "VR4300 DCache", "VR4300 Uncached", "SP DMA",
               "PI DMA", "SI DMA", "VI DMA", "AI DMA", "DP DMA", "DP Draw"]
 RATIO_KEYS = ("est_console_ms", "est_console_p99_ms", "cpu_effective_cycles", "cpu_busy_cycles", "frame_ticks",
-              "frame_ticks_p99", "rdp_busy", "rsp_busy", "rdram_bytes", "footprint_bytes")
+              "frame_ticks_p99", "rdp_effective_cycles", "rdp_busy", "rsp_busy", "rsp_gfx_ms", "rsp_aud_ms",
+              "rdram_bytes", "footprint_bytes")
 
 
 class GraderError(Exception):
@@ -74,33 +75,16 @@ def _copy_source(src, dst):
 
 
 _DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-# Environment a build must not inherit: preload/library shims and interpreter
-# hook paths can hijack the compiler, and credentials/proxies would leak from
-# the grading environment (and have no use with no network). Everything else
-# (e.g. the toolchain's N64_INST, PATH) is kept, because a legitimate build
-# needs it.
-_BUILD_ENV_DROP = {
-    "LD_PRELOAD", "LD_AUDIT", "LD_DEBUG", "LD_LIBRARY_PATH",
-    "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE",
-    "PERL5LIB", "BASH_ENV", "ENV",
-    "HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY",
-    "http_proxy", "https_proxy", "ftp_proxy", "all_proxy", "no_proxy",
-    "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
-}
-_BUILD_ENV_SECRET_HINTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "PASSWD")
+# Strict allowlist of host environment variables passed to untrusted submission
+# builds: only PATH and N64_INST are inherited so Make override variables
+# (COMPILER, GRUCODE, OPT_FLAGS, PLAY, CFLAGS, MAKEFLAGS, ...), preload shims,
+# proxies, and credentials can never leak into or subvert a build.
+_BUILD_ENV_ALLOW = ("PATH", "N64_INST")
 
 
 def _build_env(home, tmp):
-    """Environment for the untrusted submission build.
-
-    The build must not inherit anything that can hijack it (LD_PRELOAD,
-    PYTHONPATH, ...) or leak the grading environment's credentials, and must
-    not share the grader's HOME/TMPDIR; it gets its own inside the scratch
-    tree, deleted with it. Toolchain variables (`N64_INST`, `PATH`, ...) are
-    kept: a legitimate build needs them.
-    """
-    env = {k: v for k, v in os.environ.items()
-           if k not in _BUILD_ENV_DROP and not any(h in k.upper() for h in _BUILD_ENV_SECRET_HINTS)}
+    """Strictly scrubbed environment for the untrusted submission build."""
+    env = {k: os.environ[k] for k in _BUILD_ENV_ALLOW if k in os.environ}
     env.update({
         "PATH": os.environ.get("PATH", _DEFAULT_PATH),
         "HOME": str(home),
@@ -217,8 +201,11 @@ def build(src, cfg, log_path, keep_play=False):
         # The ELF is only used to scope the idle-time exclusion to the idle
         # function; the emulator credits only a genuine halt loop inside that
         # range, so a doctored ELF buys nothing.
-        idle = idle_ranges(work / "src" / cfg["elf"], cfg.get("idle_symbols", [])) if cfg.get("elf") else []
+        elf_path = work / "src" / cfg["elf"] if cfg.get("elf") else None
+        idle = idle_ranges(elf_path, cfg.get("idle_symbols", [])) if elf_path else []
         (work / "built.idle.json").write_text(json.dumps(idle))
+        if elf_path and elf_path.is_file():
+            (work / "built.meta.json").write_text(json.dumps(inspect_elf_metadata(elf_path, src_root=work / "src", cfg=cfg)))
 
         if play_cmd:
             logs.append("\n--- play build ---\n" + pout)
@@ -271,6 +258,8 @@ def build_submission(args):
     try:
         for name in ("built.z64", "built.idle.json"):
             shutil.copyfile(rom.parent / name, out / name)
+        if (rom.parent / "built.meta.json").is_file():
+            shutil.copyfile(rom.parent / "built.meta.json", out / "built.meta.json")
         if args.play_smoke:
             shutil.copyfile(rom.parent / "play.z64", out / "play.z64")
     finally:
@@ -278,7 +267,7 @@ def build_submission(args):
 
 
 def load_submission_build(directory):
-    for name in ("error.txt", "built.z64", "built.idle.json", "play.z64"):
+    for name in ("error.txt", "built.z64", "built.idle.json", "built.meta.json", "play.z64"):
         p = directory / name
         if p.is_symlink() or (p.exists() and not p.is_file()):
             raise GraderError("invalid build handoff")
@@ -348,7 +337,11 @@ def measurement_artifacts(corpus, cache, items):
 _SOURCE_EXTS = {".c", ".h", ".s", ".S", ".inc", ".cc", ".cpp"}
 _BUILD_EXTS = {".mk", ".ld", ".sh"}
 _RE_ISV_ADDR = re.compile(r"0x(?:b3f[ef]|13f[ef])[0-9a-f]{4}[uUlL]{0,3}\b", re.IGNORECASE)
-_RE_MEV_MACRO = re.compile(r"^\s*#\s*(?:define|undef)\s+(?:mev_|MEV_|sMev|ISV_)", re.MULTILINE)
+_RE_MEV_MACRO = re.compile(r"^\s*#\s*(?:define|undef)\s+(?:mev_|MEV_|sMev|ISV_|SM64_MEV_H)", re.MULTILINE)
+_RE_MEV_COND = re.compile(
+    r"^\s*#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\b(?:SM64_MEV_H|MEV_\w*|mev_\w*|sMev\w*|ISV_\w*)\b",
+    re.MULTILINE,
+)
 _RE_PLAY_COND = re.compile(r"^\s*#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\bPLAY\b", re.MULTILINE)
 _RE_MAKE_PLAY_COND = re.compile(
     r"^\s*(?:ifn?eq|ifn?def)\b[^\n]*\bPLAY\b"
@@ -389,6 +382,34 @@ def _extract_play_block_hashes(norm_text):
         else:
             i += 1
     return hashes
+
+
+def _extract_make_play_block_hashes(norm_text):
+    """Return SHA-256 digests of every top-level GNU Make ifeq/ifneq/ifdef/ifndef PLAY block."""
+    lines = norm_text.splitlines()
+    hashes = []
+    i = 0
+    while i < len(lines):
+        if re.match(r"^\s*(?:ifn?eq|ifn?def)\b[^\n]*\bPLAY\b", lines[i]):
+            depth, start, i = 1, i, i + 1
+            while i < len(lines) and depth > 0:
+                if re.match(r"^\s*(?:ifn?eq|ifn?def)\b", lines[i]):
+                    depth += 1
+                elif re.match(r"^\s*endif\b", lines[i]):
+                    depth -= 1
+                i += 1
+            norm = "\n".join(l.rstrip() for l in lines[start:i])
+            hashes.append(hashlib.sha256(norm.encode("utf-8")).hexdigest())
+        else:
+            i += 1
+    return hashes
+
+
+def _play_blocks_match(got_hashes, expected):
+    """Match extracted PLAY block digests against expected list (None = editable slot)."""
+    if len(got_hashes) != len(expected):
+        return False
+    return all(exp is None or got == exp for got, exp in zip(got_hashes, expected))
 
 
 def audit_submission_integrity(src, cfg):
@@ -443,6 +464,8 @@ def audit_submission_integrity(src, cfg):
                 errors.append(f"{rel}: raw '@mev ' protocol string outside protected harness")
             if is_src and _RE_MEV_MACRO.search(norm_text):
                 errors.append(f"{rel}: preprocessor #define/#undef of protected mev/ISV symbol")
+            if is_src and _RE_MEV_COND.search(norm_text):
+                errors.append(f"{rel}: unauthorized preprocessor conditional referencing protected mev/ISV symbol")
 
             if is_build:
                 n_build_play = 0
@@ -474,6 +497,10 @@ def audit_submission_integrity(src, cfg):
                     max_allowed = int(allowed_play.get(rel, 0))
                     if n_build_play > max_allowed:
                         errors.append(f"{rel}: unauthorized PLAY build conditional ({n_build_play} > allowed {max_allowed})")
+                if is_make and rel in protected_play_blocks:
+                    got_hashes = _extract_make_play_block_hashes(norm_text)
+                    if not _play_blocks_match(got_hashes, protected_play_blocks[rel]):
+                        errors.append(f"{rel}: protected PLAY Makefile conditional block was modified")
 
             if is_src and allowed_play is not None:
                 n_play = len(_RE_PLAY_COND.findall(norm_text))
@@ -482,11 +509,70 @@ def audit_submission_integrity(src, cfg):
                     errors.append(f"{rel}: unauthorized PLAY preprocessor conditional ({n_play} > allowed {max_allowed})")
             if is_src and rel in protected_play_blocks:
                 got_hashes = _extract_play_block_hashes(norm_text)
-                if got_hashes != protected_play_blocks[rel]:
+                if not _play_blocks_match(got_hashes, protected_play_blocks[rel]):
                     errors.append(f"{rel}: protected PLAY/#ifndef PLAY benchmark glue block was modified")
             if len(errors) >= 16:
                 return errors
     return errors
+
+
+def inspect_elf_metadata(elf, src_root=None, cfg=None):
+    """Extract active compiler, microcode, and optimization flags from the
+    submission's build configuration and linked ELF for numerical attribution."""
+    p = pathlib.Path(elf)
+    if not p.is_file():
+        return {}
+    raw = p.read_bytes()
+    compiler = "gcc" if b"GCC: (" in raw else None
+    ucode = None
+    opt_flags = None
+
+    if src_root is not None and (pathlib.Path(src_root) / "Makefile").is_file():
+        base_cmd = (cfg or {}).get("build_cmd", ["make"])
+        make_flags = [a for a in base_cmd[1:] if "=" in a] if base_cmd and base_cmd[0] == "make" else []
+        with tempfile.TemporaryDirectory(prefix="mev-meta-") as td:
+            td_p = pathlib.Path(td)
+            try:
+                r = subprocess.run(
+                    ["make", "-s", *make_flags, "print-COMPILER", "print-GRUCODE", "print-OPT_FLAGS"],
+                    cwd=src_root, env=_build_env(td_p, td_p),
+                    capture_output=True, text=True, timeout=10,
+                )
+                if r.returncode == 0:
+                    for line in (r.stdout + "\n" + r.stderr).splitlines():
+                        m = re.match(r"^(COMPILER|GRUCODE|OPT_FLAGS)\s+is\s+.*\[(.*)\]", line.strip())
+                        if m:
+                            k, v = m.group(1), m.group(2).strip()
+                            if k == "COMPILER" and v:
+                                compiler = v
+                            elif k == "GRUCODE" and v:
+                                ucode = v
+                            elif k == "OPT_FLAGS":
+                                opt_flags = v
+            except Exception:
+                pass
+
+    proc = subprocess.run(["mips64-elf-nm", "--defined-only", str(p)], capture_output=True, text=True)
+    if proc.returncode == 0:
+        syms = {line.split()[-1] for line in proc.stdout.splitlines() if line.split()}
+        syms_lower = {s.lower() for s in syms}
+        if compiler is None:
+            compiler = "gcc" if any(
+                s in syms for s in ("__udivdi3", "__divdi3", "__ashldi3", "__lshrdi3", "__popcountsi2", "__clzsi2")
+            ) else "ido"
+        if ucode is None:
+            if any("f3dex3" in s for s in syms_lower):
+                ucode = "f3dex3"
+            elif any("f3dex2" in s for s in syms_lower):
+                ucode = "f3dex2"
+            elif "rspf3dbootstart" in syms_lower or "rspfast3dstart" in syms_lower:
+                ucode = "f3d_old"
+    return {
+        **({"compiler": compiler} if compiler else {}),
+        **({"ucode": ucode} if ucode else {}),
+        **({"opt_flags": opt_flags} if opt_flags is not None else {}),
+        "elf_bytes": len(raw),
+    }
 
 
 def verify_elf_harness(elf, cfg, src_root=None):
@@ -632,7 +718,7 @@ def rdram_bytes(row):
 
 
 def _delta_mean(rows, key):
-    if key not in rows[0]:
+    if len(rows) < 2 or key not in rows[0]:
         return 0.0
     return float((rows[-1][key] - rows[0][key]) / (len(rows) - 1))
 
@@ -655,10 +741,21 @@ FIELD_MS = 1000.0 / 60.0
 BUS_CONTENTION_BASE_CYCLES = 4.0
 BUS_CONTENTION_PER_MB_RCP = 6.0
 RCP_BUS_DEVICES = ("SP DMA", "PI DMA", "SI DMA", "DP DMA", "DP Draw")
+# Symmetric RDP RDRAM burst turnaround & bus contention (62.5 MHz gclk per 32B
+# DP DMA / DP Draw RDRAM burst): models RDRAM packet/read-write span turnarounds
+# plus MI/RI contention from concurrent CPU + SP + PI/SI + 60 Hz VI scanout traffic,
+# matching real-N64 DPC_PIPEBUSY_REG behavior on fill-heavy scenes (e.g. JRB).
+DP_BUS_DEVICES = ("DP DMA", "DP Draw")
+RDP_BUS_BASE_CYCLES = 3.5
+RDP_BUS_PER_MB_OTHER = 2.5
 
 
 def rcp_rdram_bytes(row):
     return sum(sum(row["rdram"].get(d, (0, 0))) for d in RCP_BUS_DEVICES)
+
+
+def dp_rdram_bytes(row):
+    return sum(sum(row["rdram"].get(d, (0, 0))) for d in DP_BUS_DEVICES)
 
 
 def metrics(run):
@@ -674,6 +771,8 @@ def metrics(run):
     includes 4-bank x 2 KB RDRAM page-miss cycles (see docs/n64-cost-model.md).
     """
     rows = run["rows"]
+    if len(rows) < 2:
+        raise GraderError(f"need at least 2 frames to compute per-frame metrics (got {len(rows)})")
     d = lambda key: np.array([b.get(key, 0) - a.get(key, 0) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     ticks = d("count_ticks")
     idle = d("cpu_idle_cycles")
@@ -684,18 +783,22 @@ def metrics(run):
     rdp = d("rdp_cycles")
     traffic = np.array([rdram_bytes(b) - rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     rcp_traffic = np.array([rcp_rdram_bytes(b) - rcp_rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
+    dp_traffic = np.array([dp_rdram_bytes(b) - dp_rdram_bytes(a) for a, b in zip(rows, rows[1:])], dtype=np.float64)
     # Continuous 60 Hz VI scanout (two fields per 30 Hz logical frame) is not
     # charged during unthrottled n64run; add its framebuffer read bandwidth here.
     fb_w, fb_h, fb_bpp = rows[0]["fb"]
     vi_bytes_per_frame = float(2 * fb_w * fb_h * (fb_bpp // 8))
     contention_cycles = BUS_CONTENTION_BASE_CYCLES + BUS_CONTENTION_PER_MB_RCP * (rcp_traffic / 1_000_000.0)
     cpu_eff = cpu_busy + contention_cycles * bus_events
+    other_bus_mb = (traffic - dp_traffic + vi_bytes_per_frame) / 1_000_000.0
+    rdp_bus_cycles = (dp_traffic / 32.0) * (RDP_BUS_BASE_CYCLES + RDP_BUS_PER_MB_OTHER * other_bus_mb)
+    rdp_eff = rdp + rdp_bus_cycles
     last, first = rows[-1], rows[0]
     per_device = {dev: (sum(last["rdram"].get(dev, (0, 0))) - sum(first["rdram"].get(dev, (0, 0)))) / (len(rows) - 1)
                   for dev in HW_DEVICES}
     cpu_ms_f = cpu_eff / CPU_CYCLES_PER_MS
     rsp_ms_f = rsp / RSP_UNITS_PER_MS
-    rdp_ms_f = rdp / RDP_CYCLES_PER_MS
+    rdp_ms_f = rdp_eff / RDP_CYCLES_PER_MS
     mem_ms_f = (traffic + vi_bytes_per_frame) / RDRAM_BYTES_PER_MS
     console_ms = np.maximum.reduce([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f])
     bottleneck = np.argmax(np.stack([cpu_ms_f, rsp_ms_f, rdp_ms_f, mem_ms_f]), axis=0)
@@ -718,6 +821,8 @@ def metrics(run):
         "rsp_gfx_ms": float(_delta_mean(rows, "rsp_gfx_cycles") / RSP_UNITS_PER_MS),
         "rsp_aud_ms": float(_delta_mean(rows, "rsp_aud_cycles") / RSP_UNITS_PER_MS),
         "rdp_busy": float(rdp.mean()),
+        "rdp_effective_cycles": float(rdp_eff.mean()),
+        "rdp_bus_contention_cycles": float(rdp_bus_cycles.mean()),
         "rdp_ms": float(rdp_ms_f.mean()),
         "mem_ms": float(mem_ms_f.mean()),
         "bottleneck_share": {name: float((bottleneck == i).mean()) for i, name in enumerate(("cpu", "rsp", "rdp", "rdram"))},
@@ -753,6 +858,7 @@ def metrics(run):
         "uncached_writes": _delta_mean(rows, "uncached_writes"),
         "cache_uncached_ops": int(run["result"].get("cache_uncached_ops", 0)),
         "cache_cde_unaligned_ops": int(run["result"].get("cache_cde_unaligned_ops", 0)),
+        "cache_kseg1_dirty_synonyms": int(run["result"].get("cache_kseg1_dirty_synonyms", 0)),
         "dcache_coherence_errors": int(run["result"].get("dcache_coherence_errors", 0)),
         "footprint_bytes": run["result"]["footprint_bytes"],
         "highest_byte": (run["result"]["highest_line"] + 1) * 16,
@@ -780,16 +886,26 @@ def _max_abs_diff(a, b):
 
 def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
     if len(ref) != len(cand):
-        return {"pass": False, "frame": 0, "field": "obs_bytes", "ref": len(ref), "cand": len(cand)}
+        return {
+            "pass": False, "frame": 0, "field": "obs_bytes", "ref": len(ref), "cand": len(cand),
+            "gameplay_score": 0.0, "failed_frames": frames,
+        }
     n = len(ref) // frames
     gcfg = (cfg or {}).get("gameplay", {})
     if gcfg.get("mode", "bit_exact") != "player_equivalence":
+        first_fail = None
+        failed_frames = 0
         for i in range(frames):
             r, c = ref[i * n:(i + 1) * n], cand[i * n:(i + 1) * n]
             if r != c:
-                diff = contract.first_difference(r, c, schema_name)
-                return {"pass": False, "frame": i, "field": diff[0], "ref": diff[1], "cand": diff[2]}
-        return {"pass": True}
+                failed_frames += 1
+                if first_fail is None:
+                    diff = contract.first_difference(r, c, schema_name)
+                    first_fail = {"frame": i, "field": diff[0], "ref": diff[1], "cand": diff[2]}
+        score = round(float(frames - failed_frames) / float(max(frames, 1)), 6)
+        if first_fail is not None:
+            return {"pass": False, **first_fail, "gameplay_score": score, "failed_frames": failed_frames}
+        return {"pass": True, "gameplay_score": 1.0, "failed_frames": 0}
 
     ref_frames = [contract.decode(ref[i * n:(i + 1) * n], schema_name) for i in range(frames)]
     cand_frames = [contract.decode(cand[i * n:(i + 1) * n], schema_name) for i in range(frames)]
@@ -800,34 +916,86 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
     actor_tol = gcfg.get("actor_tolerance")
     actor_radius = float(gcfg.get("actor_radius", float("inf")))
     worst_drift = 0.0
+    first_fail = None
+    failed_frames = 0
+    score_sum = 0.0
 
     for i in range(frames):
         rf, cf = ref_frames[i], cand_frames[i]
+        frame_exact_ok = True
+        frame_failed = False
         for fname in exact_fields:
             if cf.get(fname) != rf.get(fname):
-                return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname)}
+                frame_exact_ok = False
+                frame_failed = True
+                if first_fail is None:
+                    first_fail = {"frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname)}
         lo, hi = max(0, i - win), min(frames - 1, i + win)
         for fname in win_fields:
             cval = cf.get(fname)
             if not any(cval == ref_frames[j].get(fname) for j in range(lo, hi + 1)):
-                return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cval}
+                frame_exact_ok = False
+                frame_failed = True
+                if first_fail is None:
+                    first_fail = {"frame": i, "field": fname, "ref": rf.get(fname), "cand": cval}
+        max_excess_ratio = 0.0
         for fname, tol in float_tols.items():
             d = _max_abs_diff(rf.get(fname, 0.0), cf.get(fname, 0.0))
-            if not math.isfinite(d) or d > float(tol):
-                return {"pass": False, "frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
-                        "diff": round(d, 4) if math.isfinite(d) else None, "tolerance": tol}
-            if fname == "mario_pos" and d > worst_drift:
-                worst_drift = d
+            ftol = max(float(tol), 1e-9)
+            if not math.isfinite(d):
+                frame_failed = True
+                max_excess_ratio = math.inf
+                if first_fail is None:
+                    first_fail = {"frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
+                                  "diff": None, "tolerance": tol}
+            else:
+                if fname == "mario_pos" and d > worst_drift:
+                    worst_drift = d
+                if d > ftol:
+                    frame_failed = True
+                    r = d / ftol
+                    if r > max_excess_ratio:
+                        max_excess_ratio = r
+                    if first_fail is None:
+                        first_fail = {"frame": i, "field": fname, "ref": rf.get(fname), "cand": cf.get(fname),
+                                      "diff": round(d, 4), "tolerance": tol}
+        actor_miss = False
         if actor_tol is not None:
             miss = _unmatched_actor(rf, cf, float(actor_tol), actor_radius)
             if miss is not None:
-                return {"pass": False, "frame": i, "field": "actors", "ref": miss, "cand": None,
-                        "tolerance": actor_tol, "radius": actor_radius}
+                actor_miss = True
+                frame_failed = True
+                if first_fail is None:
+                    first_fail = {"frame": i, "field": "actors", "ref": miss, "cand": None,
+                                  "tolerance": actor_tol, "radius": actor_radius}
+        if frame_failed:
+            failed_frames += 1
+        if not frame_exact_ok or not math.isfinite(max_excess_ratio):
+            fscore = 0.0
+        else:
+            fscore = 1.0 if max_excess_ratio <= 1.0 else (1.0 / (1.0 + (max_excess_ratio ** 4)))
+            if actor_miss:
+                fscore *= 0.5
+        score_sum += fscore
+
     # Final frame stats must match without window slack so coins/health/stars at route end are exact.
     if "mario_stats" in win_fields and cand_frames[-1].get("mario_stats") != ref_frames[-1].get("mario_stats"):
-        return {"pass": False, "frame": frames - 1, "field": "mario_stats",
-                "ref": ref_frames[-1].get("mario_stats"), "cand": cand_frames[-1].get("mario_stats")}
-    return {"pass": True, "max_pos_drift": round(worst_drift, 4)}
+        if first_fail is None:
+            first_fail = {"frame": frames - 1, "field": "mario_stats",
+                          "ref": ref_frames[-1].get("mario_stats"), "cand": cand_frames[-1].get("mario_stats")}
+        failed_frames = max(failed_frames, 1)
+        score_sum = max(0.0, score_sum - 1.0)
+
+    gp_score = round(score_sum / float(max(frames, 1)), 6)
+    if first_fail is not None:
+        return {
+            "pass": False,
+            **first_fail,
+            "gameplay_score": gp_score,
+            "failed_frames": failed_frames,
+            "max_pos_drift": round(worst_drift, 4),
+        }
+    return {"pass": True, "max_pos_drift": round(worst_drift, 4), "gameplay_score": 1.0, "failed_frames": 0}
 
 
 def _unmatched_actor(rf, cf, tol, radius):
@@ -987,26 +1155,137 @@ def _get_fast_video():
             if hasattr(lib, "compare_video_consistent"):
                 lib.compare_video_consistent.argtypes = base_args + [ctypes.POINTER(ctypes.c_int)]
                 lib.compare_video_consistent.restype = ctypes.c_int
+            if hasattr(lib, "compare_video_v3"):
+                lib.compare_video_v3.argtypes = base_args + [
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                ]
+                lib.compare_video_v3.restype = ctypes.c_int
             _FAST_VIDEO_LIB = lib
     return _FAST_VIDEO_LIB
+
+
+def _luma_and_uniform_py(rgb5):
+    """5-bit RGB -> expanded 8-bit BT.601 luma and >=99.9% single-color check."""
+    r8 = ((rgb5[:, :, 0] << 3) | (rgb5[:, :, 0] >> 2)).astype(np.float64)
+    g8 = ((rgb5[:, :, 1] << 3) | (rgb5[:, :, 1] >> 2)).astype(np.float64)
+    b8 = ((rgb5[:, :, 2] << 3) | (rgb5[:, :, 2] >> 2)).astype(np.float64)
+    luma = 0.299 * r8 + 0.587 * g8 + 0.114 * b8
+    keys = ((rgb5[:, :, 0].astype(np.int32) << 10)
+            | (rgb5[:, :, 1].astype(np.int32) << 5)
+            | rgb5[:, :, 2].astype(np.int32)).ravel()
+    _, counts = np.unique(keys, return_counts=True)
+    is_unif = bool(counts.size > 0 and (float(counts.max()) / float(keys.size)) >= 0.999)
+    return luma, is_unif
+
+
+def _block_ssim_defect_py(la, lb):
+    """GBA Eval single-scale block-SSIM defect matching fast_video.cpp."""
+    h, w = la.shape
+    bs = 16 if w >= 320 else 10
+    c1, c2 = 6.5025, 58.5225
+    total = 0.0
+    blocks = 0
+    for y0 in range(0, h, bs):
+        y1 = min(h, y0 + bs)
+        for x0 in range(0, w, bs):
+            x1 = min(w, x0 + bs)
+            a = la[y0:y1, x0:x1]
+            b = lb[y0:y1, x0:x1]
+            mx, my = float(a.mean()), float(b.mean())
+            vx = max(0.0, float((a * a).mean()) - mx * mx)
+            vy = max(0.0, float((b * b).mean()) - my * my)
+            cov = float((a * b).mean()) - mx * my
+            den = (mx * mx + my * my + c1) * (vx + vy + c2)
+            ssim = ((2.0 * mx * my + c1) * (2.0 * cov + c2)) / den if den > 0.0 else 1.0
+            ssim = max(0.0, min(1.0, ssim))
+            d = 1.0 - ssim
+            if d < 0.15:
+                d = 0.0
+            total += d
+            blocks += 1
+    return total / float(blocks) if blocks else 0.0
+
+
+def _compute_video_ssim_py(cand_raw, ref_raw, n_frames, w, h, bpp):
+    """Python fallback for GBA Eval block-SSIM video scoring."""
+    if cand_raw == ref_raw:
+        return 1.0, 1.0, -1, 0.05, 0.0
+    size = w * h * bpp // 8
+    ref_lumas = []
+    defects = []
+    for i in range(n_frames):
+        off = i * size
+        rf = ref_raw[off:off + size]
+        cf = cand_raw[off:off + size]
+        rl, ru = _luma_and_uniform_py(decode_frame(rf, w, h, bpp))
+        ref_lumas.append(rl)
+        if cf == rf:
+            defects.append(0.0)
+        else:
+            cl, cu = _luma_and_uniform_py(decode_frame(cf, w, h, bpp))
+            defects.append(1.0 if (cu and not ru) else _block_ssim_defect_py(cl, rl))
+    moving = []
+    for i in range(n_frames - 1):
+        off = i * size
+        if ref_raw[off:off + size] != ref_raw[off + size:off + 2 * size]:
+            md = _block_ssim_defect_py(ref_lumas[i], ref_lumas[i + 1])
+            if md > 0.0:
+                moving.append(md)
+    tau = float(np.clip(np.quantile(moving, 0.90), 0.005, 0.35)) if moving else 0.05
+    inv_tau = 1.0 / max(tau, 1e-12)
+    scores = [1.0 / (1.0 + ((d * inv_tau) ** 4)) for d in defects]
+    mean_score = float(sum(scores) / max(len(scores), 1))
+    worst_score = min(scores) if scores else 1.0
+    worst_frame = scores.index(worst_score) if worst_score < 1.0 else -1
+    worst_defect = max(defects) if defects else 0.0
+    return mean_score, worst_score, worst_frame, tau, worst_defect
 
 
 def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_threads=None):
     """Every frame of a workload must match, within tolerance, one consistent
     reference video — either the unmodified baseline ("orig") or a single
     accepted visual variant combination across all frames of the workload
-    (preventing both per-pixel mixing and cross-frame variant flickering).
+    (preventing both per-pixel mixing and cross-frame variant flickering),
+    verified with both 3x3 pixel tolerance and GBA Eval-style block-SSIM.
     """
     if len(ref_rows) != len(cand_rows):
-        return {"pass": False, "frame": min(len(ref_rows), len(cand_rows)), "reason": "frame count changed"}
+        return {
+            "pass": False, "frame": min(len(ref_rows), len(cand_rows)),
+            "reason": "frame count changed", "ssim_score": 0.0,
+        }
     w, h, bpp = ref_rows[0]["fb"]
     for i, row in enumerate(cand_rows):
         if row["fb"] != [w, h, bpp]:
-            return {"pass": False, "frame": i, "reason": f"framebuffer format changed to {row['fb']}"}
-    tol = cfg["video"]["channel_tolerance"]
-    limit = cfg["video"]["max_bad_fraction"]
+            return {
+                "pass": False, "frame": i,
+                "reason": f"framebuffer format changed to {row['fb']}", "ssim_score": 0.0,
+            }
+    vcfg = cfg["video"]
+    tol = vcfg["channel_tolerance"]
+    limit = vcfg["max_bad_fraction"]
+    min_ssim = vcfg.get("min_ssim_score")
+    min_ssim_frame = vcfg.get("min_ssim_frame_score")
     ref_names = ["orig"] + sorted(set(variants.values()) - {""})
     files = [ref_dir / "video.bin.z"] + [ref_dir / f"video.{v}.bin.z" for v in ref_names[1:]]
+
+    def _finalize_video(res):
+        ok = bool(res["pass"])
+        if min_ssim is not None and res.get("ssim_score", 1.0) < float(min_ssim):
+            ok = False
+        if min_ssim_frame is not None and res.get("worst_ssim_frame_score", 1.0) < float(min_ssim_frame):
+            ok = False
+        res["pass"] = ok
+        if min_ssim is not None:
+            res["min_ssim_score"] = float(min_ssim)
+        if min_ssim_frame is not None:
+            res["min_ssim_frame_score"] = float(min_ssim_frame)
+        return res
 
     fast = _get_fast_video()
     if fast is not None and bpp in (16, 32):
@@ -1018,8 +1297,28 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         out_failed = ctypes.c_int(0)
         out_variant = ctypes.c_int(0)
         out_best_ref = ctypes.c_int(0)
+        out_mean_frac = ctypes.c_double(0.0)
+        out_ssim = ctypes.c_double(1.0)
+        out_worst_ssim = ctypes.c_double(1.0)
+        out_worst_ssim_frame = ctypes.c_int(-1)
+        out_ssim_tau = ctypes.c_double(0.05)
+        out_worst_ssim_defect = ctypes.c_double(0.0)
         threads = max(1, max_threads if max_threads is not None else (os.cpu_count() or 4))
-        if hasattr(fast, "compare_video_consistent"):
+        has_v3 = hasattr(fast, "compare_video_v3")
+        if has_v3:
+            rc = fast.compare_video_v3(
+                os.fsencode(str(cand_path)), arr, len(encoded),
+                len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
+                ctypes.byref(out_pass), ctypes.byref(out_worst_frac),
+                ctypes.byref(out_worst_frame), ctypes.byref(out_failed),
+                ctypes.byref(out_variant), ctypes.byref(out_best_ref),
+                ctypes.byref(out_mean_frac), ctypes.byref(out_ssim),
+                ctypes.byref(out_worst_ssim), ctypes.byref(out_worst_ssim_frame),
+                ctypes.byref(out_ssim_tau), ctypes.byref(out_worst_ssim_defect),
+            )
+            best_idx = out_best_ref.value
+            matched = ref_names[best_idx] if 0 <= best_idx < len(ref_names) else "orig"
+        elif hasattr(fast, "compare_video_consistent"):
             rc = fast.compare_video_consistent(
                 os.fsencode(str(cand_path)), arr, len(encoded),
                 len(ref_rows), w, h, bpp, int(tol), float(limit), int(threads),
@@ -1049,7 +1348,14 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
             }
             if matched is not None:
                 res["matched_variant"] = matched
-            return res
+            if has_v3:
+                res["mean_bad_fraction"] = round(float(out_mean_frac.value), 6)
+                res["ssim_score"] = round(float(out_ssim.value), 6)
+                res["worst_ssim_frame_score"] = round(float(out_worst_ssim.value), 6)
+                res["worst_ssim_frame"] = int(out_worst_ssim_frame.value)
+                res["ssim_tau"] = round(float(out_ssim_tau.value), 6)
+                res["worst_ssim_defect"] = round(float(out_worst_ssim_defect.value), 6)
+            return _finalize_video(res)
         raise GraderError(f"compare_video_fast failed (rc={rc}) on {cand_path}")
 
     n_frames = len(ref_rows)
@@ -1057,11 +1363,13 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
     cand_raw = pathlib.Path(cand_path).read_bytes()
     orig_raw = zlib.decompress(files[0].read_bytes())
     if cand_raw == orig_raw:
-        return {
-            "pass": True, "worst_bad_fraction": 0.0, "worst_frame": -1,
+        return _finalize_video({
+            "pass": True, "worst_bad_fraction": 0.0, "mean_bad_fraction": 0.0, "worst_frame": -1,
             "max_bad_fraction": limit, "failed_frames": 0, "variant_frames": 0,
             "matched_variant": "orig",
-        }
+            "ssim_score": 1.0, "worst_ssim_frame_score": 1.0, "worst_ssim_frame": -1,
+            "ssim_tau": 0.05, "worst_ssim_defect": 0.0,
+        })
 
     n_refs = len(files)
     orig_fracs = [0.0] * n_frames
@@ -1078,11 +1386,14 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         if frac > 0.0:
             any_nonzero = True
     if not any_nonzero:
-        return {
-            "pass": True, "worst_bad_fraction": 0.0, "worst_frame": -1,
+        ms, ws, wf, tau, wd = _compute_video_ssim_py(cand_raw, orig_raw, n_frames, w, h, bpp)
+        return _finalize_video({
+            "pass": True, "worst_bad_fraction": 0.0, "mean_bad_fraction": 0.0, "worst_frame": -1,
             "max_bad_fraction": limit, "failed_frames": 0, "variant_frames": 0,
             "matched_variant": "orig",
-        }
+            "ssim_score": round(ms, 6), "worst_ssim_frame_score": round(ws, 6),
+            "worst_ssim_frame": wf, "ssim_tau": round(tau, 6), "worst_ssim_defect": round(wd, 6),
+        })
 
     ref_raws = [orig_raw] + [zlib.decompress(p.read_bytes()) for p in files[1:]]
     frac_mat = [[0.0] * n_frames for _ in range(n_refs)]
@@ -1110,14 +1421,17 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
             frac_mat[r][i] = vf
 
     best_key = (n_frames + 1, 2.0, n_refs)
+    best_r = 0
     best_res = None
     for r in range(n_refs):
         r_worst = 0.0
+        r_sum = 0.0
         r_wframe = -1
         r_failed = 0
         r_variant = 0
         for i in range(n_frames):
             f = frac_mat[r][i]
+            r_sum += f
             if f > limit:
                 r_failed += 1
             if r > 0 and not exact_mat[0][i] and (exact_mat[r][i] or (orig_fracs[i] > limit and f <= limit)):
@@ -1128,16 +1442,26 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         key = (r_failed, r_worst, r)
         if key < best_key:
             best_key = key
+            best_r = r
             best_res = {
                 "pass": r_worst <= limit,
                 "worst_bad_fraction": r_worst,
+                "mean_bad_fraction": round(r_sum / float(n_frames), 6),
                 "worst_frame": r_wframe,
                 "max_bad_fraction": limit,
                 "failed_frames": r_failed,
                 "variant_frames": r_variant,
                 "matched_variant": ref_names[r],
             }
-    return best_res
+    ms, ws, wf, tau, wd = _compute_video_ssim_py(cand_raw, ref_raws[best_r], n_frames, w, h, bpp)
+    best_res.update({
+        "ssim_score": round(ms, 6),
+        "worst_ssim_frame_score": round(ws, 6),
+        "worst_ssim_frame": wf,
+        "ssim_tau": round(tau, 6),
+        "worst_ssim_defect": round(wd, 6),
+    })
+    return _finalize_video(best_res)
 
 
 def _sanitize_json(obj):
@@ -1267,14 +1591,23 @@ def _logmel_audio_check(a, b, acfg):
     }
 
 
+def _continuous_audio_score(lm, silence_bad_frames=0, total_frames=1):
+    rms_err = abs(float(lm.get("rms_ratio", 1.0)) - 1.0)
+    rms_pen = 1.0 if rms_err <= 0.15 else (1.0 / (1.0 + ((rms_err / 0.15) ** 4)))
+    if not lm.get("frame_rms_ok", True):
+        rms_pen *= 0.85
+    sil_pen = max(0.0, float(total_frames - silence_bad_frames) / float(max(total_frames, 1)))
+    return round(float(lm.get("logmel_score", 1.0)) * rms_pen * sil_pen, 6)
+
+
 def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
     au_bytes = ref_rows[0]["au_len"]
     for i, row in enumerate(cand_rows):
         if row["au_len"] != au_bytes:
-            return {"pass": False, "frame": i, "reason": f"audio bytes/frame {row['au_len']} != {au_bytes}"}
+            return {"pass": False, "frame": i, "reason": f"audio bytes/frame {row['au_len']} != {au_bytes}", "audio_score": 0.0}
     acfg = cfg["audio"]
     if len(ref) != len(cand):
-        return {"pass": False, "reason": "audio length differs"}
+        return {"pass": False, "reason": "audio length differs", "audio_score": 0.0}
     if ref == cand:
         return {
             "pass": True,
@@ -1284,6 +1617,8 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
             "worst_frame": -1,
             "min_snr_db": acfg["min_snr_db"],
             "min_frame_snr_db": acfg["min_frame_snr_db"],
+            "logmel_score": 1.0,
+            "audio_score": 1.0,
         }
     a = np.frombuffer(ref, dtype=">i2").astype(np.float64)
     b = np.frombuffer(cand, dtype=">i2").astype(np.float64)
@@ -1291,14 +1626,19 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
     snr = math.inf if not err.any() else 10 * math.log10(max((a * a).sum(), 1.0) / (err * err).sum())
     snr_out = round(snr, 4) if math.isfinite(snr) else None
     per = au_bytes // 2
+    n_au_frames = max(1, len(a) // per)
     worst = (math.inf, -1)
     any_nonsilent = False
+    first_sil_fail = None
+    sil_bad_frames = 0
     for i in range(len(a) // per):
         fa, fb = a[i * per:(i + 1) * per], b[i * per:(i + 1) * per]
         rms = math.sqrt((fa * fa).mean())
         if rms <= acfg["silence_rms"]:
             if np.abs(fb).max() > acfg["silence_max_abs"]:
-                return {"pass": False, "frame": i, "reason": "sound where the baseline is silent", "snr_db": snr_out}
+                sil_bad_frames += 1
+                if first_sil_fail is None:
+                    first_sil_fail = i
             continue
         any_nonsilent = True
         e = fa - fb
@@ -1306,6 +1646,13 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
             fsnr = 10 * math.log10((fa * fa).sum() / (e * e).sum())
             if fsnr < worst[0]:
                 worst = (fsnr, i)
+    lm = _logmel_audio_check(a, b, acfg)
+    audio_score = _continuous_audio_score(lm, silence_bad_frames=sil_bad_frames, total_frames=n_au_frames)
+    if first_sil_fail is not None:
+        return {
+            "pass": False, "frame": first_sil_fail, "reason": "sound where the baseline is silent",
+            "snr_db": snr_out, "logmel_score": lm["logmel_score"], "audio_score": audio_score,
+        }
     worst_out = round(worst[0], 4) if math.isfinite(worst[0]) else None
     snr_ok = (not any_nonsilent) or (snr >= acfg["min_snr_db"] and worst[0] >= acfg["min_frame_snr_db"])
     if snr_ok:
@@ -1317,9 +1664,10 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
             "worst_frame": worst[1],
             "min_snr_db": acfg["min_snr_db"],
             "min_frame_snr_db": acfg["min_frame_snr_db"],
+            "logmel_score": lm["logmel_score"],
+            "audio_score": audio_score,
         }
     if acfg.get("min_logmel_score") is not None:
-        lm = _logmel_audio_check(a, b, acfg)
         return {
             "pass": lm["pass"],
             "mode": "logmel",
@@ -1328,6 +1676,7 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
             "worst_frame": worst[1],
             "min_snr_db": acfg["min_snr_db"],
             "min_frame_snr_db": acfg["min_frame_snr_db"],
+            "audio_score": audio_score,
             **{k: v for k, v in lm.items() if k != "pass"},
         }
     return {
@@ -1338,6 +1687,8 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
         "worst_frame": worst[1],
         "min_snr_db": acfg["min_snr_db"],
         "min_frame_snr_db": acfg["min_frame_snr_db"],
+        "logmel_score": lm["logmel_score"],
+        "audio_score": audio_score,
     }
 
 
@@ -1376,7 +1727,7 @@ def patched_copy(source, patch_files):
     work = pathlib.Path(tempfile.mkdtemp(prefix="mev-variant-"))
     _copy_source(source, work / "src")
     for patch_file in patch_files:
-        proc = subprocess.run(["patch", "-s", "-p1", "-i", str(patch_file)], cwd=work / "src",
+        proc = subprocess.run(["patch", "-s", "-p1", "--no-backup-if-mismatch", "-i", str(patch_file)], cwd=work / "src",
                               capture_output=True, text=True)
         if proc.returncode != 0:
             shutil.rmtree(work, ignore_errors=True)
@@ -1625,8 +1976,10 @@ def failure_details(gates):
     return failures
 
 
-def play_runtime_smoke(rom, out, timeout):
-    """Compare idle and controller-driven execution of the same linked PLAY ROM."""
+def play_runtime_smoke(rom, out, timeout, cfg=None):
+    """Compare idle and controller-driven execution of the same linked PLAY ROM,
+    and verify PLAY=1 hardware safety (4 MB RAM, CACHE/KSEG1 invariants, SP/DP
+    DMA D-cache coherence) and active RSP audio output."""
     fields = 1200
     out.mkdir(parents=True, exist_ok=True)
     replay = out / "controller.txt"
@@ -1634,6 +1987,16 @@ def play_runtime_smoke(rom, out, timeout):
         ("." if i < 120 else "S" if i % 120 < 50 else "A" if i % 120 < 100 else ".") + " 0 0\n"
         for i in range(fields)
     ))
+    hw_cfg = (cfg or {}).get("hardware", {})
+    limit_ram = hw_cfg.get("rdram_bytes")
+    max_syn = int(hw_cfg.get("max_kseg1_dirty_synonyms", 0))
+    max_coh = None
+    if "max_dcache_coherence_errors" in hw_cfg:
+        max_coh = int(hw_cfg["max_dcache_coherence_errors"]) * 3
+    elif "max_dcache_coherence_errors_per_frame" in hw_cfg:
+        # 1,200 VI fields is ~600 30Hz game frames on SM64.
+        max_coh = int(float(hw_cfg["max_dcache_coherence_errors_per_frame"]) * (fields // 2) + 32)
+
     results = {}
     for mode, extra in (("idle", []), ("controller", ["--replay", str(replay)])):
         path = pathlib.Path(tempfile.mkdtemp(prefix=f"{mode}-", dir=out))
@@ -1651,6 +2014,20 @@ def play_runtime_smoke(rom, out, timeout):
         if run.returncode or result["status"] != "completed" or result.get("vi_fields") != fields:
             return {"pass": False, "status": result["status"], "scenario": mode,
                     "returncode": run.returncode, "scenarios": results}
+        highest_byte = (int(result.get("highest_line", -1)) + 1) * 16
+        if limit_ram is not None and highest_byte > limit_ram:
+            return {"pass": False, "status": "play_rdram_overflow", "scenario": mode,
+                    "highest_byte": highest_byte, "limit_bytes": limit_ram, "scenarios": results}
+        if int(result.get("cache_uncached_ops", 0)) > 0 or int(result.get("cache_cde_unaligned_ops", 0)) > 0:
+            return {"pass": False, "status": "play_cache_hazard", "scenario": mode, "scenarios": results}
+        if int(result.get("cache_kseg1_dirty_synonyms", 0)) > max_syn:
+            return {"pass": False, "status": "play_kseg1_dirty_synonym", "scenario": mode, "scenarios": results}
+        if max_coh is not None and int(result.get("dcache_coherence_errors", 0)) > max_coh:
+            return {"pass": False, "status": "play_dma_coherence_hazard", "scenario": mode,
+                    "dcache_coherence_errors": result.get("dcache_coherence_errors"),
+                    "max_dcache_coherence_errors": max_coh, "scenarios": results}
+        if cfg and cfg.get("contract") == "sm64" and "play_rsp_aud_cycles" in result and int(result["play_rsp_aud_cycles"]) == 0:
+            return {"pass": False, "status": "play_audio_silent", "scenario": mode, "scenarios": results}
     different = results["idle"]["play_final_video_hash"] != results["controller"]["play_final_video_hash"]
     return {"pass": different, "status": "completed" if different else "no_controller_response",
             "scenarios": results}
@@ -1727,6 +2104,330 @@ def _section_weighted_geomean(items, ratio_by_id, section_weights):
     return math.exp(log_sum), sec_geos
 
 
+def _section_weighted_mean(items, val_by_id, section_weights):
+    """Section-weighted arithmetic mean matching _section_weighted_geomean weights."""
+    by_sec = {}
+    for w in items:
+        by_sec.setdefault(_workload_section(w), []).append(w["id"])
+    raw_weights = {}
+    if section_weights:
+        for sec in by_sec:
+            wgt = float(section_weights.get(sec, 0.0))
+            if wgt > 0.0:
+                raw_weights[sec] = wgt
+    if not raw_weights:
+        total = float(max(len(items), 1))
+        norm_weights = {sec: len(wids) / total for sec, wids in by_sec.items()}
+    else:
+        total_w = sum(raw_weights.values())
+        norm_weights = {sec: raw_weights.get(sec, 0.0) / total_w for sec in by_sec}
+    acc = 0.0
+    for sec, wids in by_sec.items():
+        if norm_weights[sec] > 0.0 and wids:
+            acc += norm_weights[sec] * (sum(float(val_by_id[wid]) for wid in wids) / float(len(wids)))
+    return acc
+
+
+def _hardware_score(hw):
+    if hw.get("pass"):
+        return 1.0
+    ram_ok = 1.0 if hw.get("highest_byte", 0) <= hw.get("limit_bytes", 1) else 0.0
+    bad_ops = (int(hw.get("cache_uncached_ops", 0))
+               + int(hw.get("cache_cde_unaligned_ops", 0))
+               + max(0, int(hw.get("cache_kseg1_dirty_synonyms", 0)) - int(hw.get("max_kseg1_dirty_synonyms", 0))))
+    cache_ok = 1.0 / (1.0 + float(bad_ops))
+    max_coh = hw.get("max_dcache_coherence_errors")
+    coh = int(hw.get("dcache_coherence_errors", 0))
+    if max_coh is None or coh <= max_coh:
+        coh_ok = 1.0
+    else:
+        excess = float(coh - max_coh) / max(1.0, float(max_coh))
+        coh_ok = 1.0 / (1.0 + excess * excess)
+    return round(ram_ok * cache_ok * coh_ok, 6)
+
+
+def _gated_workload_axis_scores(gp, vd, au, hw):
+    """Ensure any workload failing a binary gate receives <= 0.5 on that fidelity
+    axis so subtle cheats (e.g. -ffast-math failing 0.2% pixel diff while keeping
+    block-SSIM ~ 1.0) can never outscore a valid submission on effective_speedup."""
+    gp_raw = float(gp.get("gameplay_score", 1.0 if gp.get("pass") else 0.0))
+    gp_s = gp_raw if gp.get("pass") else round(min(gp_raw, 0.5 * gp_raw), 6)
+
+    vid_raw = float(vd.get("ssim_score", 1.0 if vd.get("pass") else 0.0))
+    if vd.get("pass"):
+        vid_s = vid_raw
+    elif "worst_bad_fraction" in vd and "max_bad_fraction" in vd:
+        lim = max(float(vd["max_bad_fraction"]), 1e-9)
+        wbf = float(vd["worst_bad_fraction"])
+        px_pen = 1.0 / (1.0 + (wbf / lim) ** 4)
+        vid_s = round(min(vid_raw * px_pen, 0.5 * vid_raw), 6)
+    else:
+        vid_s = 0.0
+
+    aud_raw = float(au.get("audio_score", 1.0 if au.get("pass") else 0.0))
+    aud_s = aud_raw if au.get("pass") else round(min(aud_raw, 0.5 * aud_raw), 6)
+
+    hw_raw = float(hw.get("hardware_score", 1.0 if hw.get("pass") else 0.0))
+    hw_s = hw_raw if hw.get("pass") else round(min(hw_raw, 0.5 * hw_raw), 6)
+    return gp_s, vid_s, aud_s, hw_s
+
+
+_ENGINE_AGNOSTIC_FILES = (
+    "src/engine/math_util.c",
+    "src/engine/surface_collision.c",
+    "src/engine/surface_load.c",
+    "src/engine/graph_node.c",
+)
+_RE_COURSE_SPECIAL_CASE = re.compile(
+    r"\b(?:gCurrCourseNum|gCurrLevelNum|COURSE_(?:BOB|WF|JRB|DDD|BITFS|RR))\b"
+)
+
+
+def detect_suspicious_source_patterns(src):
+    """Non-blocking diagnostic check for public-course hardcoding inside
+    course-agnostic engine modules."""
+    root = pathlib.Path(src)
+    hits = []
+    for rel in _ENGINE_AGNOSTIC_FILES:
+        p = root / rel
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        # Strip C comments so documentation notes do not trigger false positives.
+        clean = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+        clean = re.sub(r"//[^\n]*", "", clean)
+        found = sorted(set(_RE_COURSE_SPECIAL_CASE.findall(clean)))
+        if found:
+            hits.append({"file": rel, "tokens": found})
+    return hits
+
+
+def classify_failure_attribution(summary, cfg):
+    """Deterministic numerical failure taxonomy so run failures and regressions
+    are attributable directly from summary.json without reading transcripts."""
+    gates = summary.get("gates", {})
+    diag = summary.get("diagnostics", {})
+    profiles = summary.get("profiles", {})
+    status = summary.get("status")
+
+    categories = []
+    subcategories = []
+
+    integ = gates.get("integrity")
+    if integ and not integ.get("pass"):
+        categories.append("harness_or_integrity_violation")
+        if integ.get("modified"):
+            subcategories.append("protected_file_modified")
+        if integ.get("violations"):
+            subcategories.append("static_integrity_violation")
+
+    bld = gates.get("build")
+    if bld and not bld.get("pass"):
+        b_reason = str(bld.get("reason") or summary.get("reason") or "")
+        if "ELF harness check" in b_reason or "benchmark harness" in b_reason or "integrity audit" in b_reason:
+            if "harness_or_integrity_violation" not in categories:
+                categories.append("harness_or_integrity_violation")
+            subcategories.append("elf_or_play_harness_tampering")
+        elif "PLAY=1" in b_reason:
+            categories.append("console_play_divergence")
+            subcategories.append("play_rom_build_failed")
+        else:
+            categories.append("build_failure")
+            subcategories.append("build_timeout" if "timed out" in b_reason else "compile_or_link_error")
+
+    play_rt = gates.get("play_runtime")
+    if play_rt and not play_rt.get("pass"):
+        if "console_play_divergence" not in categories:
+            categories.append("console_play_divergence")
+        subcategories.append(f"play_runtime:{play_rt.get('status', 'failed')}")
+
+    if diag.get("public_valid") is True and diag.get("heldout_valid") is False:
+        categories.append("public_to_heldout_overfitting")
+        secs = diag.get("sections", {})
+        if secs.get("heldout_scripted", {}).get("valid") is False:
+            subcategories.append("unseen_course_mechanics")
+        if secs.get("heldout_mash", {}).get("valid") is False:
+            subcategories.append("high_entropy_input_fragility")
+
+    ex_gate = gates.get("execution")
+    if ex_gate and not ex_gate.get("pass"):
+        categories.append("crash_or_hang")
+        ex_statuses = sorted({
+            str(v.get("status", "failed"))
+            for v in ex_gate.get("workloads", {}).values()
+            if not v.get("pass")
+        })
+        for st in ex_statuses:
+            subcategories.append(f"execution:{st}")
+
+    hw_gate = gates.get("hardware")
+    if hw_gate and not hw_gate.get("pass"):
+        categories.append("hardware_safety_violation")
+        hw_wls = [v for v in hw_gate.get("workloads", {}).values() if not v.get("pass")]
+        if any(v.get("highest_byte", 0) > v.get("limit_bytes", 0x400000) for v in hw_wls):
+            subcategories.append("rdram_4mb_overflow")
+        if any(v.get("cache_uncached_ops", 0) > 0 for v in hw_wls):
+            subcategories.append("kseg1_uncached_cache_op")
+        if any(v.get("cache_cde_unaligned_ops", 0) > 0 for v in hw_wls):
+            subcategories.append("unaligned_cache_cde")
+        if any(v.get("cache_kseg1_dirty_synonyms", 0) > v.get("max_kseg1_dirty_synonyms", 0) for v in hw_wls):
+            subcategories.append("kseg1_dirty_synonym")
+        if any(
+            v.get("max_dcache_coherence_errors") is not None
+            and v.get("dcache_coherence_errors", 0) > v["max_dcache_coherence_errors"]
+            for v in hw_wls
+        ):
+            subcategories.append("dma_dcache_coherence")
+
+    gp_gate = gates.get("gameplay")
+    if gp_gate and not gp_gate.get("pass"):
+        categories.append("physics_or_state_desync")
+        gp_fields = sorted({
+            str(v.get("field") or v.get("reason") or "desync")
+            for v in gp_gate.get("workloads", {}).values()
+            if not v.get("pass")
+        })
+        for fld in gp_fields:
+            subcategories.append(f"gameplay:{fld}")
+
+    vd_gate = gates.get("video")
+    if vd_gate and not vd_gate.get("pass"):
+        categories.append("visual_regression")
+        vd_wls = [v for v in vd_gate.get("workloads", {}).values() if not v.get("pass")]
+        subtle = bool(vd_wls) and all(
+            float(v.get("ssim_score", 0.0)) >= 0.99 and float(v.get("worst_bad_fraction", 1.0)) <= 0.02
+            for v in vd_wls
+        )
+        subcategories.append("subpixel_or_edge_drift" if subtle else "structural_visual_corruption")
+
+    au_gate = gates.get("audio")
+    if au_gate and not au_gate.get("pass"):
+        categories.append("audio_regression")
+        au_wls = [v for v in au_gate.get("workloads", {}).values() if not v.get("pass")]
+        if any("silent" in str(v.get("reason", "")) for v in au_wls):
+            subcategories.append("audio:unexpected_sound_in_silence")
+        elif any(v.get("reason") for v in au_wls):
+            subcategories.append("audio:format_or_length_mismatch")
+        else:
+            subcategories.append("audio:spectral_or_snr_degradation")
+
+    bad_profiles = sorted([p for p, v in profiles.items() if not v.get("valid", True)])
+    if bad_profiles:
+        categories.append("profile_budget_regression")
+        for bp in bad_profiles:
+            subcategories.append(f"budget:{bp}")
+
+    if not categories and status == "invalid":
+        categories.append("unclassified_invalid")
+
+    if not categories:
+        return None
+
+    return {
+        "primary_category": categories[0],
+        "categories": categories,
+        "subcategories": subcategories,
+        "public_only_pass": bool(diag.get("public_valid") is True and diag.get("heldout_valid") is False),
+    }
+
+
+def _build_capability_ruler(items, completed, passed_ids, summary, cfg, index, section_weights, gen_ratio, toolchain=None):
+    """Multi-dimensional numerical capability decomposition across subsystems
+    and evaluation splits (emitted on both valid and invalid runs)."""
+    if not completed:
+        return {"verified": False, "toolchain": toolchain} if toolchain else None
+    subsystems = {
+        "console": "est_console_ms",
+        "stutter_p99": "est_console_p99_ms",
+        "cpu": "cpu_effective_cycles",
+        "rsp": "rsp_busy",
+        "rsp_gfx": "rsp_gfx_ms",
+        "rsp_aud": "rsp_aud_ms",
+        "rdp_effective": "rdp_effective_cycles",
+        "rdp_raw": "rdp_busy",
+        "rdram_traffic": "rdram_bytes",
+        "memory_footprint": "footprint_bytes",
+    }
+    sub_speedups = {}
+    sub_cost_saved = {}
+    for label, mkey in subsystems.items():
+        if all(mkey in summary["workloads"][w["id"]]["ratios"] for w in completed):
+            r_map = {w["id"]: summary["workloads"][w["id"]]["ratios"][mkey] for w in completed}
+            geo, _ = _section_weighted_geomean(completed, r_map, section_weights)
+            sub_speedups[label] = round(1.0 / geo, 6) if geo > 0 else 0.0
+            sub_cost_saved[label] = round(1.0 - geo, 6)
+
+    bn_counts = {"cpu": 0, "rsp": 0, "rdp": 0, "mem": 0}
+    for w in completed:
+        m = summary["workloads"][w["id"]]["metrics"]
+        pairs = [
+            ("cpu", float(m.get("cpu_ms", 0.0))),
+            ("rsp", float(m.get("rsp_ms", 0.0))),
+            ("rdp", float(m.get("rdp_ms", 0.0))),
+            ("mem", float(m.get("mem_ms", 0.0))),
+        ]
+        dom = max(pairs, key=lambda kv: kv[1])[0]
+        bn_counts[dom] += 1
+    n_comp = float(len(completed))
+    bn_share = {k: round(v / n_comp, 4) for k, v in bn_counts.items()}
+
+    p_metric = cfg["profiles"].get("console", next(iter(cfg["profiles"].values())))["metric"]
+    o2_ref = index.get("o2_reference", {})
+    raw_vs_o2 = None
+    compiler_tier_progress = None
+    if o2_ref and all(w["id"] in o2_ref for w in completed):
+        o2_cand_r = {
+            w["id"]: (summary["workloads"][w["id"]]["metrics"][p_metric] / o2_ref[w["id"]][p_metric]
+                      if o2_ref[w["id"]].get(p_metric) else 1.0)
+            for w in completed
+        }
+        o2_geo, _ = _section_weighted_geomean(completed, o2_cand_r, section_weights)
+        if o2_geo > 0:
+            raw_vs_o2 = round(1.0 / o2_geo, 6)
+        raw_sp = sub_speedups.get("console", 0.0)
+        if raw_sp > 0 and raw_vs_o2 and raw_vs_o2 > 0:
+            # o2_sp_vs_vanilla = raw_sp / raw_vs_o2
+            o2_sp = raw_sp / raw_vs_o2
+            if o2_sp > 1.001:
+                compiler_tier_progress = round(
+                    min(1.0, max(0.0, math.log(max(raw_sp, 1.0)) / math.log(o2_sp))), 4
+                )
+
+    splits = {}
+    by_sec = {}
+    for w in items:
+        by_sec.setdefault(_workload_section(w), []).append(w)
+    for sec, sec_items in by_sec.items():
+        comp_sec = [w for w in sec_items if w["id"] in summary["workloads"]]
+        passed_sec = [w for w in sec_items if w["id"] in passed_ids]
+        sec_sp = None
+        if len(comp_sec) == len(sec_items) and comp_sec:
+            s_geo = _geomean([summary["workloads"][w["id"]]["ratios"][p_metric] for w in comp_sec])
+            sec_sp = round(1.0 / s_geo, 6) if s_geo > 0 else 0.0
+        splits[sec] = {
+            "passed": len(passed_sec),
+            "total": len(sec_items),
+            "pass_rate": round(len(passed_sec) / float(max(len(sec_items), 1)), 4),
+            **({"raw_console_speedup": sec_sp} if sec_sp is not None else {}),
+        }
+
+    all_passed = (len(passed_ids) == len(items))
+    return {
+        "verified": all_passed,
+        **({"toolchain": toolchain} if toolchain else {}),
+        "subsystem_speedups": sub_speedups,
+        "subsystem_cost_saved": sub_cost_saved,
+        "dominant_bottleneck_share": bn_share,
+        **({"raw_vs_o2_speedup": raw_vs_o2} if raw_vs_o2 is not None else {}),
+        **({"compiler_tier_progress": compiler_tier_progress} if compiler_tier_progress is not None else {}),
+        "splits": splits,
+        **({"generalization_ratio": gen_ratio} if gen_ratio is not None else {}),
+    }
+
+
 def grade(args):
     t0 = time.time()
     corpus = pathlib.Path(args.corpus)
@@ -1746,6 +2447,7 @@ def grade(args):
         "workloads": {},
         "rewards": {},
         "speedups": {},
+        "cost_saved": {},
     }
 
     def finish(status, reason=None):
@@ -1756,6 +2458,20 @@ def grade(args):
             summary["failures"] = failure_details(summary["gates"])
             summary["rewards"] = {p: -1.0 for p in cfg["profiles"]}
             summary["speedups"] = {p: 0.0 for p in cfg["profiles"]}
+            summary["cost_saved"] = {p: 0.0 for p in cfg["profiles"]}
+            summary.setdefault("fidelity", {
+                "execution": 0.0,
+                "gameplay": 0.0,
+                "video_ssim": 0.0,
+                "audio": 0.0,
+                "hardware": 0.0,
+                "overall": 0.0,
+                "effective_speedups": {p: 0.0 for p in cfg["profiles"]},
+                "effective_cost_saved": {p: 0.0 for p in cfg["profiles"]},
+            })
+        attr = classify_failure_attribution(summary, cfg)
+        if attr is not None:
+            summary["failure_attribution"] = attr
         summary["grader_seconds"] = round(time.time() - t0, 1)
         (out / "summary.json").write_text(json.dumps(_sanitize_json(summary), indent=1, allow_nan=False))
         return summary
@@ -1812,10 +2528,19 @@ def grade(args):
         raise GraderError("the submission's build modified grading artifacts "
                           "(the emulator, the grader, the corpus, the reference cache or the replays)")
     try:
+        build_meta = {}
+        meta_file = rom.parent / "built.meta.json"
+        if meta_file.is_file():
+            try:
+                build_meta = json.loads(meta_file.read_text())
+            except Exception:
+                build_meta = {}
+        if build_meta:
+            summary["toolchain"] = build_meta
         summary["rom_sha256"] = sha256(rom)
         summary["rom_bytes"] = rom.stat().st_size
         if args.play_smoke:
-            result = play_runtime_smoke(rom.parent / "play.z64", out / "play-smoke", cfg["run_timeout_s"])
+            result = play_runtime_smoke(rom.parent / "play.z64", out / "play-smoke", cfg["run_timeout_s"], cfg=cfg)
             summary["gates"]["play_runtime"] = result
             if not result["pass"]:
                 return finish("invalid", f"PLAY=1 runtime smoke failed: {result['status']}")
@@ -1853,16 +2578,24 @@ def grade(args):
         if max_coh is None and "max_dcache_coherence_errors_per_frame" in cfg["hardware"]:
             max_coh = int(cfg["hardware"]["max_dcache_coherence_errors_per_frame"] * cfg["frames"])
         coh_ok = True if max_coh is None else (m.get("dcache_coherence_errors", 0) <= max_coh)
+        max_syn = int(cfg["hardware"].get("max_kseg1_dirty_synonyms", 0))
+        syn_ok = (m.get("cache_kseg1_dirty_synonyms", 0) <= max_syn)
         hw = {"pass": (m["highest_byte"] <= cfg["hardware"]["rdram_bytes"]
                        and m.get("cache_uncached_ops", 0) == 0
                        and m.get("cache_cde_unaligned_ops", 0) == 0
+                       and syn_ok
                        and coh_ok),
               "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"],
               "cache_uncached_ops": m.get("cache_uncached_ops", 0),
               "cache_cde_unaligned_ops": m.get("cache_cde_unaligned_ops", 0),
+              "cache_kseg1_dirty_synonyms": m.get("cache_kseg1_dirty_synonyms", 0),
+              "max_kseg1_dirty_synonyms": max_syn,
               "dcache_coherence_errors": m.get("dcache_coherence_errors", 0),
               **({"max_dcache_coherence_errors": max_coh} if max_coh is not None else {})}
-        base = index["workloads"][wid]["metrics"]
+        hw["hardware_score"] = _hardware_score(hw)
+        # Recompute baseline metrics directly from ref's frames.jsonl so candidate
+        # and baseline are always guaranteed to share the exact same metrics() model.
+        base = metrics(ref)
         wl_entry = {
             "metrics": m,
             "ratios": {k: (m[k] / base[k] if base.get(k) else 1.0) for k in RATIO_KEYS},
@@ -1893,6 +2626,80 @@ def grade(args):
             gate_entry["skipped"] = len(items) - len(table)
         summary["gates"][name] = gate_entry
 
+    # Continuous 5-axis fidelity scores (computed on BOTH valid and invalid runs
+    # for fine-grained diagnostic signal; strict headline rewards stay binary).
+    section_weights = cfg.get("section_weights")
+    target_frames = max(1, int(cfg["frames"]))
+    exec_scores = {}
+    gp_scores = {}
+    vid_scores = {}
+    aud_scores = {}
+    hw_scores = {}
+    for w in items:
+        wid = w["id"]
+        ex = execution.get(wid, {})
+        if ex.get("pass"):
+            exec_scores[wid] = 1.0
+            gp_s, vid_s, aud_s, hw_s = _gated_workload_axis_scores(
+                gameplay.get(wid, {}), video.get(wid, {}), audio.get(wid, {}), hardware.get(wid, {})
+            )
+            gp_scores[wid] = gp_s
+            vid_scores[wid] = vid_s
+            aud_scores[wid] = aud_s
+            hw_scores[wid] = hw_s
+        else:
+            done_f = max(0, int(ex.get("frames", 0)))
+            exec_scores[wid] = round(0.5 * min(1.0, float(done_f) / float(target_frames)), 6)
+            gp_scores[wid] = 0.0
+            vid_scores[wid] = 0.0
+            aud_scores[wid] = 0.0
+            hw_scores[wid] = 0.0
+
+    fid_exec = round(_section_weighted_mean(items, exec_scores, section_weights), 6)
+    fid_gp = round(_section_weighted_mean(items, gp_scores, section_weights), 6)
+    fid_vid = round(_section_weighted_mean(items, vid_scores, section_weights), 6)
+    fid_aud = round(_section_weighted_mean(items, aud_scores, section_weights), 6)
+    fid_hw = round(_section_weighted_mean(items, hw_scores, section_weights), 6)
+    fid_overall = round(fid_exec * fid_gp * fid_vid * fid_aud * fid_hw, 6)
+
+    effective_speedups = {}
+    effective_cost_saved = {}
+    if completed:
+        gate_factor = fid_overall ** 8
+        for profile, pcfg in cfg["profiles"].items():
+            mkey = pcfg["metric"]
+            r_by_id = {w["id"]: summary["workloads"][w["id"]]["ratios"][mkey] for w in completed}
+            raw_geo, _ = _section_weighted_geomean(completed, r_by_id, section_weights)
+            raw_sp = (1.0 / raw_geo) if raw_geo > 0 else 0.0
+            effective_speedups[profile] = round(raw_sp * gate_factor, 6)
+            effective_cost_saved[profile] = round(max(0.0, 1.0 - raw_geo) * gate_factor, 6)
+    else:
+        effective_speedups = {p: 0.0 for p in cfg["profiles"]}
+        effective_cost_saved = {p: 0.0 for p in cfg["profiles"]}
+
+    pub_items = [w for w in items if w["split"] == "public"]
+    ho_items = [w for w in items if w["split"] != "public"]
+    gen_ratio = None
+    if pub_items and ho_items and all(w["id"] in summary["workloads"] for w in pub_items) and all(w["id"] in summary["workloads"] for w in ho_items):
+        p_key = cfg["profiles"].get("console", next(iter(cfg["profiles"].values())))["metric"]
+        pub_geo = _geomean([summary["workloads"][w["id"]]["ratios"][p_key] for w in pub_items])
+        ho_r = {w["id"]: summary["workloads"][w["id"]]["ratios"][p_key] for w in ho_items}
+        ho_geo, _ = _section_weighted_geomean(ho_items, ho_r, section_weights)
+        if pub_geo > 0 and ho_geo > 0:
+            gen_ratio = round((1.0 / ho_geo) / (1.0 / pub_geo), 6)
+
+    summary["fidelity"] = {
+        "execution": fid_exec,
+        "gameplay": fid_gp,
+        "video_ssim": fid_vid,
+        "audio": fid_aud,
+        "hardware": fid_hw,
+        "overall": fid_overall,
+        "effective_speedups": effective_speedups,
+        "effective_cost_saved": effective_cost_saved,
+        **({"generalization_ratio": gen_ratio} if gen_ratio is not None else {}),
+    }
+
     # Diagnostic sub-metrics preserved even on invalid runs (headline reward stays -1.0).
     passed_wls = [
         w for w in items
@@ -1912,8 +2719,7 @@ def grade(args):
             rec["passed"] += 1
     for rec in sec_diag.values():
         rec["valid"] = (rec["passed"] == rec["total"])
-    pub_items = [w for w in items if w["split"] == "public"]
-    ho_items = [w for w in items if w["split"] != "public"]
+    suspicious_patterns = detect_suspicious_source_patterns(args.source)
     diag = {
         "workloads_total": len(items),
         "workloads_completed": len(completed),
@@ -1921,6 +2727,8 @@ def grade(args):
         "sections": sec_diag,
         "public_valid": all(w["id"] in passed_ids for w in pub_items) if pub_items else None,
         "heldout_valid": all(w["id"] in passed_ids for w in ho_items) if ho_items else None,
+        **({"generalization_ratio": gen_ratio} if gen_ratio is not None else {}),
+        **({"suspicious_source_patterns": suspicious_patterns} if suspicious_patterns else {}),
     }
     if pub_items and all(w["id"] in summary["workloads"] for w in pub_items):
         diag["unverified_public_speedups"] = {
@@ -1933,6 +2741,12 @@ def grade(args):
             for profile, pcfg in cfg["profiles"].items()
         }
     summary["diagnostics"] = diag
+    cap_ruler = _build_capability_ruler(
+        items, completed, passed_ids, summary, cfg, index, section_weights, gen_ratio,
+        toolchain=summary.get("toolchain"),
+    )
+    if cap_ruler is not None:
+        summary["capability_ruler"] = cap_ruler
 
     failed = [g for g, v in summary["gates"].items() if not v["pass"]]
     if failed:
@@ -1943,7 +2757,6 @@ def grade(args):
     rdp_ratios = [summary["workloads"][w["id"]]["ratios"]["rdp_busy"] for w in items]
     footprint_ratios = [summary["workloads"][w["id"]]["ratios"]["footprint_bytes"] for w in items]
     o2_ref = index.get("o2_reference", {})
-    section_weights = cfg.get("section_weights")
 
     for profile, pcfg in cfg["profiles"].items():
         metric_key = pcfg["metric"]
@@ -1982,6 +2795,8 @@ def grade(args):
         scale = cfg.get("reward_log2_scale", 4.0)
         entry["speedup"] = round(1.0 / geo, 6) if entry["valid"] and geo > 0 else 0.0
         entry["unweighted_speedup"] = round(1.0 / unweighted_geo, 6) if entry["valid"] and unweighted_geo > 0 else 0.0
+        entry["cost_saved"] = round(1.0 - geo, 6) if entry["valid"] else 0.0
+        entry["unweighted_cost_saved"] = round(1.0 - unweighted_geo, 6) if entry["valid"] else 0.0
         entry["log2_speedup"] = round(-math.log2(geo), 6) if entry["valid"] and geo > 0 else None
         entry["reward"] = max(-1.0, entry["log2_speedup"] / scale) if entry["valid"] else -1.0
 
@@ -1998,6 +2813,7 @@ def grade(args):
             o2_geo, o2_sec_geos = _section_weighted_geomean(items, o2_ratio_by_id, section_weights)
             entry["vs_o2_ratio"] = o2_geo
             entry["vs_o2_speedup"] = round(1.0 / o2_geo, 6) if entry["valid"] and o2_geo > 0 else 0.0
+            entry["vs_o2_cost_saved"] = round(1.0 - o2_geo, 6) if entry["valid"] else 0.0
             entry["unweighted_vs_o2_speedup"] = (
                 round(1.0 / o2_unweighted_geo, 6) if entry["valid"] and o2_unweighted_geo > 0 else 0.0
             )
@@ -2007,14 +2823,22 @@ def grade(args):
                 "count": cnt,
                 "weight": round(wgt, 6),
                 "speedup": round(1.0 / s_geo, 6) if s_geo > 0 else 0.0,
+                "cost_saved": round(1.0 - s_geo, 6),
             }
             if sec in o2_sec_geos and o2_sec_geos[sec][2] > 0:
                 s_entry["vs_o2_speedup"] = round(1.0 / o2_sec_geos[sec][2], 6)
+                s_entry["vs_o2_cost_saved"] = round(1.0 - o2_sec_geos[sec][2], 6)
             sec_summary[sec] = s_entry
         entry["sections"] = sec_summary
+        if pub_items and ho_items:
+            p_pub_geo = _geomean([ratio_by_id[w["id"]] for w in pub_items])
+            p_ho_geo, _ = _section_weighted_geomean(ho_items, {w["id"]: ratio_by_id[w["id"]] for w in ho_items}, section_weights)
+            if p_pub_geo > 0 and p_ho_geo > 0:
+                entry["generalization_ratio"] = round((1.0 / p_ho_geo) / (1.0 / p_pub_geo), 6)
 
         summary["rewards"][profile] = entry["reward"]
         summary["speedups"][profile] = entry["speedup"]
+        summary["cost_saved"][profile] = entry["cost_saved"]
         summary.setdefault("profiles", {})[profile] = entry
     return finish("valid")
 
@@ -2066,9 +2890,12 @@ def main():
             print(json.dumps({
                 "status": s["status"],
                 "reason": s.get("reason"),
+                **({"failure_attribution": s["failure_attribution"]} if s.get("failure_attribution") else {}),
                 **({"failures": s["failures"]} if s.get("failures") else {}),
+                **({"fidelity": s["fidelity"]} if s.get("fidelity") else {}),
                 "rewards": s["rewards"],
                 "speedups": s.get("speedups"),
+                "cost_saved": s.get("cost_saved"),
             }, indent=1))
     except GraderError as e:
         print(json.dumps({"status": "grader_error", "reason": str(e)}), file=sys.stderr)

@@ -26,10 +26,10 @@ This repository contains **no Nintendo code or assets** (`sm64/decomp/`,
 ## Evaluation targets
 
 1. **Super Mario 64 (`--game sm64`, default 24h target)** — Full US
-   decompilation (`n64decomp/sm64`) evaluated across a **14-course suite**:
+   decompilation (`n64decomp/sm64`) evaluated across a **25-route suite**:
    6 public courses (`bob` Bob-omb Battlefield, `wf` Whomp's Fortress, `jrb`
    Jolly Roger Bay, `ddd` Dire, Dire Docks Area 2 / Bowser's Sub lag room,
-   `bitfs` Bowser in the Fire Sea, `rr` Rainbow Ride) and private held-out
+   `bitfs` Bowser in the Fire Sea, `rr` Rainbow Ride) and 19 private held-out
    routes: 8 scripted courses (`ccm` Cool, Cool Mountain, `lll` Lethal Lava
    Land, `ssl` Shifting Sand Land, `hmc` Hazy Maze Cave, `wdw` Wet-Dry World,
    `bob2`, `jrb2`, `ddd2`) plus, with
@@ -104,25 +104,26 @@ python3 sm64/corpus/make_replays.py --heldout /path/to/heldout-sm64 --mash-seed 
      Kaze-style distant object hibernation and math/cache optimizations pass,
      while any change to 1996 SM64 physics/collision quirks (quarter-steps, wall
      seam geometry, BLJs) fails. On Pip's Garden, `mev_obs_t` is checked bit-exact.
-   - **Video**: Every frame as a whole must match either the baseline reference
-     or an **accepted visual variant**: any combination of `full-detail`,
-     `ra-zb-opa`, `f3dex2`, `no-lod` and `rr-statics`, with ≤ 0.2% pixels
-     exceeding ±2/31 channel difference in a 3×3 neighborhood. The gate
-     compares against the set of distinct reference frames per frame index
-     (a minimum over duplicates is unchanged, so this is exactly the old
-     whole-frame comparison); combinations whose video is byte-identical to
-     another's are stored once, and `no-lod` subsumes `full-detail` (which only
-     affects Mario's level of detail), so those combinations are not
-     precomputed separately.
-   - **Audio**: Overall SNR ≥ 40 dB and worst-frame SNR ≥ 20 dB; a frame the
-     baseline renders silent (RMS ≤ 64 of 32768) must stay silent (candidate
-     samples there ≤ 256).
-   - **Hardware**: Highest RDRAM byte ≤ 4,194,304 (4 MB retail N64 RAM, no
-     Expansion Pak).
-   Any gate failure yields reward **−1.0** on every profile.
-   Invalid grades also report the observed gate failures by route: gameplay
-   field/frame and tolerance, video mismatch and failed-frame count, audio
-   SNR, or build and execution errors. These diagnostics do not affect rewards.
+   - **Video**: Every frame across a workload must match either the baseline
+     reference or one consistent **accepted visual variant** (`full-detail`,
+     `ra-zb-opa`, `f3dex2`, `no-lod`, `rr-statics`, or combinations thereof),
+     with ≤ 0.2% pixels exceeding ±2/31 channel difference in a 3×3 neighborhood
+     **and** GBA-Eval single-scale 16×16 block-SSIM ≥ 0.98 (worst frame ≥ 0.85).
+   - **Audio**: Overall SNR ≥ 40 dB and worst-frame SNR ≥ 20 dB (or 40-band
+     stereo log-mel spectrogram cosine similarity ≥ 0.95 with RMS loudness ratio
+     within ±15% for timing-preserving audio rewrites); silent baseline frames
+     must remain silent.
+   - **Hardware & Cache Coherence**: Highest RDRAM byte ≤ 4,194,304 (4 MB retail
+     N64 RAM, no Expansion Pak), zero `CACHE` ops on uncached addresses, zero
+     non-16-byte-aligned `CACHE 0x0d` (`Create_Dirty_Exclusive`) ops, zero
+     uncached `KSEG1` accesses aliasing dirty `KSEG0` D-cache lines, coherent
+     SP/DP DMA writebacks, and (with `--play-smoke`) cold-boot `PLAY=1` video
+     progress, controller response, and active RSP audio (`play_rsp_aud_cycles > 0`).
+   Any gate failure yields reward **−1.0** on every profile. Every `summary.json`
+   also emits bounded `cost_saved` (`1 - geomean_ratio`), continuous 5-axis
+   `fidelity`, `capability_ruler` (subsystem speedups across CPU, graphics RSP,
+   audio RSP, effective RDP, RDRAM traffic, and memory footprint, plus
+   `generalization_ratio`), and automatic `failure_attribution`.
 4. **Profiles, Rewards & Unbounded Speedups**:
 
 | profile | role | measured per frame | profile budget | cross-subsystem budget |

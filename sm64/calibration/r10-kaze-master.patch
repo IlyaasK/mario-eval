@@ -1,5 +1,5 @@
 diff --git c/Makefile i/Makefile
-index 074d3be..af06f90 100644
+index 074d3be..84d1ddb 100644
 --- c/Makefile
 +++ i/Makefile
 @@ -23,7 +23,7 @@ TARGET_N64 ?= 1
@@ -36,20 +36,22 @@ index 074d3be..af06f90 100644
  endif
  
  
-@@ -255,6 +255,12 @@ include Makefile.split
+@@ -255,6 +255,14 @@ include Makefile.split
  # Source code files
  LEVEL_C_FILES     := $(wildcard levels/*/leveldata.c) $(wildcard levels/*/script.c) $(wildcard levels/*/geo.c)
  C_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(LEVEL_C_FILES)
-+# US audio: seqplayer/effects/playback are compiled once, through src/audio/sequence_unity.c
++# US audio is compiled as one translation unit without changing playback paths.
 +ifeq ($(VERSION),us)
-+  C_FILES := $(filter-out src/audio/seqplayer.c src/audio/effects.c src/audio/playback.c,$(C_FILES))
++  C_FILES := $(filter-out src/audio/globals_start.c src/audio/data.c src/audio/heap.c \
++    src/audio/load.c src/audio/synthesis.c src/audio/external.c src/audio/seqplayer.c \
++    src/audio/effects.c src/audio/playback.c,$(C_FILES))
 +else
 +  C_FILES := $(filter-out src/audio/sequence_unity.c,$(C_FILES))
 +endif
  S_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
  ULTRA_C_FILES     := $(foreach dir,$(ULTRA_SRC_DIRS),$(wildcard $(dir)/*.c))
  GODDARD_C_FILES   := $(foreach dir,$(GODDARD_SRC_DIRS),$(wildcard $(dir)/*.c))
-@@ -879,8 +885,45 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
+@@ -879,8 +887,45 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
  	$(COPT) -signed -I=$< -CMP=$@ -cp=i -scalaroptimize=1 $(COPTFLAGS)
  $(BUILD_DIR)/src/audio/seqplayer.copt: COPTFLAGS := -inline_manual
  
@@ -95,7 +97,7 @@ index 074d3be..af06f90 100644
  # Assemble assembly code
  $(BUILD_DIR)/%.o: %.s
  	$(call print,Assembling:,$<,$@)
-@@ -892,9 +935,11 @@ $(BUILD_DIR)/rsp/%.bin $(BUILD_DIR)/rsp/%_data.bin: rsp/%.s
+@@ -892,9 +937,11 @@ $(BUILD_DIR)/rsp/%.bin $(BUILD_DIR)/rsp/%_data.bin: rsp/%.s
  	$(V)$(RSPASM) -sym $@.sym $(RSPASMFLAGS) -strequ CODE_FILE $(BUILD_DIR)/rsp/$*.bin -strequ DATA_FILE $(BUILD_DIR)/rsp/$*_data.bin $<
  
  # Run linker script through the C preprocessor
@@ -208,6 +210,39 @@ index dcb637d..745eccc 100644
      gsDPSetTextureImage(G_IM_FMT_IA, G_IM_SIZ_16b, 1, coin_seg3_texture_03006F80),
      gsSPDisplayList(coin_seg3_dl_03007780),
      gsSPVertex(coin_seg3_vertex_03005740, 4, 0),
+diff --git c/actors/mario/geo.inc.c i/actors/mario/geo.inc.c
+index feb396b..3532144 100644
+--- c/actors/mario/geo.inc.c
++++ i/actors/mario/geo.inc.c
+@@ -1787,18 +1787,10 @@ const GeoLayout mario_geo_load_low_poly_body[] = {
+ const GeoLayout mario_geo_render_body[] = {
+     GEO_NODE_START(),
+     GEO_OPEN_NODE(),
+-        GEO_RENDER_RANGE(-2048, 600),
++        GEO_RENDER_RANGE(-2048, 32767),
+         GEO_OPEN_NODE(),
+             GEO_BRANCH(1, mario_geo_load_body),
+         GEO_CLOSE_NODE(),
+-        GEO_RENDER_RANGE(600, 1600),
+-        GEO_OPEN_NODE(),
+-            GEO_BRANCH(1, mario_geo_load_medium_poly_body),
+-        GEO_CLOSE_NODE(),
+-        GEO_RENDER_RANGE(1600, 32767),
+-        GEO_OPEN_NODE(),
+-            GEO_BRANCH(1, mario_geo_load_low_poly_body),
+-        GEO_CLOSE_NODE(),
+     GEO_CLOSE_NODE(),
+     GEO_RETURN(),
+ };
+@@ -1816,7 +1808,7 @@ const GeoLayout mario_geo[] = {
+             GEO_SWITCH_CASE(0, geo_switch_mario_stand_run),
+             GEO_OPEN_NODE(),
+                 GEO_BRANCH(1, mario_geo_load_body),
+-                GEO_BRANCH(1, mario_geo_render_body),
++                GEO_BRANCH(1, mario_geo_load_body),
+             GEO_CLOSE_NODE(),
+             GEO_ASM(1, geo_mirror_mario_backface_culling),
+         GEO_CLOSE_NODE(),
 diff --git c/bin/segment2.c i/bin/segment2.c
 index 7f69dc3..8f02cef 100644
 --- c/bin/segment2.c
@@ -396,6 +431,25 @@ index e53fb7d..1fc9131 100644
  
  struct MarioBodyState {
      /*0x00*/ u32 action;
+diff --git c/levels/bob/areas/1/geo.inc.c i/levels/bob/areas/1/geo.inc.c
+index a6d1f8d..f643ef3 100644
+--- c/levels/bob/areas/1/geo.inc.c
++++ i/levels/bob/areas/1/geo.inc.c
+@@ -15,13 +15,13 @@ const GeoLayout bob_geo_000488[] = {
+             GEO_OPEN_NODE(),
+                 GEO_CAMERA(1, 0, 2000, 6000, 3072, 0, -4608, geo_camera_main),
+                 GEO_OPEN_NODE(),
+-                    GEO_DISPLAY_LIST(LAYER_OPAQUE, bob_seg7_dl_07004390),
+                     GEO_DISPLAY_LIST(LAYER_OPAQUE, bob_seg7_dl_07009D80),
+                     GEO_DISPLAY_LIST(LAYER_TRANSPARENT_DECAL, bob_seg7_dl_0700A470),
+                     GEO_DISPLAY_LIST(LAYER_ALPHA, bob_seg7_dl_0700A920),
+                     GEO_DISPLAY_LIST(LAYER_OPAQUE, bob_seg7_dl_0700DD18),
+                     GEO_DISPLAY_LIST(LAYER_OPAQUE, bob_seg7_dl_0700E338),
+                     GEO_RENDER_OBJ(),
++                    GEO_DISPLAY_LIST(LAYER_OPAQUE, bob_seg7_dl_07004390),
+                     GEO_ASM(0, geo_envfx_main),
+                 GEO_CLOSE_NODE(),
+             GEO_CLOSE_NODE(),
 diff --git c/levels/rr/areas/1/collision.inc.c i/levels/rr/areas/1/collision.inc.c
 index ddd55ec..3c65e10 100644
 --- c/levels/rr/areas/1/collision.inc.c
@@ -547,10 +601,23 @@ index cc542f6..41e79a3 100644
      addiu $a0, $a0, 0x20
      sw    $zero, -0x20($a0)
 diff --git c/sm64.ld i/sm64.ld
-index c88b5c0..a003289 100755
+index c88b5c0..80b2a53 100755
 --- c/sm64.ld
 +++ i/sm64.ld
-@@ -162,6 +162,9 @@ SECTIONS
+@@ -102,6 +102,12 @@ SECTIONS
+         BUILD_DIR/src/buffers/buffers.o(.bss*);
+ #if defined(VERSION_SH) || defined(VERSION_CN)
+         BUILD_DIR/src/audio/port_sh.o(.bss*);
++#elif defined(VERSION_US)
++        . = ALIGN(8);
++        _audioUnityBssStart = .;
++        BUILD_DIR/src/audio/sequence_unity.o(.bss*);
++        . = ALIGN(8);
++        _audioUnityBssEnd = .;
+ #else
+         BUILD_DIR/src/audio/globals_start.o(.bss*);
+         BUILD_DIR/src/audio/synthesis.o(.bss*);
+@@ -162,6 +168,9 @@ SECTIONS
          BUILD_DIR/src/game/save_file.o(.text);
          BUILD_DIR/src/game/area.o(.text);
          BUILD_DIR/src/game/rendering_graph_node.o(.text);
@@ -560,7 +627,7 @@ index c88b5c0..a003289 100755
          BUILD_DIR/src/game/profiler.o(.text);
          BUILD_DIR/asm/decompress.o(.text);
          BUILD_DIR/src/game/camera.o(.text);
-@@ -179,7 +182,6 @@ SECTIONS
+@@ -179,7 +188,6 @@ SECTIONS
          BUILD_DIR/src/game/spawn_sound.o(.text);
          BUILD_DIR/src/game/debug.o(.text);
          BUILD_DIR/src/game/screen_transition.o(.text);
@@ -568,7 +635,7 @@ index c88b5c0..a003289 100755
          BUILD_DIR/src/game/skybox.o(.text);
          BUILD_DIR/src/game/moving_texture.o(.text);
          BUILD_DIR/src/game/geo_misc.o(.text);
-@@ -193,24 +195,87 @@ SECTIONS
+@@ -193,24 +201,69 @@ SECTIONS
          BUILD_DIR/src/game/obj_behaviors.o(.text);
          BUILD_DIR/src/game/obj_behaviors_2.o(.text);
  #if defined(VERSION_SH) || defined(VERSION_CN)
@@ -578,21 +645,7 @@ index c88b5c0..a003289 100755
 -        BUILD_DIR/src/audio/synthesis.o(.text);
 +        /* Audio-thread code executed every update, contiguous (Kaze Emanuar's
 +           audio I-cache blocking, "Revolutionizing N64 programming!"). */
-+        BUILD_DIR/src/audio/synthesis.o(.text.prepare_reverb_ring_buffer);
-+        BUILD_DIR/src/audio/synthesis.o(.text.get_volume_ramping);
-+        BUILD_DIR/src/audio/synthesis.o(.text.load_wave_samples);
-+        BUILD_DIR/src/audio/synthesis.o(.text.final_resample);
-+        BUILD_DIR/src/audio/synthesis.o(.text.process_envelope_inner);
-+        BUILD_DIR/src/audio/synthesis.o(.text.process_envelope);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_apply_headset_pan_effects);
-+        BUILD_DIR/src/audio/synthesis.o(.text.synthesis_process_notes);
-+        BUILD_DIR/src/audio/synthesis.o(.text.synthesis_do_one_audio_update);
-+        BUILD_DIR/src/audio/synthesis.o(.text.synthesis_execute);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_init_volume);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_set_vel_pan_reverb);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_set_frequency);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_enable);
-+        BUILD_DIR/src/audio/synthesis.o(.text.note_disable);
++        BUILD_DIR/src/audio/sequence_unity.o(.text.prepare_reverb_ring_buffer .text.get_volume_ramping .text.load_wave_samples .text.final_resample .text.process_envelope_inner .text.process_envelope .text.note_apply_headset_pan_effects .text.synthesis_process_notes .text.synthesis_do_one_audio_update .text.synthesis_execute .text.note_init_volume .text.note_set_vel_pan_reverb .text.note_set_frequency .text.note_enable .text.note_disable);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.note_init);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.init_note_free_list);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.audio_list_push_front);
@@ -614,12 +667,7 @@ index c88b5c0..a003289 100755
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.note_vibrato_init);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.adsr_init);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.adsr_update);
-+        BUILD_DIR/src/audio/load.o(.text.decrease_sample_dma_ttls);
-+        BUILD_DIR/src/audio/load.o(.text.dma_sample_data);
-+        BUILD_DIR/src/audio/load.o(.text.audio_init);
-+        BUILD_DIR/src/audio/heap.o(.text.alloc_bank_or_seq);
-+        BUILD_DIR/src/audio/heap.o(.text.get_bank_or_seq);
-+        BUILD_DIR/src/audio/heap.o(.text.audio_reset_session);
++        BUILD_DIR/src/audio/sequence_unity.o(.text.decrease_sample_dma_ttls .text.dma_sample_data .text.audio_init .text.alloc_bank_or_seq .text.get_bank_or_seq .text.audio_reset_session);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.sequence_channel_init);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.seq_channel_layer_disable);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.seq_channel_layer_free);
@@ -639,11 +687,12 @@ index c88b5c0..a003289 100755
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.sequence_channel_process_script);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.sequence_player_process_sequence);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text.process_sequences);
-+        BUILD_DIR/src/audio/synthesis.o(.text .text.*);
++#endif
++#ifndef VERSION_US
++        BUILD_DIR/src/audio/load.o(.text .text.*);
  #endif
 -        BUILD_DIR/src/audio/heap.o(.text);
 -        BUILD_DIR/src/audio/load.o(.text);
-+        BUILD_DIR/src/audio/load.o(.text .text.*);
  #if defined(VERSION_SH) || defined(VERSION_CN)
 -        BUILD_DIR/src/audio/load_sh.o(.text);
 -        BUILD_DIR/src/audio/port_sh.o(.text);
@@ -654,46 +703,78 @@ index c88b5c0..a003289 100755
 -        BUILD_DIR/src/audio/effects.o(.text);
 -        BUILD_DIR/src/audio/seqplayer.o(.text);
 +        BUILD_DIR/src/audio/sequence_unity.o(.text .text.*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.text .text.*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.text .text.*);
  #if defined(VERSION_SH) || defined(VERSION_CN)
          BUILD_DIR/libultra.a:osDriveRomInit.o(.text);
  #endif
 -        BUILD_DIR/src/audio/external.o(.text);
 -        BUILD_DIR/src/audio/port_eu.o(.text);
++#ifndef VERSION_US
 +        BUILD_DIR/src/audio/external.o(.text .text.*);
 +        BUILD_DIR/src/audio/heap.o(.text .text.*);
++#endif
 +        BUILD_DIR/src/audio/port_eu.o(.text .text.*);
  
  #if defined(VERSION_EU) || defined(VERSION_SH) || defined(VERSION_CN)
  #ifdef VERSION_CN
-@@ -680,9 +745,9 @@ SECTIONS
+@@ -673,6 +726,9 @@ SECTIONS
+         /* wildcard doesn't match on EU due to files being moved to engine/ */
+         BUILD_DIR/src/game*.o(.data*);
+ #endif
++#ifdef VERSION_US
++        BUILD_DIR/src/audio/sequence_unity.o(.data*);
++#else
+ #if defined(VERSION_SH) || defined(VERSION_CN)
+         BUILD_DIR/src/audio/synthesis_sh.o(.data*);
+ #else
+@@ -680,9 +736,6 @@ SECTIONS
  #endif
          BUILD_DIR/src/audio/heap.o(.data*);
          BUILD_DIR/src/audio/load.o(.data*);
 -        BUILD_DIR/src/audio/playback.o(.data*);
 -        BUILD_DIR/src/audio/effects.o(.data*);
 -        BUILD_DIR/src/audio/seqplayer.o(.data*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.data*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.data*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.data*);
  #if defined(VERSION_SH) || defined(VERSION_CN)
          BUILD_DIR/src/audio/data.o(.data*);
          BUILD_DIR/src/audio/shindou_debug_prints.o(.data*);
-@@ -823,9 +888,9 @@ SECTIONS
+@@ -694,6 +747,7 @@ SECTIONS
+         BUILD_DIR/src/audio/port_eu.o(.data*);
+         BUILD_DIR/src/audio/data.o(.data*);
+ #endif
++#endif
+ 
+ #ifdef VERSION_CN
+         BUILD_DIR/libultra.a:osAiSetNextBuffer.o(.data*);
+@@ -818,15 +872,16 @@ SECTIONS
+         BUILD_DIR/src/audio/heap.o(.rodata*);
+         BUILD_DIR/src/audio/load_sh.o(.rodata*);
+         BUILD_DIR/src/audio/port_sh.o(.rodata*);
++#elif defined(VERSION_US)
++        BUILD_DIR/src/audio/sequence_unity.o(.rodata*);
+ #else
+         BUILD_DIR/src/audio/synthesis.o(.rodata*);
          BUILD_DIR/src/audio/heap.o(.rodata*);
          BUILD_DIR/src/audio/load.o(.rodata*);
  #endif
 -        BUILD_DIR/src/audio/playback.o(.rodata*);
 -        BUILD_DIR/src/audio/effects.o(.rodata*);
 -        BUILD_DIR/src/audio/seqplayer.o(.rodata*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.rodata*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.rodata*);
-+        BUILD_DIR/src/audio/sequence_unity.o(.rodata*);
++#ifndef VERSION_US
          BUILD_DIR/src/audio/external.o(.rodata*);
++#endif
          BUILD_DIR/src/audio/port_eu.o(.rodata*);
          BUILD_DIR/src/audio*.o(.rodata*);
-@@ -1034,8 +1099,6 @@ SECTIONS
+ 
+@@ -935,7 +990,9 @@ SECTIONS
+ #if !defined(VERSION_EU) && !defined(VERSION_CN)
+         BUILD_DIR/src/game*.o(.bss*);
+ #endif
++#ifndef VERSION_US
+         BUILD_DIR/src/audio/external.o(.bss*);
++#endif
+ #ifdef VERSION_EU
+         BUILD_DIR/src/audio/port_eu.o(.bss*);
+ #endif
+@@ -1034,8 +1091,6 @@ SECTIONS
  
      BEGIN_SEG(engine, ADDR_OR_ALIGN(SEG_ENGINE))
      {
@@ -703,10 +784,23 @@ index c88b5c0..a003289 100755
          BUILD_DIR/src/engine/geo_layout.o(.text);
          BUILD_DIR/src/engine/level_script.o(.text);
 diff --git c/src/audio/load.c i/src/audio/load.c
-index aa0c71d..fbfc369 100644
+index aa0c71d..2afa0ba 100644
 --- c/src/audio/load.c
 +++ i/src/audio/load.c
-@@ -408,8 +408,7 @@ out2:
+@@ -96,8 +96,12 @@ s8 gSoundMode;
+ s8 gAudioUpdatesPerFrame;
+ #endif
+ 
++#ifdef AUDIO_UNITY
++extern u64 _audioUnityBssStart[], _audioUnityBssEnd[];
++#else
+ extern u64 gAudioGlobalsStartMarker;
+ extern u64 gAudioGlobalsEndMarker;
++#endif
+ 
+ extern u8 gSoundDataADSR[]; // sound_data.ctl
+ extern u8 gSoundDataRaw[];  // sound_data.tbl
+@@ -408,8 +412,7 @@ out2:
  }
  
  #if defined(VERSION_JP) || defined(VERSION_US)
@@ -716,7 +810,7 @@ index aa0c71d..fbfc369 100644
  #endif
  void patch_sound(UNUSED struct AudioBankSound *sound, UNUSED u8 *memBase, UNUSED u8 *offsetBase) {
      struct AudioBankSample *sample;
-@@ -447,35 +446,7 @@ void patch_sound(UNUSED struct AudioBankSound *sound, UNUSED u8 *memBase, UNUSED
+@@ -447,35 +450,7 @@ void patch_sound(UNUSED struct AudioBankSound *sound, UNUSED u8 *memBase, UNUSED
  #undef PATCH
  }
  
@@ -753,7 +847,7 @@ index aa0c71d..fbfc369 100644
  void patch_audio_bank(struct AudioBank *mem, u8 *offset, u32 numInstruments, u32 numDrums) {
      struct Instrument *instrument;
      struct Instrument **itInstrs;
-@@ -516,14 +487,8 @@ void patch_audio_bank(struct AudioBank *mem, u8 *offset, u32 numInstruments, u32
+@@ -516,14 +491,8 @@ void patch_audio_bank(struct AudioBank *mem, u8 *offset, u32 numInstruments, u32
                  drum = PATCH(patched, mem);
                  mem->drums[i] = drum;
                  if (drum->loaded == 0) {
@@ -768,7 +862,7 @@ index aa0c71d..fbfc369 100644
                      drum->envelope = BASE_OFFSET(mem, patched);
                      drum->loaded = 1;
                  }
-@@ -554,9 +519,9 @@ l2:
+@@ -554,9 +523,9 @@ l2:
                  instrument = *itInstrs;
  
                  if (instrument->loaded == 0) {
@@ -781,7 +875,7 @@ index aa0c71d..fbfc369 100644
                      patched = instrument->envelope;
                      instrument->envelope = BASE_OFFSET(mem, patched);
                      instrument->loaded = 1;
-@@ -576,7 +541,6 @@ l2:
+@@ -576,7 +545,6 @@ l2:
  #undef PATCH
  #undef BASE_OFFSET_REAL
  #undef BASE_OFFSET
@@ -789,18 +883,61 @@ index aa0c71d..fbfc369 100644
  }
  
  struct AudioBank *bank_load_immediate(s32 bankId, s32 arg1) {
+@@ -943,6 +911,11 @@ void audio_init() {
+ 
+ #ifdef TARGET_N64
+     // It seems boot.s doesn't clear the .bss area for audio, so do it here.
++#ifdef AUDIO_UNITY
++    for (ptr64 = _audioUnityBssStart; ptr64 != _audioUnityBssEnd; ptr64++) {
++        *ptr64 = 0;
++    }
++#else
+     i = 0;
+     lim3 = ((uintptr_t) &gAudioGlobalsEndMarker - (uintptr_t) &gAudioGlobalsStartMarker) / 8;
+     ptr64 = &gAudioGlobalsStartMarker - 1;
+@@ -951,6 +924,7 @@ void audio_init() {
+         ptr64[i] = 0;
+     }
+ #endif
++#endif
+ 
+ #else
+     for (i = 0; i < gAudioHeapSize / 8; i++) {
+@@ -973,6 +947,7 @@ void audio_init() {
+     }
+ #endif
+ 
++#ifndef AUDIO_UNITY
+ #ifdef TARGET_N64
+     eu_stubbed_printf_3(
+         "Clear Workarea %x -%x size %x \n",
+@@ -980,6 +955,7 @@ void audio_init() {
+         (uintptr_t) &gAudioGlobalsEndMarker,
+         (uintptr_t) &gAudioGlobalsEndMarker - (uintptr_t) &gAudioGlobalsStartMarker
+     );
++#endif
+ #endif
+ 
+     eu_stubbed_printf_1("AudioHeap is %x\n", gAudioHeapSize);
 diff --git c/src/audio/sequence_unity.c i/src/audio/sequence_unity.c
 new file mode 100644
-index 0000000..dc235f8
+index 0000000..78e5046
 --- /dev/null
 +++ i/src/audio/sequence_unity.c
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,13 @@
 +// One translation unit for the per-update sequence and note code (Kaze Emanuar,
 +// "Revolutionizing N64 programming!": his released audio library is a single
 +// file), so GCC can inline across the old file boundaries and keep it compact.
++#define AUDIO_UNITY 1
++#include "globals_start.c"
++#include "data.c"
++#include "heap.c"
++#include "load.c"
++#include "synthesis.c"
 +#include "seqplayer.c"
 +#include "effects.c"
 +#include "playback.c"
++#include "external.c"
 diff --git c/src/buffers/framebuffers.c i/src/buffers/framebuffers.c
 index 09a8478..3b5aaea 100644
 --- c/src/buffers/framebuffers.c
@@ -2466,10 +2603,10 @@ index c969ba3..0289c6b 100644
      exec_display_list(&gGfxPool->spTask);
      profiler_log_thread5_time(AFTER_DISPLAY_LISTS);
 diff --git c/src/game/main.c i/src/game/main.c
-index 50301e9..8e718dc 100644
+index 50301e9..a846aad 100644
 --- c/src/game/main.c
 +++ i/src/game/main.c
-@@ -418,6 +418,27 @@ void set_vblank_handler(s32 index, struct VblankHandler *handler, OSMesgQueue *q
+@@ -418,6 +418,24 @@ void set_vblank_handler(s32 index, struct VblankHandler *handler, OSMesgQueue *q
      }
  }
  
@@ -2488,16 +2625,13 @@ index 50301e9..8e718dc 100644
 +        if (gGfxPoolEnd != NULL && gGfxPoolEnd < poolTop) {
 +            osWritebackDCache(gGfxPoolEnd, (s32) (poolTop - gGfxPoolEnd));
 +        }
-+        if (gDisplayListHead != NULL && gDisplayListHead > gGfxPool->buffer) {
-+            osWritebackDCache(gGfxPool->buffer, (s32) ((u8 *) gDisplayListHead - (u8 *) gGfxPool->buffer));
-+        }
 +    }
 +}
 +
  void send_sp_task_message(OSMesg *msg) {
      osWritebackDCacheAll();
      osSendMesg(&gSPTaskMesgQueue, msg, OS_MESG_NOBLOCK);
-@@ -425,7 +446,7 @@ void send_sp_task_message(OSMesg *msg) {
+@@ -425,7 +443,7 @@ void send_sp_task_message(OSMesg *msg) {
  
  void dispatch_audio_sptask(struct SPTask *spTask) {
      if (sAudioEnabled && spTask != NULL) {
@@ -2506,7 +2640,7 @@ index 50301e9..8e718dc 100644
          osSendMesg(&gSPTaskMesgQueue, spTask, OS_MESG_NOBLOCK);
      }
  }
-@@ -433,7 +454,7 @@ void dispatch_audio_sptask(struct SPTask *spTask) {
+@@ -433,7 +451,7 @@ void dispatch_audio_sptask(struct SPTask *spTask) {
  #ifndef PLAY
  s32 exec_audio_sptask_sync(struct SPTask *spTask) {
      if (sAudioEnabled && spTask != NULL) {
@@ -2515,7 +2649,7 @@ index 50301e9..8e718dc 100644
          spTask->state = SPTASK_STATE_NOT_STARTED;
          sCurrentAudioSPTask = spTask;
          sNextAudioSPTask = NULL;
-@@ -446,7 +467,7 @@ s32 exec_audio_sptask_sync(struct SPTask *spTask) {
+@@ -446,7 +464,7 @@ s32 exec_audio_sptask_sync(struct SPTask *spTask) {
  
  void exec_display_list(struct SPTask *spTask) {
      if (spTask != NULL) {
@@ -2805,7 +2939,7 @@ index 08706d9..5a9756f 100644
              gRipplingPainting = NULL;
          }
 diff --git c/src/game/rendering_graph_node.c i/src/game/rendering_graph_node.c
-index 2343068..98c51ee 100644
+index 2343068..e1de638 100644
 --- c/src/game/rendering_graph_node.c
 +++ i/src/game/rendering_graph_node.c
 @@ -6,6 +6,7 @@
@@ -3029,18 +3163,12 @@ index 2343068..98c51ee 100644
          node->matrixPtr = &gMatStack[gMatStackIndex];
          geo_process_node_and_siblings(node->fnNode.node.children);
          gCurGraphNodeCamera = NULL;
-@@ -333,6 +411,24 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -333,6 +411,23 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
      gMatStackIndex--;
  }
  
-+/**
-+ * Shared tail of every transform node (Kaze Emanuar's code release outlines
-+ * this so the renderer keeps one copy in the I-cache instead of six): push the
-+ * matrix just written to gMatStack[gMatStackIndex + 1], draw the node's display
-+ * list, recurse into its children, pop.
-+ */
-+static void __attribute__((noinline)) geo_push_and_process(struct GraphNodeDisplayList *node) {
-+    gMatStackIndex++;
++/* Complete a transformed node with its matrix already pushed. */
++static void __attribute__((noinline)) geo_finish_transform(struct GraphNodeDisplayList *node) {
 +    gMatStackFixed[gMatStackIndex] = NULL;
 +    if (node->displayList != NULL) {
 +        geo_append_display_list(node->displayList, node->node.flags >> 8);
@@ -3051,10 +3179,15 @@ index 2343068..98c51ee 100644
 +    gMatStackIndex--;
 +}
 +
++static inline void geo_push_and_process(struct GraphNodeDisplayList *node) {
++    gMatStackIndex++;
++    geo_finish_transform(node);
++}
++
  /**
   * Process a translation / rotation node. A transformation matrix based
   * on the node's translation and rotation is created and pushed on both
-@@ -342,21 +438,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
+@@ -342,21 +437,11 @@ static void geo_process_camera(struct GraphNodeCamera *node) {
  static void geo_process_translation_rotation(struct GraphNodeTranslationRotation *node) {
      Mat4 mtxf;
      Vec3f translation;
@@ -3077,7 +3210,7 @@ index 2343068..98c51ee 100644
  }
  
  /**
-@@ -365,23 +451,23 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
+@@ -365,23 +450,23 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_translation(struct GraphNodeTranslation *node) {
@@ -3116,7 +3249,7 @@ index 2343068..98c51ee 100644
  }
  
  /**
-@@ -391,20 +477,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
+@@ -391,20 +476,10 @@ static void geo_process_translation(struct GraphNodeTranslation *node) {
   */
  static void geo_process_rotation(struct GraphNodeRotation *node) {
      Mat4 mtxf;
@@ -3138,7 +3271,7 @@ index 2343068..98c51ee 100644
  }
  
  /**
-@@ -413,22 +489,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
+@@ -413,22 +488,11 @@ static void geo_process_rotation(struct GraphNodeRotation *node) {
   * For the rest it acts as a normal display list node.
   */
  static void geo_process_scale(struct GraphNodeScale *node) {
@@ -3162,7 +3295,7 @@ index 2343068..98c51ee 100644
  }
  
  /**
-@@ -439,12 +504,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
+@@ -439,12 +503,11 @@ static void geo_process_scale(struct GraphNodeScale *node) {
   */
  static void geo_process_billboard(struct GraphNodeBillboard *node) {
      Vec3f translation;
@@ -3176,17 +3309,27 @@ index 2343068..98c51ee 100644
      if (gCurGraphNodeHeldObject != NULL) {
          mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                           gCurGraphNodeHeldObject->objNode->header.gfx.scale);
-@@ -453,8 +517,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
+@@ -453,18 +516,7 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
                           gCurGraphNodeObject->scale);
      }
  
 -    mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
 -    gMatStackFixed[gMatStackIndex] = mtx;
-+    gMatStackFixed[gMatStackIndex] = NULL;
+-
+-    if (node->displayList != NULL) {
+-        geo_append_display_list(node->displayList, node->node.flags >> 8);
+-    }
+-
+-    if (node->node.children != NULL) {
+-        geo_process_node_and_siblings(node->node.children);
+-    }
+-
+-    gMatStackIndex--;
++    geo_finish_transform((struct GraphNodeDisplayList *) node);
+ }
  
-     if (node->displayList != NULL) {
-         geo_append_display_list(node->displayList, node->node.flags >> 8);
-@@ -541,13 +604,53 @@ static void geo_process_background(struct GraphNodeBackground *node) {
+ /**
+@@ -541,13 +593,53 @@ static void geo_process_background(struct GraphNodeBackground *node) {
   * Render an animated part. The current animation state is not part of the node
   * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
   */
@@ -3243,7 +3386,7 @@ index 2343068..98c51ee 100644
      vec3f_set(translation, node->translation[0], node->translation[1], node->translation[2]);
      if (gCurrAnimType == ANIM_TYPE_TRANSLATION) {
          translation[0] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
-@@ -587,18 +690,33 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
+@@ -587,18 +679,33 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
          rotation[1] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
          rotation[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
      }
@@ -3288,7 +3431,7 @@ index 2343068..98c51ee 100644
  }
  
  /**
-@@ -641,7 +759,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
+@@ -641,7 +748,6 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
   */
  static void geo_process_shadow(struct GraphNodeShadow *node) {
      Gfx *shadowList;
@@ -3296,7 +3439,7 @@ index 2343068..98c51ee 100644
      Vec3f shadowPos;
      Vec3f animOffset;
      f32 objScale;
-@@ -649,7 +766,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -649,7 +755,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
      f32 sinAng;
      f32 cosAng;
      struct GraphNode *geo;
@@ -3304,7 +3447,7 @@ index 2343068..98c51ee 100644
  
      if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
          if (gCurGraphNodeHeldObject != NULL) {
-@@ -680,8 +796,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -680,8 +785,7 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
                  gCurrAnimAttribute -= 6;
  
                  // simple matrix rotation so the shadow offset rotates along with the object
@@ -3314,7 +3457,7 @@ index 2343068..98c51ee 100644
  
                  shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
                  shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
-@@ -691,12 +806,19 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -691,12 +795,19 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
          shadowList = create_shadow_below_xyz(shadowPos[0], shadowPos[1], shadowPos[2], shadowScale,
                                               node->shadowSolidity, node->shadowType);
          if (shadowList != NULL) {
@@ -3339,7 +3482,7 @@ index 2343068..98c51ee 100644
              if (gShadowAboveWaterOrLava == TRUE) {
                  geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 4);
              } else if (gMarioOnIceOrCarpet == 1) {
-@@ -746,7 +868,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
+@@ -746,7 +857,6 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
   */
  static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      s16 cullingRadius;
@@ -3347,7 +3490,7 @@ index 2343068..98c51ee 100644
      struct GraphNode *geo;
      f32 hScreenEdge;
  
-@@ -755,26 +876,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -755,26 +865,14 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      }
  
      geo = node->sharedChild;
@@ -3376,7 +3519,7 @@ index 2343068..98c51ee 100644
      } else {
          cullingRadius = 300;
      }
-@@ -784,10 +893,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -784,10 +882,6 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
          return FALSE;
      }
  
@@ -3387,7 +3530,7 @@ index 2343068..98c51ee 100644
      if (matrix[3][2] < -20000.0f - cullingRadius) {
          return FALSE;
      }
-@@ -799,6 +904,27 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
+@@ -799,6 +893,27 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
      if (matrix[3][0] < -hScreenEdge - cullingRadius) {
          return FALSE;
      }
@@ -3415,7 +3558,7 @@ index 2343068..98c51ee 100644
      return TRUE;
  }
  
-@@ -810,33 +936,58 @@ static void geo_process_object(struct Object *node) {
+@@ -810,33 +925,58 @@ static void geo_process_object(struct Object *node) {
      s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
  
      if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
@@ -3493,7 +3636,7 @@ index 2343068..98c51ee 100644
              if (node->header.gfx.sharedChild != NULL) {
                  gCurGraphNodeObject = (struct GraphNodeObject *) node;
                  node->header.gfx.sharedChild->parent = &node->header.gfx.node;
-@@ -877,11 +1028,8 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
+@@ -877,11 +1017,8 @@ static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
  void geo_process_held_object(struct GraphNodeHeldObject *node) {
      Mat4 mat;
      Vec3f translation;
@@ -3506,7 +3649,7 @@ index 2343068..98c51ee 100644
  
      if (node->fnNode.func != NULL) {
          node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
-@@ -906,8 +1054,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
+@@ -906,8 +1043,7 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
                                (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
          }
          gMatStackIndex++;
@@ -3516,8 +3659,1249 @@ index 2343068..98c51ee 100644
          gGeoTempState.type = gCurrAnimType;
          gGeoTempState.enabled = gCurrAnimEnabled;
          gGeoTempState.frame = gCurrAnimFrame;
+diff --git c/src/game/rendering_graph_node.c.orig i/src/game/rendering_graph_node.c.orig
+new file mode 100644
+index 0000000..98c51ee
+--- /dev/null
++++ i/src/game/rendering_graph_node.c.orig
+@@ -0,0 +1,1235 @@
++#include <PR/ultratypes.h>
++
++#include "area.h"
++#include "engine/math_util.h"
++#include "game_init.h"
++#include "gfx_dimensions.h"
++#include "main.h"
++#include "memory.h"
++#include "object_list_processor.h"
++#include "print.h"
++#include "rendering_graph_node.h"
++#include "shadow.h"
++#include "sm64.h"
++
++/**
++ * This file contains the code that processes the scene graph for rendering.
++ * The scene graph is responsible for drawing everything except the HUD / text boxes.
++ * First the root of the scene graph is processed when geo_process_root
++ * is called from level_script.c. The rest of the tree is traversed recursively
++ * using the function geo_process_node_and_siblings, which switches over all
++ * geo node types and calls a specialized function accordingly.
++ * The types are defined in engine/graph_node.h
++ *
++ * The scene graph typically looks like:
++ * - Root (viewport)
++ *  - Master list
++ *   - Ortho projection
++ *    - Background (skybox)
++ *  - Master list
++ *   - Perspective
++ *    - Camera
++ *     - <area-specific display lists>
++ *     - Object parent
++ *      - <group with 240 object nodes>
++ *  - Master list
++ *   - Script node (Cannon overlay)
++ *
++ */
++
++s16 gMatStackIndex;
++ALIGNED16 Mat4 gMatStack[32];
++Mtx *gMatStackFixed[32];
++static f32 sFovTan = 0.0f;
++
++/**
++ * Animation nodes have state in global variables, so this struct captures
++ * the animation state so a 'context switch' can be made when rendering the
++ * held object.
++ */
++struct GeoAnimState {
++    /*0x00*/ u8 type;
++    /*0x01*/ u8 enabled;
++    /*0x02*/ s16 frame;
++    /*0x04*/ f32 translationMultiplier;
++    /*0x08*/ u16 *attribute;
++    /*0x0C*/ s16 *data;
++};
++
++// For some reason, this is a GeoAnimState struct, but the current state consists
++// of separate global variables. It won't match EU otherwise.
++struct GeoAnimState gGeoTempState;
++
++u8 gCurrAnimType;
++u8 gCurrAnimEnabled;
++s16 gCurrAnimFrame;
++f32 gCurrAnimTranslationMultiplier;
++u16 *gCurrAnimAttribute;
++s16 *gCurrAnimData;
++
++struct AllocOnlyPool *gDisplayListHeap;
++
++struct RenderModeContainer {
++    u32 modes[8];
++};
++
++/* Rendermode settings for cycle 1 for all 8 layers. */
++struct RenderModeContainer renderModeTable_1Cycle[2] = { { {
++    G_RM_OPA_SURF,
++    G_RM_AA_OPA_SURF,
++    G_RM_AA_OPA_SURF,
++    G_RM_AA_OPA_SURF,
++    G_RM_AA_TEX_EDGE,
++    G_RM_AA_XLU_SURF,
++    G_RM_AA_XLU_SURF,
++    G_RM_AA_XLU_SURF,
++    } },
++    { {
++    /* z-buffered */
++    G_RM_ZB_OPA_SURF,
++    G_RM_AA_ZB_OPA_SURF,
++    G_RM_AA_ZB_OPA_DECAL,
++    G_RM_AA_ZB_OPA_INTER,
++    G_RM_AA_ZB_TEX_EDGE,
++    G_RM_AA_ZB_XLU_SURF,
++    G_RM_AA_ZB_XLU_DECAL,
++    G_RM_AA_ZB_XLU_INTER,
++    } } };
++
++/* Rendermode settings for cycle 2 for all 8 layers. */
++struct RenderModeContainer renderModeTable_2Cycle[2] = { { {
++    G_RM_OPA_SURF2,
++    G_RM_AA_OPA_SURF2,
++    G_RM_AA_OPA_SURF2,
++    G_RM_AA_OPA_SURF2,
++    G_RM_AA_TEX_EDGE2,
++    G_RM_AA_XLU_SURF2,
++    G_RM_AA_XLU_SURF2,
++    G_RM_AA_XLU_SURF2,
++    } },
++    { {
++    /* z-buffered */
++    G_RM_ZB_OPA_SURF2,
++    G_RM_AA_ZB_OPA_SURF2,
++    G_RM_AA_ZB_OPA_DECAL2,
++    G_RM_AA_ZB_OPA_INTER2,
++    G_RM_AA_ZB_TEX_EDGE2,
++    G_RM_AA_ZB_XLU_SURF2,
++    G_RM_AA_ZB_XLU_DECAL2,
++    G_RM_AA_ZB_XLU_INTER2,
++    } } };
++
++struct GraphNodeRoot *gCurGraphNodeRoot = NULL;
++struct GraphNodeMasterList *gCurGraphNodeMasterList = NULL;
++struct GraphNodePerspective *gCurGraphNodeCamFrustum = NULL;
++struct GraphNodeCamera *gCurGraphNodeCamera = NULL;
++struct GraphNodeObject *gCurGraphNodeObject = NULL;
++struct GraphNodeHeldObject *gCurGraphNodeHeldObject = NULL;
++u16 gAreaUpdateCounter = 0;
++
++#ifdef F3DEX_GBI_2
++LookAt lookAt;
++#endif
++
++static s32 is_batchable_coin_dl(const void *dl) {
++    const Gfx *vdl;
++    if ((((uintptr_t) dl) >> 24) != 0x03U) {
++        return FALSE;
++    }
++    vdl = (const Gfx *) segmented_to_virtual(dl);
++    return ((vdl[0].words.w0 >> 24) == (u32) (G_SETTIMG & 0xFF))
++        && (vdl[1].words.w0 == ((u32) (G_DL & 0xFF) << 24))
++        && ((vdl[2].words.w0 >> 24) == (u32) (G_VTX & 0xFF))
++        && (vdl[3].words.w0 == (((u32) (G_DL & 0xFF) << 24) | 0x00010000U));
++}
++
++/**
++ * Process a master list node.
++ */
++static void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
++    struct DisplayListNode *currList;
++    Mtx *lastTransform = NULL;
++    s32 i;
++    s32 enableZBuffer = (node->node.flags & GRAPH_RENDER_Z_BUFFER) != 0;
++    struct RenderModeContainer *modeList = &renderModeTable_1Cycle[enableZBuffer];
++    struct RenderModeContainer *mode2List = &renderModeTable_2Cycle[enableZBuffer];
++
++#ifdef F3DEX_GBI_2
++    Mtx lMtx;
++    guLookAtReflect(&lMtx, &lookAt, 0, 0, 0, /* eye */ 0, 0, 1, /* at */ 1, 0, 0 /* up */);
++    gSPLookAt(gDisplayListHead++, &lookAt);
++#endif
++
++    if (enableZBuffer != 0) {
++        gDPPipeSync(gDisplayListHead++);
++        gSPSetGeometryMode(gDisplayListHead++, G_ZBUFFER);
++    }
++
++    for (i = 0; i < GFX_NUM_MASTER_LISTS; i++) {
++        if ((currList = node->listHeads[i]) != NULL) {
++            if (i == LAYER_ALPHA && enableZBuffer != 0) {
++                struct DisplayListNode *p = currList;
++                while (p != NULL) {
++                    if (is_batchable_coin_dl(p->displayList)) {
++                        struct DisplayListNode *prev = p;
++                        struct DisplayListNode *scan = p->next;
++                        struct DisplayListNode *ins = p;
++                        while (scan != NULL) {
++                            if (scan->displayList == p->displayList) {
++                                struct DisplayListNode *nextScan = scan->next;
++                                if (prev != ins) {
++                                    prev->next = nextScan;
++                                    scan->next = ins->next;
++                                    ins->next = scan;
++                                } else {
++                                    prev = scan;
++                                }
++                                ins = scan;
++                                scan = nextScan;
++                            } else {
++                                prev = scan;
++                                scan = scan->next;
++                            }
++                        }
++                        p = ins->next;
++                    } else {
++                        p = p->next;
++                    }
++                }
++            }
++
++            gDPSetRenderMode(gDisplayListHead++, modeList->modes[i], mode2List->modes[i]);
++            while (currList != NULL) {
++                if (i == LAYER_ALPHA && currList->next != NULL
++                    && currList->next->displayList == currList->displayList
++                    && is_batchable_coin_dl(currList->displayList)) {
++                    void *coinDl = currList->displayList;
++                    const Gfx *vdl = (const Gfx *) segmented_to_virtual(coinDl);
++
++                    *gDisplayListHead++ = vdl[0];
++                    *gDisplayListHead++ = vdl[1];
++                    while (currList != NULL && currList->displayList == coinDl) {
++                        s32 isLast = (currList->next == NULL || currList->next->displayList != coinDl);
++                        if (currList->transform != lastTransform) {
++                            lastTransform = currList->transform;
++                            gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(lastTransform),
++                                      G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++                        }
++                        *gDisplayListHead++ = vdl[2];
++                        if (isLast) {
++                            gSPDisplayList(gDisplayListHead++, vdl[3].words.w1);
++                        } else {
++                            gSP2Triangles(gDisplayListHead++, 0, 1, 2, 0x0, 0, 2, 3, 0x0);
++                        }
++                        currList = currList->next;
++                    }
++                    continue;
++                }
++
++                if (currList->transform != lastTransform) {
++                    lastTransform = currList->transform;
++                    gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(lastTransform),
++                              G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++                }
++                gSPDisplayList(gDisplayListHead++, currList->displayList);
++                currList = currList->next;
++            }
++        }
++    }
++    if (enableZBuffer != 0) {
++        gDPPipeSync(gDisplayListHead++);
++        gSPClearGeometryMode(gDisplayListHead++, G_ZBUFFER);
++    }
++}
++
++/**
++ * Appends the display list to one of the master lists based on the layer
++ * parameter. Look at the RenderModeContainer struct to see the corresponding
++ * render modes of layers.
++ */
++static void geo_append_display_list(void *displayList, s16 layer) {
++
++
++    if (gCurGraphNodeMasterList != 0) {
++        Mtx *mtx = gMatStackFixed[gMatStackIndex];
++        struct DisplayListNode *listNode =
++            alloc_only_pool_alloc(gDisplayListHeap, sizeof(struct DisplayListNode));
++
++        if (mtx == NULL) {
++            mtx = alloc_display_list(sizeof(*mtx));
++            mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
++            gMatStackFixed[gMatStackIndex] = mtx;
++        }
++        listNode->transform = mtx;
++        listNode->displayList = displayList;
++        listNode->next = 0;
++        if (gCurGraphNodeMasterList->listHeads[layer] == 0) {
++            gCurGraphNodeMasterList->listHeads[layer] = listNode;
++        } else {
++            gCurGraphNodeMasterList->listTails[layer]->next = listNode;
++        }
++        gCurGraphNodeMasterList->listTails[layer] = listNode;
++    }
++}
++
++/**
++ * Process the master list node.
++ */
++static void geo_process_master_list(struct GraphNodeMasterList *node) {
++    s32 i;
++    UNUSED u8 filler[4];
++
++    if (gCurGraphNodeMasterList == NULL && node->node.children != NULL) {
++        gCurGraphNodeMasterList = node;
++        for (i = 0; i < GFX_NUM_MASTER_LISTS; i++) {
++            node->listHeads[i] = NULL;
++        }
++        geo_process_node_and_siblings(node->node.children);
++        geo_process_master_list_sub(node);
++        gCurGraphNodeMasterList = NULL;
++    }
++}
++
++/**
++ * Process an orthographic projection node.
++ */
++static void geo_process_ortho_projection(struct GraphNodeOrthoProjection *node) {
++    if (node->node.children != NULL) {
++        Mtx *mtx = alloc_display_list(sizeof(*mtx));
++        f32 left = (gCurGraphNodeRoot->x - gCurGraphNodeRoot->width) / 2.0f * node->scale;
++        f32 right = (gCurGraphNodeRoot->x + gCurGraphNodeRoot->width) / 2.0f * node->scale;
++        f32 top = (gCurGraphNodeRoot->y - gCurGraphNodeRoot->height) / 2.0f * node->scale;
++        f32 bottom = (gCurGraphNodeRoot->y + gCurGraphNodeRoot->height) / 2.0f * node->scale;
++
++        guOrtho(mtx, left, right, bottom, top, -2.0f, 2.0f, 1.0f);
++        gSPPerspNormalize(gDisplayListHead++, 0xFFFF);
++        gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
++
++        geo_process_node_and_siblings(node->node.children);
++    }
++}
++
++/**
++ * Process a perspective projection node.
++ */
++static void geo_process_perspective(struct GraphNodePerspective *node) {
++    if (node->fnNode.func != NULL) {
++        node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
++    }
++    if (node->fnNode.node.children != NULL) {
++        u16 perspNorm;
++        s16 halfFov;
++        f32 sFov, cFov;
++        Mtx *mtx = alloc_display_list(sizeof(*mtx));
++
++#ifdef VERSION_EU
++        f32 aspect = ((f32) gCurGraphNodeRoot->width / (f32) gCurGraphNodeRoot->height) * 1.1f;
++#else
++        f32 aspect = (f32) gCurGraphNodeRoot->width / (f32) gCurGraphNodeRoot->height;
++#endif
++
++        guPerspective(mtx, &perspNorm, node->fov, aspect, node->near, node->far, 1.0f);
++        gSPPerspNormalize(gDisplayListHead++, perspNorm);
++
++        gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
++
++        halfFov = (node->fov / 2.0f + 1.0f) * 32768.0f / 180.0f + 0.5f;
++        sincoss_fast(halfFov, &sFov, &cFov);
++        sFovTan = sFov / cFov;
++
++        gCurGraphNodeCamFrustum = node;
++        geo_process_node_and_siblings(node->fnNode.node.children);
++        gCurGraphNodeCamFrustum = NULL;
++    }
++}
++
++/**
++ * Process a level of detail node. From the current transformation matrix,
++ * the perpendicular distance to the camera is extracted and the children
++ * of this node are only processed if that distance is within the render
++ * range of this node.
++ */
++static void geo_process_level_of_detail(struct GraphNodeLevelOfDetail *node) {
++    // No LOD (Kaze Emanuar, "How Optimizations made Mario 64 SLOWER"): always
++    // draw the near, full-detail branch; never the far low-detail alternatives.
++    if (node->minDistance <= 0) {
++        if (node->node.children != 0) {
++            geo_process_node_and_siblings(node->node.children);
++        }
++    }
++}
++
++/**
++ * Process a switch case node. The node's selection function is called
++ * if it is 0, and among the node's children, only the selected child is
++ * processed next.
++ */
++static void geo_process_switch(struct GraphNodeSwitchCase *node) {
++    struct GraphNode *selectedChild = node->fnNode.node.children;
++    s32 i;
++
++    if (node->fnNode.func != NULL) {
++        node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
++    }
++    for (i = 0; selectedChild != NULL && node->selectedCase > i; i++) {
++        selectedChild = selectedChild->next;
++    }
++    if (selectedChild != NULL) {
++        geo_process_node_and_siblings(selectedChild);
++    }
++}
++
++/**
++ * Process a camera node.
++ */
++// Camera roll cosine/sine for billboards, computed once per camera.
++static f32 sBillboardRollCos, sBillboardRollSin;
++
++static void geo_process_camera(struct GraphNodeCamera *node) {
++    Mat4 cameraTransform;
++    Mtx *rollMtx = alloc_display_list(sizeof(*rollMtx));
++
++    if (node->fnNode.func != NULL) {
++        node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
++    }
++    mtxf_rotate_xy(rollMtx, node->rollScreen);
++
++    gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(rollMtx), G_MTX_PROJECTION | G_MTX_MUL | G_MTX_NOPUSH);
++
++    mtxf_lookat(cameraTransform, node->pos, node->focus, node->roll);
++    mtxf_mul(gMatStack[gMatStackIndex + 1], cameraTransform, gMatStack[gMatStackIndex]);
++    gMatStackIndex++;
++    gMatStackFixed[gMatStackIndex] = NULL;
++    if (node->fnNode.node.children != 0) {
++        gCurGraphNodeCamera = node;
++        sBillboardRollCos = coss(node->roll);
++        sBillboardRollSin = sins(node->roll);
++        node->matrixPtr = &gMatStack[gMatStackIndex];
++        geo_process_node_and_siblings(node->fnNode.node.children);
++        gCurGraphNodeCamera = NULL;
++    }
++    gMatStackIndex--;
++}
++
++/**
++ * Shared tail of every transform node (Kaze Emanuar's code release outlines
++ * this so the renderer keeps one copy in the I-cache instead of six): push the
++ * matrix just written to gMatStack[gMatStackIndex + 1], draw the node's display
++ * list, recurse into its children, pop.
++ */
++static void __attribute__((noinline)) geo_push_and_process(struct GraphNodeDisplayList *node) {
++    gMatStackIndex++;
++    gMatStackFixed[gMatStackIndex] = NULL;
++    if (node->displayList != NULL) {
++        geo_append_display_list(node->displayList, node->node.flags >> 8);
++    }
++    if (node->node.children != NULL) {
++        geo_process_node_and_siblings(node->node.children);
++    }
++    gMatStackIndex--;
++}
++
++/**
++ * Process a translation / rotation node. A transformation matrix based
++ * on the node's translation and rotation is created and pushed on both
++ * the float and fixed point matrix stacks.
++ * For the rest it acts as a normal display list node.
++ */
++static void geo_process_translation_rotation(struct GraphNodeTranslationRotation *node) {
++    Mat4 mtxf;
++    Vec3f translation;
++
++    vec3s_to_vec3f(translation, node->translation);
++    mtxf_rotate_zxy_and_translate(mtxf, translation, node->rotation);
++    mtxf_mul(gMatStack[gMatStackIndex + 1], mtxf, gMatStack[gMatStackIndex]);
++    geo_push_and_process((struct GraphNodeDisplayList *) node);
++}
++
++/**
++ * Process a translation node. A transformation matrix based on the node's
++ * translation is created and pushed on both the float and fixed point matrix stacks.
++ * For the rest it acts as a normal display list node.
++ */
++static void geo_process_translation(struct GraphNodeTranslation *node) {
++    f32 tx = node->translation[0];
++    f32 ty = node->translation[1];
++    f32 tz = node->translation[2];
++    f32 (*src)[4] = gMatStack[gMatStackIndex];
++    f32 (*dst)[4] = gMatStack[gMatStackIndex + 1];
++    s32 r;
++
++    for (r = 0; r < 3; r++) {
++        dst[r][0] = src[r][0];
++        dst[r][1] = src[r][1];
++        dst[r][2] = src[r][2];
++    }
++    dst[3][0] = tx * src[0][0] + ty * src[1][0] + tz * src[2][0] + src[3][0];
++    dst[3][1] = tx * src[0][1] + ty * src[1][1] + tz * src[2][1] + src[3][1];
++    dst[3][2] = tx * src[0][2] + ty * src[1][2] + tz * src[2][2] + src[3][2];
++
++    geo_push_and_process((struct GraphNodeDisplayList *) node);
++}
++
++/**
++ * Process a rotation node. A transformation matrix based on the node's
++ * rotation is created and pushed on both the float and fixed point matrix stacks.
++ * For the rest it acts as a normal display list node.
++ */
++static void geo_process_rotation(struct GraphNodeRotation *node) {
++    Mat4 mtxf;
++
++    mtxf_rotate_zxy_and_translate(mtxf, gVec3fZero, node->rotation);
++    mtxf_mul(gMatStack[gMatStackIndex + 1], mtxf, gMatStack[gMatStackIndex]);
++    geo_push_and_process((struct GraphNodeDisplayList *) node);
++}
++
++/**
++ * Process a scaling node. A transformation matrix based on the node's
++ * scale is created and pushed on both the float and fixed point matrix stacks.
++ * For the rest it acts as a normal display list node.
++ */
++static void geo_process_scale(struct GraphNodeScale *node) {
++    Vec3f scaleVec;
++
++    vec3f_set(scaleVec, node->scale, node->scale, node->scale);
++    mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex], scaleVec);
++    geo_push_and_process((struct GraphNodeDisplayList *) node);
++}
++
++/**
++ * Process a billboard node. A transformation matrix is created that makes its
++ * children face the camera, and it is pushed on the floating point and fixed
++ * point matrix stacks.
++ * For the rest it acts as a normal display list node.
++ */
++static void geo_process_billboard(struct GraphNodeBillboard *node) {
++    Vec3f translation;
++
++    gMatStackIndex++;
++    vec3s_to_vec3f(translation, node->translation);
++    mtxf_billboard(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex - 1], translation,
++                   sBillboardRollCos, sBillboardRollSin);
++    if (gCurGraphNodeHeldObject != NULL) {
++        mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
++                         gCurGraphNodeHeldObject->objNode->header.gfx.scale);
++    } else if (gCurGraphNodeObject != NULL) {
++        mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
++                         gCurGraphNodeObject->scale);
++    }
++
++    gMatStackFixed[gMatStackIndex] = NULL;
++
++    if (node->displayList != NULL) {
++        geo_append_display_list(node->displayList, node->node.flags >> 8);
++    }
++
++    if (node->node.children != NULL) {
++        geo_process_node_and_siblings(node->node.children);
++    }
++
++    gMatStackIndex--;
++}
++
++/**
++ * Process a display list node. It draws a display list without first pushing
++ * a transformation on the stack, so all transformations are inherited from the
++ * parent node. It processes its children if it has them.
++ */
++static void geo_process_display_list(struct GraphNodeDisplayList *node) {
++    if (node->displayList != NULL) {
++        geo_append_display_list(node->displayList, node->node.flags >> 8);
++    }
++    if (node->node.children != NULL) {
++        geo_process_node_and_siblings(node->node.children);
++    }
++}
++
++/**
++ * Process a generated list. Instead of storing a pointer to a display list,
++ * the list is generated on the fly by a function.
++ */
++static void geo_process_generated_list(struct GraphNodeGenerated *node) {
++    if (node->fnNode.func != NULL) {
++        Gfx *list = node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node,
++                                     (struct AllocOnlyPool *) gMatStack[gMatStackIndex]);
++
++        if (list != NULL) {
++            geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(list), node->fnNode.node.flags >> 8);
++        }
++    }
++    if (node->fnNode.node.children != NULL) {
++        geo_process_node_and_siblings(node->fnNode.node.children);
++    }
++}
++
++/**
++ * Process a background node. Tries to retrieve a background display list from
++ * the function of the node. If that function is null or returns null, a black
++ * rectangle is drawn instead.
++ */
++static void geo_process_background(struct GraphNodeBackground *node) {
++    Gfx *list = NULL;
++
++    if (node->fnNode.func != NULL) {
++        list = node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node,
++                                 (struct AllocOnlyPool *) gMatStack[gMatStackIndex]);
++    }
++    if (list != NULL) {
++        geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(list), node->fnNode.node.flags >> 8);
++    } else if (gCurGraphNodeMasterList != NULL) {
++#ifndef F3DEX_GBI_2E
++        Gfx *gfxStart = alloc_display_list(sizeof(Gfx) * 7);
++#else
++        Gfx *gfxStart = alloc_display_list(sizeof(Gfx) * 8);
++#endif
++        Gfx *gfx = gfxStart;
++
++        gDPPipeSync(gfx++);
++        gDPSetCycleType(gfx++, G_CYC_FILL);
++        gDPSetFillColor(gfx++, node->background);
++        gDPFillRectangle(gfx++, GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(0), BORDER_HEIGHT,
++        GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(0) - 1, SCREEN_HEIGHT - BORDER_HEIGHT - 1);
++        gDPPipeSync(gfx++);
++        gDPSetCycleType(gfx++, G_CYC_1CYCLE);
++        gSPEndDisplayList(gfx++);
++
++        geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(gfxStart), 0);
++    }
++    if (node->fnNode.node.children != NULL) {
++        geo_process_node_and_siblings(node->fnNode.node.children);
++    }
++}
++
++/**
++ * Render an animated part. The current animation state is not part of the node
++ * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
++ */
++/**
++ * dest = R(rot) T(trans) * src in one pass (Kaze Emanuar, "Using ChatGPT to
++ * Optimize Mario 64", mtxf_rotrans_mul): no temporary matrix, and only the
++ * 3x3 rotation and the translation row are computed; the last column is the
++ * constant (0, 0, 0, 1) of an affine matrix. Each entry uses the same products
++ * in the same order as mtxf_rotate_xyz_and_translate followed by mtxf_mul.
++ */
++static void __attribute__((noinline)) mtxf_rotrans_mul(Mat4 dest, Mat4 src, Vec3f trans, Vec3s rot) {
++    f32 sx, cx, sy, cy, sz, cz;
++    f32 e0, e1, e2;
++    s32 j;
++
++    sincoss_fast(rot[0], &sx, &cx);
++    sincoss_fast(rot[1], &sy, &cy);
++    sincoss_fast(rot[2], &sz, &cz);
++
++    e0 = cy * cz;
++    e1 = cy * sz;
++    e2 = -sy;
++    for (j = 0; j < 3; j++) {
++        dest[0][j] = e0 * src[0][j] + e1 * src[1][j] + e2 * src[2][j];
++    }
++    e0 = sx * sy * cz - cx * sz;
++    e1 = sx * sy * sz + cx * cz;
++    e2 = sx * cy;
++    for (j = 0; j < 3; j++) {
++        dest[1][j] = e0 * src[0][j] + e1 * src[1][j] + e2 * src[2][j];
++    }
++    e0 = cx * sy * cz + sx * sz;
++    e1 = cx * sy * sz - sx * cz;
++    e2 = cx * cy;
++    for (j = 0; j < 3; j++) {
++        dest[2][j] = e0 * src[0][j] + e1 * src[1][j] + e2 * src[2][j];
++    }
++    for (j = 0; j < 3; j++) {
++        dest[3][j] = trans[0] * src[0][j] + trans[1] * src[1][j] + trans[2] * src[2][j];
++        dest[3][j] += src[3][j];
++    }
++}
++
++static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
++    Vec3s rotation;
++    Vec3f translation;
++
++    rotation[0] = 0;
++    rotation[1] = 0;
++    rotation[2] = 0;
++    vec3f_set(translation, node->translation[0], node->translation[1], node->translation[2]);
++    if (gCurrAnimType == ANIM_TYPE_TRANSLATION) {
++        translation[0] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                          * gCurrAnimTranslationMultiplier;
++        translation[1] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                          * gCurrAnimTranslationMultiplier;
++        translation[2] += gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                          * gCurrAnimTranslationMultiplier;
++        gCurrAnimType = ANIM_TYPE_ROTATION;
++    } else {
++        if (gCurrAnimType == ANIM_TYPE_LATERAL_TRANSLATION) {
++            translation[0] +=
++                gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                * gCurrAnimTranslationMultiplier;
++            gCurrAnimAttribute += 2;
++            translation[2] +=
++                gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                * gCurrAnimTranslationMultiplier;
++            gCurrAnimType = ANIM_TYPE_ROTATION;
++        } else {
++            if (gCurrAnimType == ANIM_TYPE_VERTICAL_TRANSLATION) {
++                gCurrAnimAttribute += 2;
++                translation[1] +=
++                    gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                    * gCurrAnimTranslationMultiplier;
++                gCurrAnimAttribute += 2;
++                gCurrAnimType = ANIM_TYPE_ROTATION;
++            } else if (gCurrAnimType == ANIM_TYPE_NO_TRANSLATION) {
++                gCurrAnimAttribute += 6;
++                gCurrAnimType = ANIM_TYPE_ROTATION;
++            }
++        }
++    }
++
++    if (gCurrAnimType == ANIM_TYPE_ROTATION) {
++        rotation[0] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
++        rotation[1] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
++        rotation[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)];
++    }
++
++    if ((rotation[0] | rotation[1] | rotation[2]) == 0) {
++        if (translation[0] == 0.0f && translation[1] == 0.0f && translation[2] == 0.0f) {
++            if (node->displayList != NULL) {
++                geo_append_display_list(node->displayList, node->node.flags >> 8);
++            }
++            if (node->node.children != NULL) {
++                geo_process_node_and_siblings(node->node.children);
++            }
++            return;
++        } else {
++            f32 (*src)[4] = gMatStack[gMatStackIndex];
++            f32 (*dst)[4] = gMatStack[gMatStackIndex + 1];
++            s32 r;
++            for (r = 0; r < 3; r++) {
++                dst[r][0] = src[r][0];
++                dst[r][1] = src[r][1];
++                dst[r][2] = src[r][2];
++            }
++            dst[3][0] = translation[0] * src[0][0] + translation[1] * src[1][0] + translation[2] * src[2][0] + src[3][0];
++            dst[3][1] = translation[0] * src[0][1] + translation[1] * src[1][1] + translation[2] * src[2][1] + src[3][1];
++            dst[3][2] = translation[0] * src[0][2] + translation[1] * src[1][2] + translation[2] * src[2][2] + src[3][2];
++        }
++    } else {
++        mtxf_rotrans_mul(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex], translation, rotation);
++    }
++    geo_push_and_process((struct GraphNodeDisplayList *) node);
++}
++
++/**
++ * Initialize the animation-related global variables for the currently drawn
++ * object's animation.
++ */
++void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
++    struct Animation *anim = node->curAnim;
++
++    if (hasAnimation) {
++        node->animFrame = geo_update_animation_frame(node, &node->animFrameAccelAssist);
++    }
++    node->animTimer = gAreaUpdateCounter;
++    if (anim->flags & ANIM_FLAG_HOR_TRANS) {
++        gCurrAnimType = ANIM_TYPE_VERTICAL_TRANSLATION;
++    } else if (anim->flags & ANIM_FLAG_VERT_TRANS) {
++        gCurrAnimType = ANIM_TYPE_LATERAL_TRANSLATION;
++    } else if (anim->flags & ANIM_FLAG_6) {
++        gCurrAnimType = ANIM_TYPE_NO_TRANSLATION;
++    } else {
++        gCurrAnimType = ANIM_TYPE_TRANSLATION;
++    }
++
++    gCurrAnimFrame = node->animFrame;
++    gCurrAnimEnabled = (anim->flags & ANIM_FLAG_5) == 0;
++    gCurrAnimAttribute = segmented_to_virtual((void *) anim->index);
++    gCurrAnimData = segmented_to_virtual((void *) anim->values);
++
++    if (anim->animYTransDivisor == 0) {
++        gCurrAnimTranslationMultiplier = 1.0f;
++    } else {
++        gCurrAnimTranslationMultiplier = (f32) node->animYTrans / (f32) anim->animYTransDivisor;
++    }
++}
++
++/**
++ * Process a shadow node. Renders a shadow under an object offset by the
++ * translation of the first animated component and rotated according to
++ * the floor below it.
++ */
++static void geo_process_shadow(struct GraphNodeShadow *node) {
++    Gfx *shadowList;
++    Vec3f shadowPos;
++    Vec3f animOffset;
++    f32 objScale;
++    f32 shadowScale;
++    f32 sinAng;
++    f32 cosAng;
++    struct GraphNode *geo;
++
++    if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
++        if (gCurGraphNodeHeldObject != NULL) {
++            get_pos_from_transform_mtx(shadowPos, gMatStack[gMatStackIndex],
++                                       *gCurGraphNodeCamera->matrixPtr);
++            shadowScale = node->shadowScale;
++        } else {
++            vec3f_copy(shadowPos, gCurGraphNodeObject->pos);
++            shadowScale = node->shadowScale * gCurGraphNodeObject->scale[0];
++        }
++
++        objScale = 1.0f;
++        if (gCurrAnimEnabled) {
++            if (gCurrAnimType == ANIM_TYPE_TRANSLATION
++                || gCurrAnimType == ANIM_TYPE_LATERAL_TRANSLATION) {
++                geo = node->node.children;
++                if (geo != NULL && geo->type == GRAPH_NODE_TYPE_SCALE) {
++                    objScale = ((struct GraphNodeScale *) geo)->scale;
++                }
++                animOffset[0] =
++                    gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                    * gCurrAnimTranslationMultiplier * objScale;
++                animOffset[1] = 0.0f;
++                gCurrAnimAttribute += 2;
++                animOffset[2] =
++                    gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)]
++                    * gCurrAnimTranslationMultiplier * objScale;
++                gCurrAnimAttribute -= 6;
++
++                // simple matrix rotation so the shadow offset rotates along with the object
++                sincoss_fast(gCurGraphNodeObject->angle[1], &sinAng, &cosAng);
++
++                shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
++                shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
++            }
++        }
++
++        shadowList = create_shadow_below_xyz(shadowPos[0], shadowPos[1], shadowPos[2], shadowScale,
++                                             node->shadowSolidity, node->shadowType);
++        if (shadowList != NULL) {
++            f32 (*cam)[4] = *gCurGraphNodeCamera->matrixPtr;
++            f32 (*dst)[4] = gMatStack[gMatStackIndex + 1];
++            s32 r;
++            gMatStackIndex++;
++            for (r = 0; r < 3; r++) {
++                dst[r][0] = cam[r][0];
++                dst[r][1] = cam[r][1];
++                dst[r][2] = cam[r][2];
++            }
++            dst[3][0] = shadowPos[0] * cam[0][0] + shadowPos[1] * cam[1][0] + shadowPos[2] * cam[2][0] + cam[3][0];
++            dst[3][1] = shadowPos[0] * cam[0][1] + shadowPos[1] * cam[1][1] + shadowPos[2] * cam[2][1] + cam[3][1];
++            dst[3][2] = shadowPos[0] * cam[0][2] + shadowPos[1] * cam[1][2] + shadowPos[2] * cam[2][2] + cam[3][2];
++            gMatStackFixed[gMatStackIndex] = NULL;
++            if (gShadowAboveWaterOrLava == TRUE) {
++                geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 4);
++            } else if (gMarioOnIceOrCarpet == 1) {
++                geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 5);
++            } else {
++                geo_append_display_list((void *) VIRTUAL_TO_PHYSICAL(shadowList), 6);
++            }
++            gMatStackIndex--;
++        }
++    }
++
++    if (node->node.children != NULL) {
++        geo_process_node_and_siblings(node->node.children);
++    }
++}
++
++/**
++ * Check whether an object is in view to determine whether it should be drawn.
++ * This is known as frustum culling.
++ * It checks whether the object is far away, very close / behind the camera,
++ * or horizontally out of view. It does not check whether it is vertically
++ * out of view. It assumes a sphere of 300 units around the object's position
++ * unless the object has a culling radius node that specifies otherwise.
++ *
++ * The matrix parameter should be the top of the matrix stack, which is the
++ * object's transformation matrix times the camera 'look-at' matrix. The math
++ * is counter-intuitive, but it checks column 3 (translation vector) of this
++ * matrix to determine where the origin (0,0,0) in object space will be once
++ * transformed to camera space (x+ = right, y+ = up, z = 'coming out the screen').
++ * In 3D graphics, you typically model the world as being moved in front of a
++ * static camera instead of a moving camera through a static world, which in
++ * this case simplifies calculations. Note that the perspective matrix is not
++ * on the matrix stack, so there are still calculations with the fov to compute
++ * the slope of the lines of the frustum.
++ *
++ *        z-
++ *
++ *  \     |     /
++ *   \    |    /
++ *    \   |   /
++ *     \  |  /
++ *      \ | /
++ *       \|/
++ *        C       x+
++ *
++ * Since (0,0,0) is unaffected by rotation, columns 0, 1 and 2 are ignored.
++ */
++static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
++    s16 cullingRadius;
++    struct GraphNode *geo;
++    f32 hScreenEdge;
++
++    if (node->node.flags & GRAPH_RENDER_INVISIBLE) {
++        return FALSE;
++    }
++
++    geo = node->sharedChild;
++    hScreenEdge = -matrix[3][2] * sFovTan;
++
++#ifdef WIDESCREEN
++    hScreenEdge *= GFX_DIMENSIONS_ASPECT_RATIO;
++#endif
++
++    if (geo != NULL && geo->type == GRAPH_NODE_TYPE_CULLING_RADIUS) {
++        cullingRadius = (s16) ((struct GraphNodeCullingRadius *) geo)->cullingRadius;
++    } else {
++        cullingRadius = 300;
++    }
++
++    // Don't render if the object is close to or behind the camera
++    if (matrix[3][2] > -100.0f + cullingRadius) {
++        return FALSE;
++    }
++
++    if (matrix[3][2] < -20000.0f - cullingRadius) {
++        return FALSE;
++    }
++
++    // Check whether the object is horizontally in view
++    if (matrix[3][0] > hScreenEdge + cullingRadius) {
++        return FALSE;
++    }
++    if (matrix[3][0] < -hScreenEdge - cullingRadius) {
++        return FALSE;
++    }
++
++    // Vertical test too (Kaze Emanuar, "How Optimizations made Mario 64
++    // SLOWER"): sFovTan is tan(fovy / 2 + 1 degree), the vertical half-extent.
++    // Some geo callbacks write game state while the object is drawn: Mario's
++    // (punch state, held-object hand position) and those that place an
++    // object's prevObj (sushi/Bowser collision children, Lakitu's Spiny,
++    // Monty Mole's rock, Mr. Blizzard's snowball, Mario held by Chuckya or
++    // King Bob-omb). Vanilla draws them whenever they are horizontally in
++    // view, so they keep the vanilla test. Also use a conservative vertical
++    // margin (at least 1200 units) because vanilla never culled vertically and
++    // tall level objects (e.g. WDW elevators/platforms) extend past the default
++    // 300-unit horizontal culling radius.
++    if ((struct Object *) node != gMarioObject && ((struct Object *) node)->prevObj == NULL) {
++        s16 vRadius = (cullingRadius < 1200) ? 1200 : cullingRadius;
++        if (matrix[3][1] > hScreenEdge + vRadius) {
++            return FALSE;
++        }
++        if (matrix[3][1] < -hScreenEdge - vRadius) {
++            return FALSE;
++        }
++    }
++    return TRUE;
++}
++
++/**
++ * Process an object node.
++ */
++static void geo_process_object(struct Object *node) {
++    Mat4 mtxf;
++    s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
++
++    if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
++        s32 isThrow = (node->header.gfx.throwMatrix != NULL);
++        f32 (*camMtx)[4] = gMatStack[gMatStackIndex];
++        f32 (*dstMtx)[4] = gMatStack[gMatStackIndex + 1];
++
++        if (!isThrow) {
++            f32 px = node->header.gfx.pos[0];
++            f32 py = node->header.gfx.pos[1];
++            f32 pz = node->header.gfx.pos[2];
++            dstMtx[3][0] = px * camMtx[0][0] + py * camMtx[1][0] + pz * camMtx[2][0] + camMtx[3][0];
++            dstMtx[3][1] = px * camMtx[0][1] + py * camMtx[1][1] + pz * camMtx[2][1] + camMtx[3][1];
++            dstMtx[3][2] = px * camMtx[0][2] + py * camMtx[1][2] + pz * camMtx[2][2] + camMtx[3][2];
++            node->header.gfx.cameraToObject[0] = dstMtx[3][0];
++            node->header.gfx.cameraToObject[1] = dstMtx[3][1];
++            node->header.gfx.cameraToObject[2] = dstMtx[3][2];
++
++            if (!obj_is_in_view(&node->header.gfx, dstMtx)) {
++                if (node->header.gfx.animInfo.curAnim != NULL) {
++                    if (hasAnimation) {
++                        node->header.gfx.animInfo.animFrame = geo_update_animation_frame(
++                            &node->header.gfx.animInfo, &node->header.gfx.animInfo.animFrameAccelAssist
++                        );
++                    }
++                    node->header.gfx.animInfo.animTimer = gAreaUpdateCounter;
++                }
++                gCurrAnimType = ANIM_TYPE_NONE;
++                node->header.gfx.throwMatrix = NULL;
++                return;
++            }
++
++            if (node->header.gfx.node.flags & GRAPH_RENDER_BILLBOARD) {
++                mtxf_billboard(dstMtx, camMtx, node->header.gfx.pos, sBillboardRollCos, sBillboardRollSin);
++            } else {
++                mtxf_rotate_zxy_and_translate(mtxf, node->header.gfx.pos, node->header.gfx.angle);
++                mtxf_mul(dstMtx, mtxf, camMtx);
++            }
++        } else {
++            mtxf_mul(dstMtx, *node->header.gfx.throwMatrix, camMtx);
++        }
++
++        mtxf_scale_vec3f(dstMtx, dstMtx, node->header.gfx.scale);
++        node->header.gfx.throwMatrix = &gMatStack[++gMatStackIndex];
++        if (isThrow) {
++            node->header.gfx.cameraToObject[0] = dstMtx[3][0];
++            node->header.gfx.cameraToObject[1] = dstMtx[3][1];
++            node->header.gfx.cameraToObject[2] = dstMtx[3][2];
++        }
++
++        if (node->header.gfx.animInfo.curAnim != NULL) {
++            geo_set_animation_globals(&node->header.gfx.animInfo, hasAnimation);
++        }
++        if (!isThrow || obj_is_in_view(&node->header.gfx, dstMtx)) {
++            gMatStackFixed[gMatStackIndex] = NULL;
++            if (node->header.gfx.sharedChild != NULL) {
++                gCurGraphNodeObject = (struct GraphNodeObject *) node;
++                node->header.gfx.sharedChild->parent = &node->header.gfx.node;
++                geo_process_node_and_siblings(node->header.gfx.sharedChild);
++                node->header.gfx.sharedChild->parent = NULL;
++                gCurGraphNodeObject = NULL;
++            }
++            if (node->header.gfx.node.children != NULL) {
++                geo_process_node_and_siblings(node->header.gfx.node.children);
++            }
++        }
++
++        gMatStackIndex--;
++        gCurrAnimType = ANIM_TYPE_NONE;
++        node->header.gfx.throwMatrix = NULL;
++    }
++}
++
++/**
++ * Process an object parent node. Temporarily assigns itself as the parent of
++ * the subtree rooted at 'sharedChild' and processes the subtree, after which the
++ * actual children are be processed. (in practice they are null though)
++ */
++static void geo_process_object_parent(struct GraphNodeObjectParent *node) {
++    if (node->sharedChild != NULL) {
++        node->sharedChild->parent = (struct GraphNode *) node;
++        geo_process_node_and_siblings(node->sharedChild);
++        node->sharedChild->parent = NULL;
++    }
++    if (node->node.children != NULL) {
++        geo_process_node_and_siblings(node->node.children);
++    }
++}
++
++/**
++ * Process a held object node.
++ */
++void geo_process_held_object(struct GraphNodeHeldObject *node) {
++    Mat4 mat;
++    Vec3f translation;
++
++
++
++    if (node->fnNode.func != NULL) {
++        node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node, gMatStack[gMatStackIndex]);
++    }
++    if (node->objNode != NULL && node->objNode->header.gfx.sharedChild != NULL) {
++        s32 hasAnimation = (node->objNode->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
++
++        translation[0] = node->translation[0] / 4.0f;
++        translation[1] = node->translation[1] / 4.0f;
++        translation[2] = node->translation[2] / 4.0f;
++
++        mtxf_translate(mat, translation);
++        mtxf_copy(gMatStack[gMatStackIndex + 1], *gCurGraphNodeObject->throwMatrix);
++        gMatStack[gMatStackIndex + 1][3][0] = gMatStack[gMatStackIndex][3][0];
++        gMatStack[gMatStackIndex + 1][3][1] = gMatStack[gMatStackIndex][3][1];
++        gMatStack[gMatStackIndex + 1][3][2] = gMatStack[gMatStackIndex][3][2];
++        mtxf_mul(gMatStack[gMatStackIndex + 1], mat, gMatStack[gMatStackIndex + 1]);
++        mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1],
++                         node->objNode->header.gfx.scale);
++        if (node->fnNode.func != NULL) {
++            node->fnNode.func(GEO_CONTEXT_HELD_OBJ, &node->fnNode.node,
++                              (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
++        }
++        gMatStackIndex++;
++        gMatStackFixed[gMatStackIndex] = NULL;
++        gGeoTempState.type = gCurrAnimType;
++        gGeoTempState.enabled = gCurrAnimEnabled;
++        gGeoTempState.frame = gCurrAnimFrame;
++        gGeoTempState.translationMultiplier = gCurrAnimTranslationMultiplier;
++        gGeoTempState.attribute = gCurrAnimAttribute;
++        gGeoTempState.data = gCurrAnimData;
++        gCurrAnimType = 0;
++        gCurGraphNodeHeldObject = (void *) node;
++        if (node->objNode->header.gfx.animInfo.curAnim != NULL) {
++            geo_set_animation_globals(&node->objNode->header.gfx.animInfo, hasAnimation);
++        }
++
++        geo_process_node_and_siblings(node->objNode->header.gfx.sharedChild);
++        gCurGraphNodeHeldObject = NULL;
++        gCurrAnimType = gGeoTempState.type;
++        gCurrAnimEnabled = gGeoTempState.enabled;
++        gCurrAnimFrame = gGeoTempState.frame;
++        gCurrAnimTranslationMultiplier = gGeoTempState.translationMultiplier;
++        gCurrAnimAttribute = gGeoTempState.attribute;
++        gCurrAnimData = gGeoTempState.data;
++        gMatStackIndex--;
++    }
++
++    if (node->fnNode.node.children != NULL) {
++        geo_process_node_and_siblings(node->fnNode.node.children);
++    }
++}
++
++/**
++ * Processes the children of the given GraphNode if it has any
++ */
++void geo_try_process_children(struct GraphNode *node) {
++    if (node->children != NULL) {
++        geo_process_node_and_siblings(node->children);
++    }
++}
++
++/**
++ * Process a generic geo node and its siblings.
++ * The first argument is the start node, and all its siblings will
++ * be iterated over.
++ */
++void geo_process_node_and_siblings(struct GraphNode *firstNode) {
++    s16 iterateChildren = TRUE;
++    struct GraphNode *curGraphNode = firstNode;
++    struct GraphNode *parent = curGraphNode->parent;
++
++    // In the case of a switch node, exactly one of the children of the node is
++    // processed instead of all children like usual
++    if (parent != NULL) {
++        iterateChildren = (parent->type != GRAPH_NODE_TYPE_SWITCH_CASE);
++    }
++
++    do {
++        if (curGraphNode->flags & GRAPH_RENDER_ACTIVE) {
++            if (curGraphNode->flags & GRAPH_RENDER_CHILDREN_FIRST) {
++                geo_try_process_children(curGraphNode);
++            } else {
++                switch (curGraphNode->type) {
++                    case GRAPH_NODE_TYPE_ORTHO_PROJECTION:
++                        geo_process_ortho_projection((struct GraphNodeOrthoProjection *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_PERSPECTIVE:
++                        geo_process_perspective((struct GraphNodePerspective *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_MASTER_LIST:
++                        geo_process_master_list((struct GraphNodeMasterList *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_LEVEL_OF_DETAIL:
++                        geo_process_level_of_detail((struct GraphNodeLevelOfDetail *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_SWITCH_CASE:
++                        geo_process_switch((struct GraphNodeSwitchCase *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_CAMERA:
++                        geo_process_camera((struct GraphNodeCamera *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_TRANSLATION_ROTATION:
++                        geo_process_translation_rotation(
++                            (struct GraphNodeTranslationRotation *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_TRANSLATION:
++                        geo_process_translation((struct GraphNodeTranslation *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_ROTATION:
++                        geo_process_rotation((struct GraphNodeRotation *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_OBJECT:
++                        geo_process_object((struct Object *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_ANIMATED_PART:
++                        geo_process_animated_part((struct GraphNodeAnimatedPart *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_BILLBOARD:
++                        geo_process_billboard((struct GraphNodeBillboard *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_DISPLAY_LIST:
++                        geo_process_display_list((struct GraphNodeDisplayList *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_SCALE:
++                        geo_process_scale((struct GraphNodeScale *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_SHADOW:
++                        geo_process_shadow((struct GraphNodeShadow *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_OBJECT_PARENT:
++                        geo_process_object_parent((struct GraphNodeObjectParent *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_GENERATED_LIST:
++                        geo_process_generated_list((struct GraphNodeGenerated *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_BACKGROUND:
++                        geo_process_background((struct GraphNodeBackground *) curGraphNode);
++                        break;
++                    case GRAPH_NODE_TYPE_HELD_OBJ:
++                        geo_process_held_object((struct GraphNodeHeldObject *) curGraphNode);
++                        break;
++                    default:
++                        geo_try_process_children((struct GraphNode *) curGraphNode);
++                        break;
++                }
++            }
++        } else {
++            if (curGraphNode->type == GRAPH_NODE_TYPE_OBJECT) {
++                ((struct GraphNodeObject *) curGraphNode)->throwMatrix = NULL;
++            }
++        }
++    } while (iterateChildren && (curGraphNode = curGraphNode->next) != firstNode);
++}
++
++/**
++ * Process a root node. This is the entry point for processing the scene graph.
++ * The root node itself sets up the viewport, then all its children are processed
++ * to set up the projection and draw display lists.
++ */
++void geo_process_root(struct GraphNodeRoot *node, Vp *b, Vp *c, s32 clearColor) {
++    UNUSED u8 filler[4];
++
++    if (node->node.flags & GRAPH_RENDER_ACTIVE) {
++        Mtx *initialMatrix;
++        Vp *viewport = alloc_display_list(sizeof(*viewport));
++
++        gDisplayListHeap = alloc_only_pool_init(main_pool_available() - sizeof(struct AllocOnlyPool),
++                                                MEMORY_POOL_LEFT);
++        initialMatrix = alloc_display_list(sizeof(*initialMatrix));
++        gMatStackIndex = 0;
++        gCurrAnimType = 0;
++        vec3s_set(viewport->vp.vtrans, node->x * 4, node->y * 4, 511);
++        vec3s_set(viewport->vp.vscale, node->width * 4, node->height * 4, 511);
++        if (b != NULL) {
++            clear_framebuffer(clearColor);
++            make_viewport_clip_rect(b);
++            *viewport = *b;
++        }
++
++        else if (c != NULL) {
++            clear_framebuffer(clearColor);
++            make_viewport_clip_rect(c);
++        }
++
++        mtxf_identity(gMatStack[gMatStackIndex]);
++        mtxf_to_mtx(initialMatrix, gMatStack[gMatStackIndex]);
++        gMatStackFixed[gMatStackIndex] = initialMatrix;
++        gSPViewport(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(viewport));
++        gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(gMatStackFixed[gMatStackIndex]),
++                  G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++        gCurGraphNodeRoot = node;
++        if (node->node.children != NULL) {
++            geo_process_node_and_siblings(node->node.children);
++        }
++        gCurGraphNodeRoot = NULL;
++        if (gShowDebugText) {
++            print_text_fmt_int(180, 36, "MEM %d",
++                               gDisplayListHeap->totalSpace - gDisplayListHeap->usedSpace);
++        }
++        main_pool_free(gDisplayListHeap);
++    }
++}
 diff --git c/src/game/shadow.c i/src/game/shadow.c
-index 5856272..6ad06c6 100644
+index 5856272..36625aa 100644
 --- c/src/game/shadow.c
 +++ i/src/game/shadow.c
 @@ -40,10 +40,16 @@ struct Shadow {
@@ -3665,7 +5049,7 @@ index 5856272..6ad06c6 100644
      }
      return 0;
  }
-@@ -358,8 +369,6 @@ void get_vertex_coords(s8 index, s8 shadowVertexType, s8 *xCoord, s8 *zCoord) {
+@@ -358,43 +369,23 @@ void get_vertex_coords(s8 index, s8 shadowVertexType, s8 *xCoord, s8 *zCoord) {
   */
  void calculate_vertex_xyz(s8 index, struct Shadow s, f32 *xPosVtx, f32 *yPosVtx, f32 *zPosVtx,
                            s8 shadowVertexType) {
@@ -3674,7 +5058,9 @@ index 5856272..6ad06c6 100644
      f32 halfScale;
      f32 halfTiltedScale;
      s8 xCoordUnit;
-@@ -369,29 +378,24 @@ void calculate_vertex_xyz(s8 index, struct Shadow s, f32 *xPosVtx, f32 *yPosVtx,
+     s8 zCoordUnit;
+-    struct FloorGeometry *dummy;
+-
      // This makes xCoordUnit and yCoordUnit each one of -1, 0, or 1.
      get_vertex_coords(index, shadowVertexType, &xCoordUnit, &zCoordUnit);
  
@@ -3691,29 +5077,41 @@ index 5856272..6ad06c6 100644
      if (gShadowAboveWaterOrLava) {
          *yPosVtx = s.floorHeight;
      } else {
-         switch (shadowVertexType) {
+-        switch (shadowVertexType) {
 -            /**
 -             * Note that this dichotomy is later overwritten in
 -             * make_shadow_vertex().
 -             */
-             case SHADOW_WITH_9_VERTS:
+-            case SHADOW_WITH_9_VERTS:
 -                // Clamp this vertex's y-position to that of the floor directly
 -                // below it, which may differ from the floor below the center
 -                // vertex.
 -                *yPosVtx = find_floor_height_and_data(*xPosVtx, s.parentY, *zPosVtx, &dummy);
-+                if (index == 4) {
-+                    *yPosVtx = s.floorHeight;
-+                } else {
-+                    *yPosVtx = find_floor_height(*xPosVtx, s.parentY, *zPosVtx);
-+                }
-                 break;
-             case SHADOW_WITH_4_VERTS:
+-                break;
+-            case SHADOW_WITH_4_VERTS:
 -                // Do not clamp. Instead, extrapolate the y-position of this
 -                // vertex based on the directly floor below the parent object.
-                 *yPosVtx = extrapolate_vertex_y_position(s, *xPosVtx, *zPosVtx);
-                 break;
-         }
-@@ -572,11 +576,11 @@ s8 correct_shadow_solidity_for_animations(s32 isLuigi, u8 initialSolidity, struc
+-                *yPosVtx = extrapolate_vertex_y_position(s, *xPosVtx, *zPosVtx);
+-                break;
+-        }
++        *yPosVtx = extrapolate_vertex_y_position(s, *xPosVtx, *zPosVtx);
+     }
+ }
+ 
+@@ -448,11 +439,7 @@ void make_shadow_vertex(Vtx *vertices, s8 index, struct Shadow s, s8 shadowVerte
+      * The gShadowAboveWaterOrLava check is redundant, since `floor_local_tilt`
+      * will always be 0 over water or lava (since they are always flat).
+      */
+-    if (shadowVertexType == SHADOW_WITH_9_VERTS && !gShadowAboveWaterOrLava
+-        && floor_local_tilt(s, xPosVtx, yPosVtx, zPosVtx) != 0) {
+-        yPosVtx = extrapolate_vertex_y_position(s, xPosVtx, zPosVtx);
+-        solidity = 0;
+-    }
++
+     relX = xPosVtx - s.parentX;
+     relY = yPosVtx - s.parentY;
+     relZ = zPosVtx - s.parentZ;
+@@ -572,11 +559,11 @@ s8 correct_shadow_solidity_for_animations(s32 isLuigi, u8 initialSolidity, struc
   */
  void correct_lava_shadow_height(struct Shadow *s) {
      if (gCurrLevelNum == LEVEL_BITFS && sSurfaceTypeBelowShadow == SURFACE_BURNING) {
@@ -3729,7 +5127,7 @@ index 5856272..6ad06c6 100644
              gShadowAboveWaterOrLava = TRUE;
          }
      } else if (gCurrLevelNum == LEVEL_LLL && gCurrAreaIndex == 1
-@@ -701,9 +705,8 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
+@@ -701,9 +688,8 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
                                                 u8 solidity) {
      Vtx *verts;
      Gfx *displayList;
@@ -3740,7 +5138,7 @@ index 5856272..6ad06c6 100644
      f32 radius = shadowScale / 2;
  
      if (floorHeight < FLOOR_LOWER_LIMIT_SHADOW) {
-@@ -735,22 +738,24 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
+@@ -735,22 +721,24 @@ Gfx *create_shadow_circle_assuming_flat_ground(f32 xPos, f32 yPos, f32 zPos, s16
  Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidity) {
      Vtx *verts = alloc_display_list(4 * sizeof(Vtx));
      Gfx *displayList = alloc_display_list(5 * sizeof(Gfx));
@@ -3775,7 +5173,7 @@ index 5856272..6ad06c6 100644
  
      add_shadow_to_display_list(displayList, verts, SHADOW_WITH_4_VERTS, SHADOW_SHAPE_SQUARE);
      return displayList;
-@@ -761,9 +766,8 @@ Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidit
+@@ -761,9 +749,8 @@ Gfx *create_shadow_rectangle(f32 halfWidth, f32 halfLength, f32 relY, u8 solidit
   * value is 200. Return 0 if a shadow should be drawn, 1 if not.
   */
  s32 get_shadow_height_solidity(f32 xPos, f32 yPos, f32 zPos, f32 *shadowHeight, u8 *solidity) {
@@ -3786,7 +5184,7 @@ index 5856272..6ad06c6 100644
  
      if (*shadowHeight < FLOOR_LOWER_LIMIT_SHADOW) {
          return 1;
-@@ -853,7 +857,8 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
+@@ -853,7 +840,8 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
                               s8 shadowType) {
      Gfx *displayList = NULL;
      struct Surface *pfloor;
@@ -3796,7 +5194,7 @@ index 5856272..6ad06c6 100644
  
      gShadowAboveWaterOrLava = FALSE;
      gMarioOnIceOrCarpet = 0;
-@@ -864,6 +869,9 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
+@@ -864,6 +852,9 @@ Gfx *create_shadow_below_xyz(f32 xPos, f32 yPos, f32 zPos, s16 shadowScale, u8 s
          }
          sSurfaceTypeBelowShadow = pfloor->type;
      }
@@ -3807,7 +5205,7 @@ index 5856272..6ad06c6 100644
          case SHADOW_CIRCLE_9_VERTS:
              displayList = create_shadow_circle_9_verts(xPos, yPos, zPos, shadowScale, shadowSolidity);
 diff --git c/src/game/skybox.c i/src/game/skybox.c
-index 055d1ce..9c58140 100644
+index 055d1ce..790e68b 100644
 --- c/src/game/skybox.c
 +++ i/src/game/skybox.c
 @@ -137,11 +137,8 @@ u8 sSkyboxColors[][3] = {
@@ -3845,7 +5243,7 @@ index 055d1ce..9c58140 100644
      s32 roundedY = round_float(degreesToScale);
  
      // Since pitch can be negative, and the tile grid starts 1 octant above the camera's focus, add
-@@ -220,15 +208,28 @@ Vtx *make_skybox_rect(s32 tileIndex, s8 colorIndex) {
+@@ -220,17 +208,30 @@ Vtx *make_skybox_rect(s32 tileIndex, s8 colorIndex) {
  void draw_skybox_tile_grid(Gfx **dlist, s8 background, s8 player, s8 colorIndex) {
      s32 row;
      s32 col;
@@ -3876,8 +5274,20 @@ index 055d1ce..9c58140 100644
 +            gDPLoadSync((*dlist)++);
 +            gDPLoadBlock((*dlist)++, G_TX_LOADTILE, 0, 0, 32 * 32 - 1, CALC_DXT(32, G_IM_SIZ_16b_BYTES));
              gSPVertex((*dlist)++, VIRTUAL_TO_PHYSICAL(vertices), 4, 0);
-             gSPDisplayList((*dlist)++, dl_draw_quad_verts_0123);
+-            gSPDisplayList((*dlist)++, dl_draw_quad_verts_0123);
++            gSP2Triangles((*dlist)++, 0, 1, 2, 0, 0, 2, 3, 0);
          }
+     }
+ }
+@@ -264,7 +265,7 @@ void *create_skybox_ortho_matrix(s8 player) {
+  * Creates the skybox's display list, then draws the 3x3 grid of tiles.
+  */
+ Gfx *init_skybox_display_list(s8 player, s8 background, s8 colorIndex) {
+-    s32 dlCommandCount = 5 + (3 * 3) * 7; // 5 for the start and end, plus 9 skybox tiles
++    s32 dlCommandCount = 5 + (3 * 3) * 5; // 5 for the start and end, plus 9 skybox tiles
+     void *skybox = alloc_display_list(dlCommandCount * sizeof(Gfx));
+     Gfx *dlist = skybox;
+ 
 diff --git c/src/game/spawn_object.c i/src/game/spawn_object.c
 index 4cc1636..33e3044 100644
 --- c/src/game/spawn_object.c

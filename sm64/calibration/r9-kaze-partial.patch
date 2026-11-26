@@ -1,7 +1,7 @@
-diff --git a/Makefile b/Makefile
-index 7a6eab1..fe0900a 100644
---- a/Makefile
-+++ b/Makefile
+diff --git c/Makefile i/Makefile
+index 074d3be..f0ff56b 100644
+--- c/Makefile
++++ i/Makefile
 @@ -23,7 +23,7 @@ TARGET_N64 ?= 1
  #   ido - uses the SGI IRIS Development Option compiler, which is used to build
  #         an original matching N64 ROM
@@ -20,7 +20,7 @@ index 7a6eab1..fe0900a 100644
  endif
  
  
-@@ -876,6 +876,23 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
+@@ -879,6 +879,23 @@ $(BUILD_DIR)/src/audio/%.copt: $(BUILD_DIR)/src/audio/%.acpp
  	$(COPT) -signed -I=$< -CMP=$@ -cp=i -scalaroptimize=1 $(COPTFLAGS)
  $(BUILD_DIR)/src/audio/seqplayer.copt: COPTFLAGS := -inline_manual
  
@@ -44,10 +44,10 @@ index 7a6eab1..fe0900a 100644
  endif
  
  # Assemble assembly code
-diff --git a/actors/coin/model.inc.c b/actors/coin/model.inc.c
+diff --git c/actors/coin/model.inc.c i/actors/coin/model.inc.c
 index dcb637d..745eccc 100644
---- a/actors/coin/model.inc.c
-+++ b/actors/coin/model.inc.c
+--- c/actors/coin/model.inc.c
++++ i/actors/coin/model.inc.c
 @@ -69,7 +69,6 @@ const Gfx coin_seg3_dl_030077D0[] = {
  
  // 0x03007800 - 0x03007828
@@ -144,10 +144,10 @@ index dcb637d..745eccc 100644
      gsDPSetTextureImage(G_IM_FMT_IA, G_IM_SIZ_16b, 1, coin_seg3_texture_03006F80),
      gsSPDisplayList(coin_seg3_dl_03007780),
      gsSPVertex(coin_seg3_vertex_03005740, 4, 0),
-diff --git a/bin/segment2.c b/bin/segment2.c
+diff --git c/bin/segment2.c i/bin/segment2.c
 index 7f69dc3..8f02cef 100644
---- a/bin/segment2.c
-+++ b/bin/segment2.c
+--- c/bin/segment2.c
++++ i/bin/segment2.c
 @@ -12241,7 +12241,7 @@ const Gfx dl_draw_quad_verts_4567[] = {
  
  const Gfx dl_shadow_begin[] = {
@@ -174,10 +174,10 @@ index 7f69dc3..8f02cef 100644
      gsDPSetTile(G_IM_FMT_RGBA, G_IM_SIZ_16b, 8, 0, G_TX_RENDERTILE, 0, G_TX_CLAMP, 5, G_TX_NOLOD, G_TX_CLAMP, 5, G_TX_NOLOD),
      gsDPSetTileSize(0, 0, 0, (32 - 1) << G_TEXTURE_IMAGE_FRAC, (32 - 1) << G_TEXTURE_IMAGE_FRAC),
      gsSPEndDisplayList(),
-diff --git a/include/PR/gbi.h b/include/PR/gbi.h
+diff --git c/include/PR/gbi.h i/include/PR/gbi.h
 index ebfab07..dfe735b 100644
---- a/include/PR/gbi.h
-+++ b/include/PR/gbi.h
+--- c/include/PR/gbi.h
++++ i/include/PR/gbi.h
 @@ -943,8 +943,8 @@
  	RM_AA_ZB_XLU_SURF(clk) | Z_UPD
  
@@ -200,10 +200,10 @@ index ebfab07..dfe735b 100644
  #define	G_RM_AA_XLU_SURF	RM_AA_XLU_SURF(1)
  #define	G_RM_AA_XLU_SURF2	RM_AA_XLU_SURF(2)
  #define	G_RM_AA_XLU_LINE	RM_AA_XLU_LINE(1)
-diff --git a/include/types.h b/include/types.h
+diff --git c/include/types.h i/include/types.h
 index e53fb7d..d0d4822 100644
---- a/include/types.h
-+++ b/include/types.h
+--- c/include/types.h
++++ i/include/types.h
 @@ -219,23 +219,32 @@ struct Waypoint {
  };
  
@@ -249,10 +249,10 @@ index e53fb7d..d0d4822 100644
  
  struct MarioBodyState {
      /*0x00*/ u32 action;
-diff --git a/sm64.ld b/sm64.ld
+diff --git c/sm64.ld i/sm64.ld
 index c88b5c0..1c6856c 100755
---- a/sm64.ld
-+++ b/sm64.ld
+--- c/sm64.ld
++++ i/sm64.ld
 @@ -162,6 +162,9 @@ SECTIONS
          BUILD_DIR/src/game/save_file.o(.text);
          BUILD_DIR/src/game/area.o(.text);
@@ -296,10 +296,10 @@ index c88b5c0..1c6856c 100755
          BUILD_DIR/src/engine/graph_node_manager.o(.text);
          BUILD_DIR/src/engine/geo_layout.o(.text);
          BUILD_DIR/src/engine/level_script.o(.text);
-diff --git a/src/engine/behavior_script.c b/src/engine/behavior_script.c
+diff --git c/src/engine/behavior_script.c i/src/engine/behavior_script.c
 index 3d2fea1..7b0a6a0 100644
---- a/src/engine/behavior_script.c
-+++ b/src/engine/behavior_script.c
+--- c/src/engine/behavior_script.c
++++ i/src/engine/behavior_script.c
 @@ -71,8 +71,9 @@ u16 random_u16(void) {
  
  // Generate a pseudorandom float in the range [0, 1).
@@ -312,10 +312,10 @@ index 3d2fea1..7b0a6a0 100644
  }
  
  // Return either -1 or 1 with a 50:50 chance.
-diff --git a/src/engine/graph_node.c b/src/engine/graph_node.c
+diff --git c/src/engine/graph_node.c i/src/engine/graph_node.c
 index 66b49b2..3ce51f5 100644
---- a/src/engine/graph_node.c
-+++ b/src/engine/graph_node.c
+--- c/src/engine/graph_node.c
++++ i/src/engine/graph_node.c
 @@ -557,6 +557,9 @@ struct GraphNode *geo_remove_child(struct GraphNode *graphNode) {
      struct GraphNode **firstChild;
  
@@ -342,30 +342,65 @@ index 66b49b2..3ce51f5 100644
      graphNode->node.flags &= ~GRAPH_RENDER_ACTIVE;
  }
  
-diff --git a/src/engine/math_util.c b/src/engine/math_util.c
-index 72fa625..3f878c4 100644
---- a/src/engine/math_util.c
-+++ b/src/engine/math_util.c
-@@ -5,7 +5,43 @@
+diff --git c/src/engine/math_util.c i/src/engine/math_util.c
+index 72fa625..52d7b04 100644
+--- c/src/engine/math_util.c
++++ i/src/engine/math_util.c
+@@ -5,7 +5,79 @@
  #include "math_util.h"
  #include "surface_collision.h"
  
 -#include "trig_tables.inc.c"
-+/* Table-free octant minimax polynomial trig (0 bytes of sin/cos D-cache LUTs, <=1 ULP error). */
++/* Table-free octant minimax polynomial trig (Kaze Emanuar: no 20 KB sin/cos
++ * D-cache LUT). The polynomials are within 1 ULP of vanilla gSineTable; the
++ * two bitmaps below (512 bytes, generated from include/trig_tables.inc.c by
++ * evaluating these exact float32 expressions) correct the 901 entries that
++ * differ, so every result is bit-identical to the vanilla table. Index [0] is
++ * the odd (sin) polynomial, [1] the even (cos) one, bit k the octant offset.
++ * Negation is 0.0f - v so sin(0x8000) stays +0.0f like the table. */
++static const u32 sTrigUlpDown[2][32] = {
++    { 0x1260EBA3U, 0x00949482U, 0x98C36081U, 0x908DC1B9U, 0x8D24D078U, 0xBCC67806U, 0x88BFFEBEU, 0x192E8BABU,
++      0x4426D42BU, 0xB04000AAU, 0xE794C101U, 0x6190268DU, 0x80B50CBCU, 0x55B3D927U, 0x086085F2U, 0x84686044U,
++      0x440C2C42U, 0x9F420C20U, 0xC9379B54U, 0x7A615A03U, 0x62C8130CU, 0x010653CFU, 0xAA00041BU, 0xA856C844U,
++      0xABA2E931U, 0xFAFFFA23U, 0xC03CC67AU, 0x3C164962U, 0x3B076212U, 0x020D8633U, 0x82525201U, 0x8BAE0C90U },
++    { 0xDF76A840U, 0xFF53ABDDU, 0x5237D3C1U, 0x400019C2U, 0x00000000U, 0x00030000U, 0xD8500000U, 0x7A20A4CEU,
++      0xFF64B75FU, 0xFFFDFF7FU, 0x9FFFFFBDU, 0xC5FFFFEFU, 0xC1DA73F3U, 0x483A64D4U, 0x1031B400U, 0x00000100U,
++      0x01000000U, 0x005B1810U, 0x564CB824U, 0x9F9CB706U, 0xEFFFFF47U, 0x7BFFFFF3U, 0xFDFF7FFFU, 0xF5DA4DFFU,
++      0xE64A08BDU, 0x00001436U, 0x00018000U, 0x00000000U, 0x87300004U, 0x0797D894U, 0x77AB95FFU, 0x042ADDF7U },
++};
++static const u32 sTrigUlpUp[2][32] = {
++    { 0 },
++    { 0x00000100U, 0x00000000U, 0x00000000U, 0x90400000U, 0x00010010U, 0x00000810U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U, 0x00000000U,
++      0x00000000U, 0x00000000U, 0x10200000U, 0x10010000U, 0x00000412U, 0x00000000U, 0x00000000U, 0x01000000U },
++};
++
++static f32 trig_fix(f32 v, u32 kind, u32 k) {
++    union { f32 f; u32 u; } bits;
++    u32 w = k >> 5;
++    u32 b = k & 31U;
++
++    bits.f = v;
++    bits.u += ((sTrigUlpUp[kind][w] >> b) & 1U) - ((sTrigUlpDown[kind][w] >> b) & 1U);
++    return bits.f;
++}
++
 +f32 sins_fast(s16 x) {
 +    u32 idx = ((u32) (u16) x) >> 4;
 +    u32 sidx = (idx + 0x200U) & 0xFFFU;
 +    u32 quad = sidx >> 10;
-+    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    u32 k = sidx & 0x3FFU;
++    f32 ft = (f32) (((s32) k) - 0x200) * (1.0f / 512.0f);
 +    f32 fu = ft * ft;
 +    f32 v;
 +
 +    if (quad & 1U) {
-+        v = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++        v = trig_fix(1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f)), 1, k);
 +    } else {
-+        v = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
++        v = trig_fix(ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f))), 0, k);
 +    }
-+    return (quad >= 2U) ? -v : v;
++    return (quad >= 2U) ? 0.0f - v : v;
 +}
 +
 +f32 coss_fast(s16 x) {
@@ -376,22 +411,23 @@ index 72fa625..3f878c4 100644
 +    u32 idx = ((u32) (u16) x) >> 4;
 +    u32 sidx = (idx + 0x200U) & 0xFFFU;
 +    u32 quad = sidx >> 10;
-+    f32 ft = (f32) (((s32) (sidx & 0x3FFU)) - 0x200) * (1.0f / 512.0f);
++    u32 k = sidx & 0x3FFU;
++    f32 ft = (f32) (((s32) k) - 0x200) * (1.0f / 512.0f);
 +    f32 fu = ft * ft;
-+    f32 sn = ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f)));
-+    f32 co = 1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f));
++    f32 sn = trig_fix(ft * (7.853981853e-01f + fu * (-8.074543625e-02f + fu * (2.490006853e-03f + fu * -3.595429007e-05f))), 0, k);
++    f32 co = trig_fix(1.0f + fu * (-3.084242642e-01f + fu * (1.584991068e-02f + fu * -3.188774863e-04f)), 1, k);
 +
 +    switch (quad) {
-+        case 0:  *outSin =  sn; *outCos =  co; break;
-+        case 1:  *outSin =  co; *outCos = -sn; break;
-+        case 2:  *outSin = -sn; *outCos = -co; break;
-+        default: *outSin = -co; *outCos =  sn; break;
++        case 0:  *outSin = sn;        *outCos = co;        break;
++        case 1:  *outSin = co;        *outCos = 0.0f - sn; break;
++        case 2:  *outSin = 0.0f - sn; *outCos = 0.0f - co; break;
++        default: *outSin = 0.0f - co; *outCos = sn;        break;
 +    }
 +}
  
  // Variables for a spline curve animation (used for the flight path in the grand star cutscene)
  Vec4s *gSplineKeyframe;
-@@ -26,10 +62,11 @@ int gSplineState;
+@@ -26,10 +98,11 @@ int gSplineState;
  
  /// Copy vector 'src' to 'dest'
  void *vec3f_copy(Vec3f dest, Vec3f src) {
@@ -407,7 +443,7 @@ index 72fa625..3f878c4 100644
  }
  
  /// Set vector 'dest' to (x, y, z)
-@@ -37,31 +74,34 @@ void *vec3f_set(Vec3f dest, f32 x, f32 y, f32 z) {
+@@ -37,31 +110,34 @@ void *vec3f_set(Vec3f dest, f32 x, f32 y, f32 z) {
      dest[0] = x;
      dest[1] = y;
      dest[2] = z;
@@ -455,7 +491,7 @@ index 72fa625..3f878c4 100644
  }
  
  /// Set vector 'dest' to (x, y, z)
-@@ -69,7 +109,7 @@ void *vec3s_set(Vec3s dest, s16 x, s16 y, s16 z) {
+@@ -69,7 +145,7 @@ void *vec3s_set(Vec3s dest, s16 x, s16 y, s16 z) {
      dest[0] = x;
      dest[1] = y;
      dest[2] = z;
@@ -464,7 +500,7 @@ index 72fa625..3f878c4 100644
  }
  
  /// Add vector a to 'dest'
-@@ -164,15 +204,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
+@@ -164,15 +240,11 @@ void mtxf_copy(Mat4 dest, Mat4 src) {
   * Set mtx to the identity matrix
   */
  void mtxf_identity(Mat4 mtx) {
@@ -485,7 +521,7 @@ index 72fa625..3f878c4 100644
  }
  
  /**
-@@ -208,19 +244,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -208,19 +280,19 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      dx = to[0] - from[0];
      dz = to[2] - from[2];
  
@@ -510,7 +546,7 @@ index 72fa625..3f878c4 100644
      xColZ *= invLength;
      yColZ *= invLength;
      zColZ *= invLength;
-@@ -229,7 +265,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -229,7 +301,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColX = zColY * xColZ - xColY * zColZ;
      zColX = xColY * yColZ - yColY * xColZ;
  
@@ -519,7 +555,7 @@ index 72fa625..3f878c4 100644
  
      xColX *= invLength;
      yColX *= invLength;
-@@ -239,7 +275,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -239,7 +311,7 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
      yColY = zColZ * xColX - xColZ * zColX;
      zColY = xColZ * yColX - yColZ * xColX;
  
@@ -528,7 +564,7 @@ index 72fa625..3f878c4 100644
      xColY *= invLength;
      yColY *= invLength;
      zColY *= invLength;
-@@ -270,14 +306,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
+@@ -270,14 +342,11 @@ void mtxf_lookat(Mat4 mtx, Vec3f from, Vec3f to, s16 roll) {
   * axis, and then translates.
   */
  void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
@@ -547,7 +583,7 @@ index 72fa625..3f878c4 100644
  
      dest[0][0] = cy * cz + sx * sy * sz;
      dest[1][0] = -cy * sz + sx * sy * cz;
-@@ -303,14 +336,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
+@@ -303,14 +372,11 @@ void mtxf_rotate_zxy_and_translate(Mat4 dest, Vec3f translate, Vec3s rotate) {
   * axis, and then translates.
   */
  void mtxf_rotate_xyz_and_translate(Mat4 dest, Vec3f b, Vec3s c) {
@@ -566,7 +602,7 @@ index 72fa625..3f878c4 100644
  
      dest[0][0] = cy * cz;
      dest[0][1] = cy * sz;
-@@ -490,46 +520,40 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
+@@ -490,46 +556,40 @@ void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius) {
   */
  void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b) {
      Mat4 temp;
@@ -642,7 +678,7 @@ index 72fa625..3f878c4 100644
  }
  
  /**
-@@ -571,23 +595,29 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
+@@ -571,23 +631,29 @@ void mtxf_mul_vec3s(Mat4 mtx, Vec3s b) {
   * and no crashes occur.
   */
  void mtxf_to_mtx(Mtx *dest, Mat4 src) {
@@ -686,7 +722,7 @@ index 72fa625..3f878c4 100644
  }
  
  /**
-@@ -695,15 +725,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
+@@ -695,15 +761,39 @@ f32 approach_f32(f32 current, f32 target, f32 inc, f32 dec) {
   * Helper function for atan2s. Does a look up of the arctangent of y/x assuming
   * the resulting angle is in range [0, 0x2000] (1/8 of a circle).
   */
@@ -733,10 +769,10 @@ index 72fa625..3f878c4 100644
  }
  
  /**
-diff --git a/src/engine/math_util.h b/src/engine/math_util.h
+diff --git c/src/engine/math_util.h i/src/engine/math_util.h
 index cb37d52..e698b5e 100644
---- a/src/engine/math_util.h
-+++ b/src/engine/math_util.h
+--- c/src/engine/math_util.h
++++ i/src/engine/math_util.h
 @@ -17,15 +17,12 @@
   * exploits array sizes for range analysis-based optimizations as well).
   * Thus, for non-IDO compilers we use the standard-compliant version.
@@ -758,10 +794,10 @@ index cb37d52..e698b5e 100644
  
  #define min(a, b) ((a) <= (b) ? (a) : (b))
  #define max(a, b) ((a) > (b) ? (a) : (b))
-diff --git a/src/engine/surface_collision.c b/src/engine/surface_collision.c
+diff --git c/src/engine/surface_collision.c i/src/engine/surface_collision.c
 index 741307b..4f09cbf 100644
---- a/src/engine/surface_collision.c
-+++ b/src/engine/surface_collision.c
+--- c/src/engine/surface_collision.c
++++ i/src/engine/surface_collision.c
 @@ -57,8 +57,8 @@ static s32 find_wall_collisions_from_list(struct SurfaceNode *surfaceNode,
          //  the fact they are floating point, certain floating point positions
          //  along the seam of two walls may collide with neither wall or both walls.
@@ -890,10 +926,10 @@ index 741307b..4f09cbf 100644
  
      // To prevent the Merry-Go-Round room from loading when Mario passes above the hole that leads
      // there, SURFACE_INTANGIBLE is used. This prevent the wrong room from loading, but can also allow
-diff --git a/src/engine/surface_load.c b/src/engine/surface_load.c
+diff --git c/src/engine/surface_load.c i/src/engine/surface_load.c
 index 8437bf0..e5653cc 100644
---- a/src/engine/surface_load.c
-+++ b/src/engine/surface_load.c
+--- c/src/engine/surface_load.c
++++ i/src/engine/surface_load.c
 @@ -11,10 +11,36 @@
  #include "surface_collision.h"
  #include "game/mario.h"
@@ -1177,10 +1213,25 @@ index 8437bf0..e5653cc 100644
          }
      }
  
-diff --git a/src/game/behaviors/bubble.inc.c b/src/game/behaviors/bubble.inc.c
+diff --git c/src/game/area.c i/src/game/area.c
+index 0c56be3..8214b7c 100644
+--- c/src/game/area.c
++++ i/src/game/area.c
+@@ -167,6 +167,10 @@ void load_obj_warp_nodes(void) {
+     struct ObjectWarpNode *sp24;
+     struct Object *sp20 = (struct Object *) gObjParentGraphNode.children;
+ 
++    if (sp20 == NULL) {
++        return;
++    }
++
+     do {
+         struct Object *sp1C = sp20;
+ 
+diff --git c/src/game/behaviors/bubble.inc.c i/src/game/behaviors/bubble.inc.c
 index 9b97701..750b28b 100644
---- a/src/game/behaviors/bubble.inc.c
-+++ b/src/game/behaviors/bubble.inc.c
+--- c/src/game/behaviors/bubble.inc.c
++++ i/src/game/behaviors/bubble.inc.c
 @@ -12,7 +12,7 @@ void bhv_object_bubble_loop(void) {
      f32 bubbleY = o->oPosY;
  
@@ -1190,10 +1241,10 @@ index 9b97701..750b28b 100644
              bubbleSplash = spawn_object_at_origin(o, 0, MODEL_SMALL_WATER_SPLASH, bhvBubbleSplash);
              bubbleSplash->oPosX = o->oPosX;
              bubbleSplash->oPosY = bubbleY + 5.0f;
-diff --git a/src/game/behaviors/exclamation_box.inc.c b/src/game/behaviors/exclamation_box.inc.c
+diff --git c/src/game/behaviors/exclamation_box.inc.c i/src/game/behaviors/exclamation_box.inc.c
 index 442c88f..d0bc99b 100644
---- a/src/game/behaviors/exclamation_box.inc.c
-+++ b/src/game/behaviors/exclamation_box.inc.c
+--- c/src/game/behaviors/exclamation_box.inc.c
++++ i/src/game/behaviors/exclamation_box.inc.c
 @@ -111,9 +111,12 @@ void exclamation_box_act_3(void) {
          o->oGravity = 0.0f;
      }
@@ -1239,10 +1290,10 @@ index 442c88f..d0bc99b 100644
      }
  }
  
-diff --git a/src/game/behaviors/water_objs.inc.c b/src/game/behaviors/water_objs.inc.c
+diff --git c/src/game/behaviors/water_objs.inc.c i/src/game/behaviors/water_objs.inc.c
 index 6712810..a244889 100644
---- a/src/game/behaviors/water_objs.inc.c
-+++ b/src/game/behaviors/water_objs.inc.c
+--- c/src/game/behaviors/water_objs.inc.c
++++ i/src/game/behaviors/water_objs.inc.c
 @@ -74,7 +74,7 @@ void bhv_small_water_wave_loop(void) {
      if (o->oPosY > sp1C) {
          o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
@@ -1252,10 +1303,10 @@ index 6712810..a244889 100644
              spawn_object(o, MODEL_SMALL_WATER_SPLASH, bhvObjectWaterSplash);
          }
      }
-diff --git a/src/game/camera.c b/src/game/camera.c
+diff --git c/src/game/camera.c i/src/game/camera.c
 index 0925e96..5df49f5 100644
---- a/src/game/camera.c
-+++ b/src/game/camera.c
+--- c/src/game/camera.c
++++ i/src/game/camera.c
 @@ -4381,15 +4381,15 @@ s32 is_surf_within_bounding_box(struct Surface *surf, f32 xMax, f32 yMax, f32 zM
      // result
      s32 smaller = FALSE;
@@ -1306,10 +1357,10 @@ index 0925e96..5df49f5 100644
  
      if (dirX * normX + dirY * normY + dirZ * normZ < 0) {
          behindSurface = 1;
-diff --git a/src/game/game_init.c b/src/game/game_init.c
+diff --git c/src/game/game_init.c i/src/game/game_init.c
 index c969ba3..eec558d 100644
---- a/src/game/game_init.c
-+++ b/src/game/game_init.c
+--- c/src/game/game_init.c
++++ i/src/game/game_init.c
 @@ -84,52 +84,47 @@ struct DemoInput gRecordedDemoInput = { 0 };
  // Display
  // ----------------------------------------------------------------------------------------------------
@@ -1447,10 +1498,10 @@ index c969ba3..eec558d 100644
      // Setup Mario Animations
      gMarioAnimsMemAlloc = main_pool_alloc(0x4000, MEMORY_POOL_LEFT);
      set_segment_base_addr(17, (void *) gMarioAnimsMemAlloc);
-diff --git a/src/game/mario.c b/src/game/mario.c
+diff --git c/src/game/mario.c i/src/game/mario.c
 index 32c63c9..c7b18fd 100644
---- a/src/game/mario.c
-+++ b/src/game/mario.c
+--- c/src/game/mario.c
++++ i/src/game/mario.c
 @@ -1592,7 +1592,8 @@ u32 update_and_return_cap_flags(struct MarioState *m) {
  
          // This code flickers the cap through a long binary string, increasing in how
@@ -1461,10 +1512,10 @@ index 32c63c9..c7b18fd 100644
              flags &= ~MARIO_SPECIAL_CAPS;
              if (!(flags & MARIO_CAPS)) {
                  flags &= ~MARIO_CAP_ON_HEAD;
-diff --git a/src/game/mario_step.c b/src/game/mario_step.c
+diff --git c/src/game/mario_step.c i/src/game/mario_step.c
 index 9f442fc..c4f0d91 100644
---- a/src/game/mario_step.c
-+++ b/src/game/mario_step.c
+--- c/src/game/mario_step.c
++++ i/src/game/mario_step.c
 @@ -12,8 +12,9 @@
  static s16 sMovingSandSpeeds[] = { 12, 8, 4, 0 };
  
@@ -1477,10 +1528,10 @@ index 9f442fc..c4f0d91 100644
  };
  
  /**
-diff --git a/src/game/memory.c b/src/game/memory.c
+diff --git c/src/game/memory.c i/src/game/memory.c
 index 0d08156..fc9c0f2 100644
---- a/src/game/memory.c
-+++ b/src/game/memory.c
+--- c/src/game/memory.c
++++ i/src/game/memory.c
 @@ -366,16 +366,21 @@ void *load_segment_decompress_heap(u32 segment, u8 *srcStart, u8 *srcEnd) {
      return gDecompressionHeap;
  }
@@ -1530,10 +1581,10 @@ index 0d08156..fc9c0f2 100644
      }
      return ptr;
  }
-diff --git a/src/game/object_collision.c b/src/game/object_collision.c
+diff --git c/src/game/object_collision.c i/src/game/object_collision.c
 index 59ae99b..8e568ba 100644
---- a/src/game/object_collision.c
-+++ b/src/game/object_collision.c
+--- c/src/game/object_collision.c
++++ i/src/game/object_collision.c
 @@ -29,9 +29,9 @@ s32 detect_object_hitbox_overlap(struct Object *a, struct Object *b) {
      UNUSED f32 sp30 = sp3C - sp38;
      f32 dz = a->oPosZ - b->oPosZ;
@@ -1562,10 +1613,10 @@ index 59ae99b..8e568ba 100644
          f32 sp20 = a->hitboxHeight + sp3C;
          f32 sp1C = b->hurtboxHeight + sp38;
  
-diff --git a/src/game/object_helpers.c b/src/game/object_helpers.c
+diff --git c/src/game/object_helpers.c i/src/game/object_helpers.c
 index 54cf24f..ba99abc 100644
---- a/src/game/object_helpers.c
-+++ b/src/game/object_helpers.c
+--- c/src/game/object_helpers.c
++++ i/src/game/object_helpers.c
 @@ -349,23 +349,14 @@ f32 approach_f32_symmetric(f32 value, f32 target, f32 increment) {
  }
  
@@ -1605,10 +1656,10 @@ index 54cf24f..ba99abc 100644
          obj = spawn_object(parent, model, behavior);
          obj->oPosY += offsetY;
          obj_scale(obj, scale);
-diff --git a/src/game/object_list_processor.c b/src/game/object_list_processor.c
+diff --git c/src/game/object_list_processor.c i/src/game/object_list_processor.c
 index a2590a2..ae0fbdc 100644
---- a/src/game/object_list_processor.c
-+++ b/src/game/object_list_processor.c
+--- c/src/game/object_list_processor.c
++++ i/src/game/object_list_processor.c
 @@ -67,6 +67,7 @@ u32 gTimeStopState;
   * The pool that objects are allocated from.
   */
@@ -1632,10 +1683,10 @@ index a2590a2..ae0fbdc 100644
  
      gObjectMemoryPool = mem_pool_init(0x800, MEMORY_POOL_LEFT);
      gObjectLists = gObjectListArray;
-diff --git a/src/game/object_list_processor.h b/src/game/object_list_processor.h
+diff --git c/src/game/object_list_processor.h i/src/game/object_list_processor.h
 index 5bea549..c499afd 100644
---- a/src/game/object_list_processor.h
-+++ b/src/game/object_list_processor.h
+--- c/src/game/object_list_processor.h
++++ i/src/game/object_list_processor.h
 @@ -82,6 +82,10 @@ extern struct Object gObjectPool[];
  extern struct Object gMacroObjectDefaultParent;
  extern struct ObjectNode *gObjectLists;
@@ -1647,10 +1698,10 @@ index 5bea549..c499afd 100644
  
  extern struct Object *gMarioObject;
  extern struct Object *gLuigiObject;
-diff --git a/src/game/paintings.c b/src/game/paintings.c
+diff --git c/src/game/paintings.c i/src/game/paintings.c
 index 08706d9..5a9756f 100644
---- a/src/game/paintings.c
-+++ b/src/game/paintings.c
+--- c/src/game/paintings.c
++++ i/src/game/paintings.c
 @@ -587,11 +587,11 @@ void painting_update_ripple_state(struct Painting *painting) {
          //! 16777216 (1 << 24), at which point it will freeze (due to floating-point
          //! imprecision?) and the painting will stop rippling. This happens to HMC, DDD, and
@@ -1665,10 +1716,10 @@ index 08706d9..5a9756f 100644
              painting->state = PAINTING_IDLE;
              gRipplingPainting = NULL;
          }
-diff --git a/src/game/rendering_graph_node.c b/src/game/rendering_graph_node.c
+diff --git c/src/game/rendering_graph_node.c i/src/game/rendering_graph_node.c
 index 2343068..c654d7e 100644
---- a/src/game/rendering_graph_node.c
-+++ b/src/game/rendering_graph_node.c
+--- c/src/game/rendering_graph_node.c
++++ i/src/game/rendering_graph_node.c
 @@ -37,8 +37,9 @@
   */
  
@@ -2211,10 +2262,10 @@ index 2343068..c654d7e 100644
          gGeoTempState.type = gCurrAnimType;
          gGeoTempState.enabled = gCurrAnimEnabled;
          gGeoTempState.frame = gCurrAnimFrame;
-diff --git a/src/game/shadow.c b/src/game/shadow.c
+diff --git c/src/game/shadow.c i/src/game/shadow.c
 index 5856272..6a8578f 100644
---- a/src/game/shadow.c
-+++ b/src/game/shadow.c
+--- c/src/game/shadow.c
++++ i/src/game/shadow.c
 @@ -40,10 +40,16 @@ struct Shadow {
      f32 floorDownwardAngle;
      /* Angle describing "how tilted the ground is" in degrees (-90 to 90). */
@@ -2464,10 +2515,10 @@ index 5856272..6a8578f 100644
  
      gShadowAboveWaterOrLava = FALSE;
      gMarioOnIceOrCarpet = 0;
-diff --git a/src/game/skybox.c b/src/game/skybox.c
+diff --git c/src/game/skybox.c i/src/game/skybox.c
 index 055d1ce..9c58140 100644
---- a/src/game/skybox.c
-+++ b/src/game/skybox.c
+--- c/src/game/skybox.c
++++ i/src/game/skybox.c
 @@ -137,11 +137,8 @@ u8 sSkyboxColors[][3] = {
   */
  s32 calculate_skybox_scaled_x(s8 player, f32 fov) {
@@ -2536,10 +2587,10 @@ index 055d1ce..9c58140 100644
              gSPVertex((*dlist)++, VIRTUAL_TO_PHYSICAL(vertices), 4, 0);
              gSPDisplayList((*dlist)++, dl_draw_quad_verts_0123);
          }
-diff --git a/src/game/spawn_object.c b/src/game/spawn_object.c
+diff --git c/src/game/spawn_object.c i/src/game/spawn_object.c
 index 4cc1636..33e3044 100644
---- a/src/game/spawn_object.c
-+++ b/src/game/spawn_object.c
+--- c/src/game/spawn_object.c
++++ i/src/game/spawn_object.c
 @@ -82,16 +82,21 @@ struct Object *try_allocate_object(struct ObjectNode *destList, struct ObjectNod
      if ((nextObj = freeList->next) != NULL) {
          // Remove from free list

@@ -107,8 +107,8 @@ index b51000d..ae53ed3 100644
    template<bool Recompiled> auto instructionEpilogue() -> void;
    auto raiseCoprocessor1Exception() -> void;
    auto icacheFillLine(u64 vaddr, u32 paddr) -> void;
-+  auto uncachedRdramRead() -> void;
-+  auto uncachedRdramWrite() -> void;
++  auto uncachedRdramRead(u32 paddr) -> void;
++  auto uncachedRdramWrite(u32 paddr) -> void;
 +  auto icacheFillLineProfiled(u64 vaddr, u32 paddr) -> void;
 +  auto isSelfBranch(u32 pc, u32 instruction) -> bool;
  
@@ -130,16 +130,17 @@ index b51000d..ae53ed3 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1303,44 @@ struct CPU : Thread {
+@@ -1297,11 +1303,45 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
 +      s64 uncachedReads, uncachedWrites;  //mario-eval: CPU accesses to RDRAM that bypass the caches
 +      s64 cacheUncachedOps;               //mario-eval: hit/CDE CACHE ops on uncached (KSEG1) addresses
 +      s64 cacheCdeUnalignedOps;           //mario-eval: Create Dirty Exclusive (0x0d) CACHE ops on non-16B-aligned addresses
++      s64 cacheKseg1DirtySynonyms;        //mario-eval: uncached KSEG1 RDRAM read/write hitting a dirty D-cache line
      };
 -    s64 data[8];
-+    s64 data[12];
++    s64 data[13];
      Profile() : data{0} {}
    } profile;
  
@@ -231,7 +232,7 @@ diff --git i/ares/n64/cpu/memory.cpp w/ares/n64/cpu/memory.cpp
 index f362ef6..827c915 100644
 --- i/ares/n64/cpu/memory.cpp
 +++ w/ares/n64/cpu/memory.cpp
-@@ -154,12 +154,28 @@ static auto reverseEndianPaddr(u32 paddr) -> u32 {
+@@ -154,12 +154,39 @@ static auto reverseEndianPaddr(u32 paddr) -> u32 {
    return paddr;
  }
  
@@ -239,15 +240,26 @@ index f362ef6..827c915 100644
 +//until we implement the CPU write queue"), which would make bypassing the caches
 +//free. A read waits for RDRAM like a D-cache fill (40 cycles here; CEN64 uses 38
 +//per word); a write goes through the write buffer, charged a quarter of a
-+//4-word line write-back.
-+auto CPU::uncachedRdramRead() -> void {
++//4-word line write-back. Also detect KSEG1 uncached accesses that alias a dirty
++//KSEG0 D-cache line (cache synonym hazard on real VR4300 hardware).
++auto CPU::uncachedRdramRead(u32 paddr) -> void {
 +  step(40 * 2);
 +  profile.uncachedReads++;
++  if(!rdram.footprint.armed) {
++    u32 la = paddr & ~15u;
++    auto& line = dcache.line(la);
++    if(line.hit(la) && line.dirty) profile.cacheKseg1DirtySynonyms++;
++  }
 +}
 +
-+auto CPU::uncachedRdramWrite() -> void {
++auto CPU::uncachedRdramWrite(u32 paddr) -> void {
 +  step(10 * 2);
 +  profile.uncachedWrites++;
++  if(!rdram.footprint.armed) {
++    u32 la = paddr & ~15u;
++    auto& line = dcache.line(la);
++    if(line.hit(la) && line.dirty) profile.cacheKseg1DirtySynonyms++;
++  }
 +}
 +
  auto CPU::fetch(PhysAccess access) -> maybe<u32> {
@@ -256,23 +268,23 @@ index f362ef6..827c915 100644
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Word>(paddr);
    if(access.cache) return icache.fetch(access.vaddr, paddr, cpu);
-+  if(paddr <= 0x03ef'ffff) uncachedRdramRead();
++  if(paddr <= 0x03ef'ffff) uncachedRdramRead(paddr);
    return busRead<Word>(paddr);
  }
  
-@@ -170,6 +186,7 @@ auto CPU::read(PhysAccess access) -> maybe<u64> {
+@@ -170,6 +197,7 @@ auto CPU::read(PhysAccess access) -> maybe<u64> {
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
    if(access.cache) return dcache.read<Size>(access.vaddr, paddr);
-+  if(paddr <= 0x03ef'ffff) uncachedRdramRead();
++  if(paddr <= 0x03ef'ffff) uncachedRdramRead(paddr);
    return busRead<Size>(paddr);
  }
  
-@@ -190,6 +207,7 @@ auto CPU::write(PhysAccess access, u64 data) -> bool {
+@@ -190,6 +218,7 @@ auto CPU::write(PhysAccess access, u64 data) -> bool {
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
    if(access.cache) return dcache.write<Size>(access.vaddr, paddr, data), true;
-+  if(paddr <= 0x03ef'ffff) uncachedRdramWrite();
++  if(paddr <= 0x03ef'ffff) uncachedRdramWrite(paddr);
    return busWrite<Size>(paddr, data), true;
  }
  

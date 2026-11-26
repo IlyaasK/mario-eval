@@ -2,11 +2,11 @@
  "title": "Nemotron 3 Ultra 550B (NVIDIA NIM)",
  "model": "Nemotron 3 Ultra 550B",
  "kind": "agent",
- "provider": "NVIDIA · NIM API",
+ "provider": "NVIDIA \u00b7 NIM API",
  "harness": "omp",
- "graded": "2026-11-24",
+ "graded": "2026-11-25",
  "commit": "9ceb56e",
  "hours": 24,
  "repo_url": "https://github.com/IlyaasK/mario-eval-attempt-nemotron-3-ultra-550b",
- "notes": "24-hour autonomous run on omp via NVIDIA NIM (19 commits, 6,386 tool calls, 2.29B total tokens / 2.26B cached). Stayed on the 1996 SGI IDO C89 compiler and original Fast3D microcode for the entire run without switching to GCC -O2 or F3DEX2, focusing on manual C micro-optimizations (register hints, jump-table dispatch in geo_process_node_and_siblings, precomputed collision deltas, matrix temporaries, and clear_spatial_partition loop tuning). Best valid 25-route checkpoint (9ceb56e, 23.7 h) scores 1.053x section-weighted (1.053x flat, 0.770x vs GCC -O2) and passes the PLAY=1 console boot smoke; the final commit (5f11847) failed SGI IDO C89 compilation in behavior_script.c."
+ "notes": "24-hour autonomous run on omp via NVIDIA NIM (19 commits, 6,386 tool calls, 2.29B total tokens / 2.26B cached). Tested COMPILER=gcc via transient shell environment variables (reaching 1.428x locally) without committing COMPILER=gcc or GRUCODE=f3dex2 into Makefile, so clean grading built with 1996 SGI IDO -g and Fast3D. Best valid 25-route checkpoint (9ceb56e, 23.7 h) scores 1.053x on v3.1 (0.784x vs GCC -O2, PLAY=1 smoke passing); final commit (5f11847) failed SGI IDO C89 compilation on GNU C inline/prefetch extensions."
 }

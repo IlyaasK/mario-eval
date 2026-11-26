@@ -1,7 +1,13 @@
 ^api\.anthropic\.com$
 ^statsig\.anthropic\.com$
 ^api\.openai\.com$
+^auth\.openai\.com$
 ^chatgpt\.com$
+^ab\.chatgpt\.com$
 ^generativelanguage\.googleapis\.com$
 ^oauth2\.googleapis\.com$
+^daily-cloudcode-pa\.googleapis\.com$
+^cloudcode-pa\.googleapis\.com$
+^aicode\.googleapis\.com$
+^jetski-webchannel\.googleapis\.com$
 ^openrouter\.ai$

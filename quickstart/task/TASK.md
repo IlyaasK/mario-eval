@@ -13,11 +13,12 @@ original 4 MB Nintendo 64 hardware **without changing the game**.
 ## Objective
 
 Your submission is scored on **one primary resource profile**, named in
-`/task/PROFILE` (default: `console`). All six profiles are measured and reported:
+`/task/PROFILE` (default: `console`). All seven profiles are measured and reported:
 
 | profile   | what is reduced                                        | measured as |
 |-----------|--------------------------------------------------------|-------------|
 | `console` | **Real N64 frame bottleneck time (headline score)**    | Per-frame `est_console_ms` = `max(cpu_ms, rsp_ms, rdp_ms, mem_ms)` within 4 MB RAM |
+| `stutter` | Worst frames (hitches the player feels)                | `est_console_p99_ms`, the 99th percentile of the same per-frame bottleneck |
 | `speed`   | CPU time to compute and submit a frame                 | `cpu_effective_cycles` per frame (VR4300 cycles incl. cache/bus stalls) |
 | `rdp`     | Reality Display Processor hardware busy time           | `rdp_busy` (RDP 62.5 MHz cycles: raster/fill/Z/TMEM/sync) |
 | `rsp`     | Reality Signal Processor vector/microcode busy time    | `rsp_busy` (RSP non-halted cycles per frame) |
@@ -42,7 +43,9 @@ Grading replays recorded controller inputs and checks six gates on every route:
   byte-identical, and **both** the graded build (`make`) and the real-time
   60 Hz console build (`make PLAY=1`) must compile cleanly.
 - **Execution & Hardware** — every route must complete all 240 frames within
-  the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak).
+  the 4 MB RDRAM ceiling (`0x00400000` bytes, no Expansion Pak), with zero
+  uncached KSEG1 `CACHE` ops, zero unaligned `CACHE 0x0d` ops, zero KSEG1
+  dirty D-cache synonyms, and zero SP/DP DMA D-cache coherence errors.
 - **Gameplay** — `mev_obs_t` (player, camera, enemies, gems, RNG, particle and
   voice counts) must match **bit for bit** on every frame. Reordering IEEE 754
   floating-point arithmetic in simulation code (`-ffast-math`) will drift and fail.
@@ -50,9 +53,11 @@ Grading replays recorded controller inputs and checks six gates on every route:
   an accepted visual variant defined in `/opt/mario-eval/corpus/grader.json`
   (`full-detail`: Pip is always drawn at full detail regardless of camera
   distance): at most 0.2% of pixels may differ by more than ±2/31 per channel
-  from their best 3×3 neighbor.
+  from their best 3×3 neighbor, and motion-adaptive block-SSIM must stay ≥ 0.98
+  (≥ 0.85 worst frame).
 - **Audio** — overall SNR ≥ 40 dB against baseline, ≥ 20 dB on every
-  non-silent frame; silence must stay silent.
+  non-silent frame (with 40-band log-mel fallback for tiny sub-ms phase shifts);
+  silence must stay silent.
 
 Grading on the host also runs **private held-out routes** you cannot see.
 Optimize the engine, renderer, audio mixer, data layout, RSP/RDP command

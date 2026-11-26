@@ -8,6 +8,7 @@ ARG TASK_DOC=quickstart/task/TASK.md
 ARG GAME_TITLE="Pip's Garden baseline"
 
 COPY ${CORPUS_DIR}/grader.json /opt/mario-eval/corpus/grader.json
+RUN python3 -c 'import json, pathlib; p = pathlib.Path("/opt/mario-eval/corpus/grader.json"); d = json.loads(p.read_text()); d.pop("o2_reference_patch", None); p.write_text(json.dumps(d, indent=2) + "\n")'
 COPY ${CORPUS_DIR}/replays/public /opt/mario-eval/corpus/replays/public
 COPY cache/public-stage /opt/mario-eval/reference
 COPY tools/mev.py /usr/local/bin/mev

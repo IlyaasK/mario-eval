@@ -230,6 +230,7 @@ struct Runner : ares::Platform {
       << ",\"uncached_reads\":" << cp.uncachedReads << ",\"uncached_writes\":" << cp.uncachedWrites
       << ",\"cache_uncached_ops\":" << cp.cacheUncachedOps
       << ",\"cache_cde_unaligned_ops\":" << cp.cacheCdeUnalignedOps
+      << ",\"cache_kseg1_dirty_synonyms\":" << cp.cacheKseg1DirtySynonyms
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
       << ",\"rsp_gfx_cycles\":" << rp.gfxCycles << ",\"rsp_aud_cycles\":" << rp.audCycles
       << ",\"dcache_coherence_errors\":" << (rp.dcacheCoherenceErrors + dp.dcacheCoherenceErrors)
@@ -282,12 +283,14 @@ struct Runner : ares::Platform {
     if(opt.playFields) {
       r << ",\"play_video_fields\":" << videoFields
         << ",\"play_video_changes\":" << videoChanges
+        << ",\"play_rsp_aud_cycles\":" << N64::rsp.profile.audCycles
         << ",\"play_final_video_hash\":\"" << std::hex << videoHash << std::dec << "\"";
     }
     r << ",\"footprint_bytes\":" << fp.lines() * 16
       << ",\"highest_line\":" << fp.highestLine()
       << ",\"cache_uncached_ops\":" << N64::cpu.profile.cacheUncachedOps
       << ",\"cache_cde_unaligned_ops\":" << N64::cpu.profile.cacheCdeUnalignedOps
+      << ",\"cache_kseg1_dirty_synonyms\":" << N64::cpu.profile.cacheKseg1DirtySynonyms
       << ",\"dcache_coherence_errors\":" << (N64::rsp.profile.dcacheCoherenceErrors + N64::rdp.profile.dcacheCoherenceErrors)
       << ",\"host_seconds\":" << seconds << "}\n";
   }
@@ -299,12 +302,27 @@ auto nall::main(Arguments arguments) -> void {
   Runner runner;
   auto& opt = runner.opt;
   string value;
+  auto parseStrictU64 = [](const string& raw, const char* flag) -> u64 {
+    std::string s(raw);
+    if(s.empty()) { fprintf(stderr, "bad %s: empty value\n", flag); exit(2); }
+    for(char c : s) {
+      if(c < '0' || c > '9') { fprintf(stderr, "bad %s %s: expected positive integer\n", flag, s.c_str()); exit(2); }
+    }
+    try {
+      u64 v = std::stoull(s);
+      if(v == 0) { fprintf(stderr, "bad %s %s: expected positive integer\n", flag, s.c_str()); exit(2); }
+      return v;
+    } catch(...) {
+      fprintf(stderr, "bad %s %s: integer out of range\n", flag, s.c_str());
+      exit(2);
+    }
+  };
   if(arguments.take("--rom", value)) opt.rom = value;
   if(arguments.take("--replay", value)) opt.replay = value;
   if(arguments.take("--out", value)) opt.out = value;
-  if(arguments.take("--frames", value)) opt.frames = value.natural();
-  if(arguments.take("--play-fields", value)) opt.playFields = value.natural();
-  if(arguments.take("--max-fields", value)) opt.maxFields = value.natural();
+  if(arguments.take("--frames", value)) opt.frames = parseStrictU64(value, "--frames");
+  if(arguments.take("--play-fields", value)) opt.playFields = parseStrictU64(value, "--play-fields");
+  if(arguments.take("--max-fields", value)) opt.maxFields = parseStrictU64(value, "--max-fields");
   if(arguments.take("--profile", value)) { opt.profile = value; N64::cpu.sampler.jitProfile = true; }
   // --idle-range LO:HI (hex virtual addresses, repeatable): CPU time spent
   // executing inside these ranges is reported as cpu_idle_cycles.
@@ -316,6 +334,11 @@ auto nall::main(Arguments arguments) -> void {
     s.idleLo[s.idleRanges] = (u32)std::stoul(text.substr(0, colon), nullptr, 16);
     s.idleHi[s.idleRanges] = (u32)std::stoul(text.substr(colon + 1), nullptr, 16);
     s.idleRanges++;
+  }
+  if(arguments.size() > 0) {
+    std::string extra(arguments[0]);
+    fprintf(stderr, "unrecognized argument: %s\n", extra.c_str());
+    exit(2);
   }
   if(opt.rom.empty() || opt.out.empty() || ((!opt.frames) == (!opt.playFields))) {
     fprintf(stderr, "usage: n64run --rom ROM --out DIR (--frames N | --play-fields N) [--replay FILE] [--max-fields N] [--profile FILE] [--idle-range LO:HI ...]\n");
@@ -379,12 +402,18 @@ auto nall::main(Arguments arguments) -> void {
 
   auto start = std::chrono::steady_clock::now();
   u64 fields = 0;
+  u64 bootHangFields = std::min<u64>(opt.maxFields, 1500);
   std::string status = "completed";
   while(opt.playFields ? fields < opt.playFields : runner.frame < opt.frames) {
     runner.playField = fields;
     runner.root->run();
     fields++;
     if(runner.failed) { status = "protocol_error"; break; }
+    if(!opt.playFields && runner.frame == 0 && fields >= bootHangFields) {
+      status = "timeout";
+      runner.fail("boot hang: 0 frames in " + std::to_string(fields) + " VI fields");
+      break;
+    }
     if(!opt.playFields && fields >= opt.maxFields) { status = "timeout"; runner.fail("no progress: " + std::to_string(runner.frame) + " frames in " + std::to_string(fields) + " VI fields"); break; }
   }
   if(opt.playFields && status == "completed" && !runner.videoChanges) {
@@ -395,20 +424,21 @@ auto nall::main(Arguments arguments) -> void {
   runner.jsonl.close(); runner.framebuffers.close(); runner.audio.close(); runner.obs.close();
   runner.writeResult(status, fields, seconds);
   if(!opt.profile.empty()) {
+    u64 sampledFrames = runner.frame > 0 ? (runner.frame - 1) : 0;
     std::ofstream p(opt.profile);
-    p << "# pc samples (1 sample = " << N64::cpu.sampler.interval / 2 << " COUNT ticks)\n";
+    p << "# pc samples (1 sample = " << N64::cpu.sampler.interval / 2 << " COUNT ticks; sampled_frames=" << sampledFrames << ", frame 0 excluded)\n";
     for(auto& [pc, n] : N64::cpu.sampler.histogram) p << std::hex << pc << std::dec << " " << n << "\n";
     std::ofstream m(opt.profile + ".dmiss");
-    m << "# data-cache misses by faulting PC\n";
+    m << "# data-cache misses by faulting PC (sampled_frames=" << sampledFrames << ", frame 0 excluded)\n";
     for(auto& [pc, n] : N64::cpu.sampler.dmissPC) m << std::hex << pc << std::dec << " " << n << "\n";
     std::ofstream da(opt.profile + ".dmissaddr");
-    da << "# data-cache misses: line address, faulting PC, count\n";
+    da << "# data-cache misses: line address, faulting PC, count (sampled_frames=" << sampledFrames << ", frame 0 excluded)\n";
     for(auto& [k, n] : N64::cpu.sampler.dmissAddr) da << std::hex << (u32)(k >> 32) << " " << (u32)k << std::dec << " " << n << "\n";
     std::ofstream wb(opt.profile + ".wb");
-    wb << "# data-cache writebacks: physical line, last writer PC, count\n";
+    wb << "# data-cache writebacks: physical line, last writer PC, count (sampled_frames=" << sampledFrames << ", frame 0 excluded)\n";
     for(auto& [k, n] : N64::cpu.sampler.wbAddr) wb << std::hex << (u32)(k >> 32) << " " << (u32)k << std::dec << " " << n << "\n";
     std::ofstream im(opt.profile + ".imiss");
-    im << "# instruction-cache misses by line address\n";
+    im << "# instruction-cache misses by line address (sampled_frames=" << sampledFrames << ", frame 0 excluded)\n";
     for(auto& [pc, n] : N64::cpu.sampler.imissPC) im << std::hex << pc << std::dec << " " << n << "\n";
   }
   runner.root->unload();

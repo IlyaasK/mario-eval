@@ -1,11 +1,11 @@
 {
-  "version": "2.1",
+  "version": "3.1",
   "target": "sm64",
   "contract": "sm64",
   "rom": "build/us/sm64.us.z64",
   "elf": "build/us/sm64.us.elf",
   "build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1"],
-  "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "check-play"],
+  "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "PLAY=1", "BUILD_DIR_BASE=build_play", "all"],
   "play_rom": "build_play/us/sm64.us.z64",
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
   "protected_files": ["src/game/mev.c", "src/game/mev.h"],
@@ -19,14 +19,35 @@
     "src/game/sound_init.c": 1
   },
   "protected_play_blocks": {
+    "Makefile": [
+      "4b3d4200d9e62062971388b45c3f5619933ff072736eea300beebbd4a6d6ea31",
+      "b573fce5f520f21ffce9b7e0c3df2cc84d83306544435fbdf00d7dc92be92672"
+    ],
     "src/audio/external.c": [
       "00e8c867db225ec2333f3c50b17644a576fa777da024e16e3fb7831211dc5edb"
     ],
     "src/audio/heap.c": [
       "7daee4c3976c70af09bf32402dd7ea37ac3dc020bfea7db1b5e84eaec89d5525"
     ],
+    "src/game/game_init.c": [
+      "a365175f02228ca91f39658cca47e8d78c878e2983f6603dcab8e1277def35cf",
+      "e9ce79ebe7e76d3951f271065c662863e9ed78b6eb08cf4925b49d5149a9200e",
+      null,
+      "b9f631a7c4345d1ab4b3550f6bee47ad4208d6ec53b982408bf873159cc9700b",
+      "7d3126f35acf424afe2848100bc723528fd174b782a9fdc3bf5fc3ce22c164e5",
+      "a2a1b26bd1da1db5e39d78c8baa960b655ef1bfc8b5053b474914127fc2a9d36"
+    ],
     "src/game/level_update.c": [
       "888c58885cfd9c29b72987d5fb8938228cd81306cdd7ea9cb97f8a7cfa5f2140"
+    ],
+    "src/game/main.c": [
+      "bdaca58d323bbaf4055e5accdaa112b60c70e2dad8f476a5a348ca061bbb7221",
+      "efc40cc9653cf4280917722f40bca63f2b9d60e7685163567d0a5caa3b753f5c",
+      "eb548d62f66ab563eeaa7934ad0d2cf81933214183e5b64c4e936dd181388f6e",
+      "0d4203a9896f07a84e346017f36a050beccd67ad1c8abd63b6a88d0c3c8e5dbf",
+      "743b919e2e6db715a7ae0034a6d205546881fb8117b669bbe92e8c93b0c8ea19",
+      "cdd3d1b3713ae232a1c63b1b12f73d76c51b2ba42758c9f17f4cabe1bcd34743",
+      null
     ],
     "src/game/sound_init.c": [
       "586d91e108d229d9031ce5c71ecdc3a34d52424f192c65b6de40fa96209bbf41"
@@ -74,7 +95,9 @@
   },
   "video": {
     "channel_tolerance": 2,
-    "max_bad_fraction": 0.002
+    "max_bad_fraction": 0.002,
+    "min_ssim_score": 0.98,
+    "min_ssim_frame_score": 0.85
   },
   "accepted_visual_variants": [
     {
@@ -123,7 +146,8 @@
   },
   "hardware": {
     "rdram_bytes": 4194304,
-    "max_dcache_coherence_errors_per_frame": 1.05
+    "max_dcache_coherence_errors_per_frame": 1.05,
+    "max_kseg1_dirty_synonyms": 0
   },
   "profiles": {
     "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
