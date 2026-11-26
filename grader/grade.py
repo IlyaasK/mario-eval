@@ -567,10 +567,15 @@ def inspect_elf_metadata(elf, src_root=None, cfg=None):
                 ucode = "f3dex2"
             elif "rspf3dbootstart" in syms_lower or "rspfast3dstart" in syms_lower:
                 ucode = "f3d_old"
+    trap_insns = None
+    od = subprocess.run(["mips64-elf-objdump", "-d", str(p)], capture_output=True, text=True)
+    if od.returncode == 0:
+        trap_insns = len(re.findall(r"\t(?:teq|tne|tlt|tltu|tge|tgeu|teqi|tnei|tlti|tltiu|tgei|tgeiu)\b", od.stdout))
     return {
         **({"compiler": compiler} if compiler else {}),
         **({"ucode": ucode} if ucode else {}),
         **({"opt_flags": opt_flags} if opt_flags is not None else {}),
+        **({"trap_insns": trap_insns} if trap_insns is not None else {}),
         "elf_bytes": len(raw),
     }
 
@@ -2208,10 +2213,13 @@ def detect_suspicious_source_patterns(src):
 def classify_failure_attribution(summary, cfg):
     """Deterministic numerical failure taxonomy so run failures and regressions
     are attributable directly from summary.json without reading transcripts."""
+    status = summary.get("status")
+    if status == "valid":
+        return None
     gates = summary.get("gates", {})
     diag = summary.get("diagnostics", {})
     profiles = summary.get("profiles", {})
-    status = summary.get("status")
+    tc = summary.get("toolchain") or (summary.get("capability_ruler") or {}).get("toolchain") or {}
 
     categories = []
     subcategories = []
@@ -2254,65 +2262,90 @@ def classify_failure_attribution(summary, cfg):
 
     ex_gate = gates.get("execution")
     if ex_gate and not ex_gate.get("pass"):
-        categories.append("crash_or_hang")
-        ex_statuses = sorted({
-            str(v.get("status", "failed"))
-            for v in ex_gate.get("workloads", {}).values()
-            if not v.get("pass")
-        })
+        ex_failed = [v for v in ex_gate.get("workloads", {}).values() if not v.get("pass")]
+        fault_excs = sorted({str(v.get("first_fault_exc")) for v in ex_failed if v.get("first_fault_exc")})
+        if "TRAP" in fault_excs or any(int(v.get("cpu_trap_exceptions", 0) or 0) > 0 for v in ex_failed):
+            categories.append("cpu_isa_trap")
+            subcategories.append("cpu_trap_exception(TRAP)")
+        else:
+            categories.append("crash_or_hang")
+        for exc in fault_excs:
+            if exc == "TRAP":
+                continue
+            elif exc in ("ADEL", "ADES"):
+                subcategories.append(f"unaligned_memory_fault({exc})")
+            elif exc in ("TLBL", "TLBS", "TLBM"):
+                subcategories.append(f"tlb_or_invalid_ptr_fault({exc})")
+            elif exc == "RI":
+                subcategories.append("illegal_instruction_fault(RI)")
+            elif exc == "BP":
+                subcategories.append("breakpoint_or_assert(BP)")
+            elif exc in ("OV", "FPE"):
+                subcategories.append(f"arithmetic_or_fpu_trap({exc})")
+            else:
+                subcategories.append(f"cpu_exception({exc})")
+        if not fault_excs and int(tc.get("trap_insns", 0) or 0) > 0:
+            subcategories.append("elf_contains_mips_trap_insns")
+        ex_statuses = sorted({str(v.get("status", "failed")) for v in ex_failed})
         for st in ex_statuses:
             subcategories.append(f"execution:{st}")
+        if not fault_excs and any(st in ("field_limit", "timeout") for st in ex_statuses):
+            subcategories.append("infinite_loop_or_deadlock")
 
     hw_gate = gates.get("hardware")
     if hw_gate and not hw_gate.get("pass"):
-        categories.append("hardware_safety_violation")
         hw_wls = [v for v in hw_gate.get("workloads", {}).values() if not v.get("pass")]
-        if any(v.get("highest_byte", 0) > v.get("limit_bytes", 0x400000) for v in hw_wls):
-            subcategories.append("rdram_4mb_overflow")
-        if any(v.get("cache_uncached_ops", 0) > 0 for v in hw_wls):
-            subcategories.append("kseg1_uncached_cache_op")
-        if any(v.get("cache_cde_unaligned_ops", 0) > 0 for v in hw_wls):
-            subcategories.append("unaligned_cache_cde")
-        if any(v.get("cache_kseg1_dirty_synonyms", 0) > v.get("max_kseg1_dirty_synonyms", 0) for v in hw_wls):
-            subcategories.append("kseg1_dirty_synonym")
-        if any(
-            v.get("max_dcache_coherence_errors") is not None
-            and v.get("dcache_coherence_errors", 0) > v["max_dcache_coherence_errors"]
-            for v in hw_wls
-        ):
-            subcategories.append("dma_dcache_coherence")
+        if hw_wls:
+            categories.append("hardware_safety_violation")
+            if any(v.get("highest_byte", 0) > v.get("limit_bytes", 0x400000) for v in hw_wls):
+                subcategories.append("rdram_4mb_overflow")
+            if any(v.get("cache_uncached_ops", 0) > 0 for v in hw_wls):
+                subcategories.append("kseg1_uncached_cache_op")
+            if any(v.get("cache_cde_unaligned_ops", 0) > 0 for v in hw_wls):
+                subcategories.append("unaligned_cache_cde")
+            if any(v.get("cache_kseg1_dirty_synonyms", 0) > v.get("max_kseg1_dirty_synonyms", 0) for v in hw_wls):
+                subcategories.append("kseg1_dirty_synonym")
+            if any(
+                v.get("max_dcache_coherence_errors") is not None
+                and v.get("dcache_coherence_errors", 0) > v["max_dcache_coherence_errors"]
+                for v in hw_wls
+            ):
+                subcategories.append("dma_dcache_coherence")
 
     gp_gate = gates.get("gameplay")
     if gp_gate and not gp_gate.get("pass"):
-        categories.append("physics_or_state_desync")
-        gp_fields = sorted({
-            str(v.get("field") or v.get("reason") or "desync")
-            for v in gp_gate.get("workloads", {}).values()
-            if not v.get("pass")
-        })
-        for fld in gp_fields:
-            subcategories.append(f"gameplay:{fld}")
+        gp_wls = [v for v in gp_gate.get("workloads", {}).values() if not v.get("pass")]
+        if gp_wls:
+            categories.append("physics_or_state_desync")
+            gp_fields = sorted({
+                str(v.get("field") or v.get("reason") or "desync")
+                for v in gp_wls
+            })
+            for fld in gp_fields:
+                subcategories.append(f"gameplay:{fld}")
 
     vd_gate = gates.get("video")
     if vd_gate and not vd_gate.get("pass"):
-        categories.append("visual_regression")
         vd_wls = [v for v in vd_gate.get("workloads", {}).values() if not v.get("pass")]
-        subtle = bool(vd_wls) and all(
-            float(v.get("ssim_score", 0.0)) >= 0.99 and float(v.get("worst_bad_fraction", 1.0)) <= 0.02
-            for v in vd_wls
-        )
-        subcategories.append("subpixel_or_edge_drift" if subtle else "structural_visual_corruption")
+        if vd_wls:
+            categories.append("visual_regression")
+            subtle = all(
+                float(v.get("ssim_score", 0.0)) >= 0.99 and float(v.get("worst_bad_fraction", 1.0)) <= 0.02
+                for v in vd_wls
+            )
+            subcategories.append("subpixel_or_edge_drift" if subtle else "structural_visual_corruption")
 
     au_gate = gates.get("audio")
     if au_gate and not au_gate.get("pass"):
-        categories.append("audio_regression")
         au_wls = [v for v in au_gate.get("workloads", {}).values() if not v.get("pass")]
-        if any("silent" in str(v.get("reason", "")) for v in au_wls):
-            subcategories.append("audio:unexpected_sound_in_silence")
-        elif any(v.get("reason") for v in au_wls):
-            subcategories.append("audio:format_or_length_mismatch")
-        else:
-            subcategories.append("audio:spectral_or_snr_degradation")
+        if au_wls:
+            categories.append("audio_regression")
+            if any("silent" in str(v.get("reason", "")) for v in au_wls):
+                subcategories.append("audio:unexpected_sound_in_silence")
+            elif any(v.get("reason") for v in au_wls):
+                subcategories.append("audio:format_or_length_mismatch")
+            else:
+                subcategories.append("audio:spectral_or_snr_degradation")
 
     bad_profiles = sorted([p for p, v in profiles.items() if not v.get("valid", True)])
     if bad_profiles:

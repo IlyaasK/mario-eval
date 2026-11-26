@@ -130,7 +130,7 @@ index b51000d..ae53ed3 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1303,45 @@ struct CPU : Thread {
+@@ -1297,11 +1303,49 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
@@ -138,9 +138,13 @@ index b51000d..ae53ed3 100644
 +      s64 cacheUncachedOps;               //mario-eval: hit/CDE CACHE ops on uncached (KSEG1) addresses
 +      s64 cacheCdeUnalignedOps;           //mario-eval: Create Dirty Exclusive (0x0d) CACHE ops on non-16B-aligned addresses
 +      s64 cacheKseg1DirtySynonyms;        //mario-eval: uncached KSEG1 RDRAM read/write hitting a dirty D-cache line
++      s64 faultExceptions;                //mario-eval: synchronous CPU fault exceptions (excludes INT/SYSCALL/COP_UNUSABLE)
++      s64 trapExceptions;                 //mario-eval: MIPS TRAP (code 13, e.g. GCC -mdivide-traps TEQ)
++      s64 firstFaultCode;                 //mario-eval: Cause.ExcCode of first synchronous fault
++      s64 firstFaultPC;                   //mario-eval: faulting PC of first synchronous fault
      };
 -    s64 data[8];
-+    s64 data[13];
++    s64 data[17];
      Profile() : data{0} {}
    } profile;
  
@@ -862,3 +866,22 @@ index 3f463a9..b370567 100644
      if(code >= 8) {
        implementation->processor->enqueue_command(length * 2, buffer + queueOffset * 2);
      }
+diff --git i/ares/n64/cpu/exceptions.cpp w/ares/n64/cpu/exceptions.cpp
+index 870e7d4..3d26225 100644
+--- i/ares/n64/cpu/exceptions.cpp
++++ w/ares/n64/cpu/exceptions.cpp
+@@ -1,6 +1,14 @@
+ auto CPU::Exception::trigger(u32 code, u32 coprocessor, bool tlbMiss) -> void {
+   self.debugger.exception(code);
+   if (code != 0) {  //ignore interrupt exceptions
++    if (code != 8 && code != 11) {  //mario-eval: record synchronous CPU fault exceptions
++      self.profile.faultExceptions++;
++      if (code == 13) self.profile.trapExceptions++;
++      if (self.profile.firstFaultCode == 0) {
++        self.profile.firstFaultCode = (s64)code;
++        self.profile.firstFaultPC = (s64)(u32)self.ipu.pc;
++      }
++    }
+     reportGDBException(code, self.ipu.pc); 
+   }
+ 

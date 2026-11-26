@@ -162,7 +162,8 @@ document.querySelectorAll(".chart").forEach(function(c){
         var cx=best.getAttribute("cx"),cy=best.getAttribute("cy");
         if(xh){xh.setAttribute("x1",cx);xh.setAttribute("x2",cx);xh.hidden=false;}
         if(dot){dot.setAttribute("cx",cx);dot.setAttribute("cy",cy);dot.setAttribute("fill",best.getAttribute("fill"));dot.hidden=false;}
-        if(tip)tip.textContent=best.getAttribute("data-name")+" @ "+best.getAttribute("data-hr")+"h: "+best.getAttribute("data-val")+"x ("+best.getAttribute("data-cp")+")";
+        var u=best.getAttribute("data-unit")||"x";
+        if(tip)tip.textContent=best.getAttribute("data-name")+" @ "+best.getAttribute("data-hr")+"h: "+best.getAttribute("data-val")+u+" ("+best.getAttribute("data-cp")+")";
       }
     });
     svg.addEventListener("mouseleave",function(){
@@ -775,47 +776,56 @@ def build_board(trial_rows, agent_runs):
             continue
         p = primary_profile(s)
         valid = s["status"] == "valid" and p.get("valid", False)
-        cps = [c for c in (r["trajectory"] or {}).get("host_checkpoints", []) if c.get("workload_set") == cohort]
+        traj = r["trajectory"] or {}
+        cps = [c for c in traj.get("host_checkpoints", []) if c.get("workload_set") in (cohort, None)]
         points = [(c["elapsed_hours"], c["speedups"]["console"], c.get("name", ""))
                   for c in cps if c.get("status") == "valid" and c.get("speedups", {}).get("console")]
+        sp_val = float(p["speedup"]) if valid else 0.0
+        cs_val = float(p.get("cost_saved", 1.0 - 1.0 / sp_val)) if (valid and sp_val > 0) else 0.0
         entries.append({
             "slug": r["slug"], "name": r["model"].removesuffix(" (trial)"),
             "short": r["model"].removesuffix(" (trial)"), "kind": r.get("kind", "agent"),
             "org": r["meta"].get("provider", ""), "date": r["meta"].get("graded", ""),
             "commit": r["meta"].get("commit", ""), "harness": r["meta"].get("harness", ""),
             "repo_url": r["repo_url"], "note": r["notes"], "href": f"{BASE}/model/{r['slug']}/",
-            "valid": valid, "speedup": float(p["speedup"]) if valid else 0.0,
+            "valid": valid, "speedup": sp_val, "cost_saved": cs_val,
             "vs_o2": p.get("vs_o2_speedup") if valid else None, "fps": mean_fps(s) if valid else None,
             "units": unit_speedups(s) if valid else {}, "summary": s, "points": points, "checkpoints": cps,
+            "analytics": traj.get("run_analytics") or {},
             "end_h": max([c["elapsed_hours"] for c in cps] + [0.0]), "color": next(color),
         })
     by_slug = {slug: s for slug, _t, _p, s in trial_rows if s.get("workload_set") == cohort}
     gcc = None
+    kaze_saved = None
     for slug, name, short, kind, note in REF_SPECS:
         s = by_slug.get(slug)
         if not s or s["status"] != "valid":
             continue
         p = primary_profile(s)
+        sp_val = float(p["speedup"])
+        cs_val = float(p.get("cost_saved", 1.0 - 1.0 / sp_val))
         entries.append({
             "slug": slug, "name": name, "short": short, "kind": kind, "org": "", "date": "reference",
             "note": note, "href": f"{BASE}/blog/kaze-master-reference/" if kind == "human" else f"{BASE}/calibration/#sm64-{slug}",
-            "valid": True, "speedup": float(p["speedup"]), "vs_o2": p.get("vs_o2_speedup"),
-            "fps": mean_fps(s), "units": unit_speedups(s), "summary": s, "points": [],
+            "valid": True, "speedup": sp_val, "cost_saved": cs_val, "vs_o2": p.get("vs_o2_speedup"),
+            "fps": mean_fps(s), "units": unit_speedups(s), "summary": s, "points": [], "analytics": {},
         })
         if kind == "compiler":
-            gcc = float(p["speedup"])
+            gcc = sp_val
+        elif kind == "human":
+            kaze_saved = cs_val
     sample = entries[0]["summary"]
     entries.append({
         "slug": "r0-unchanged", "name": "1996 retail build (IDO)", "short": "1996 build", "kind": "baseline",
         "org": "", "date": "reference", "note": "The unmodified decompilation, which matches the retail US cartridge.",
-        "href": f"{BASE}/calibration/#sm64-r0-unchanged", "valid": True, "speedup": 1.0,
+        "href": f"{BASE}/calibration/#sm64-r0-unchanged", "valid": True, "speedup": 1.0, "cost_saved": 0.0,
         "vs_o2": (1.0 / gcc) if gcc else None, "fps": baseline_fps(sample),
-        "units": {key: 1.0 for key, _ in BAR_UNITS}, "summary": None, "points": [],
+        "units": {key: 1.0 for key, _ in BAR_UNITS}, "summary": None, "points": [], "analytics": {},
     })
     entries.sort(key=lambda e: (e["valid"], e["speedup"]), reverse=True)
     wids = list(sample.get("workloads", {}))
     public = [w for w in wids if w in SM64_COURSES]
-    return {"cohort": cohort, "entries": entries, "gcc": gcc,
+    return {"cohort": cohort, "entries": entries, "gcc": gcc, "kaze_saved": kaze_saved,
             "routes": len(wids), "public": len(public), "private": len(wids) - len(public)}
 
 
@@ -894,12 +904,81 @@ def chart_html(views, title=""):
     return f'<div class="chart">{head}{panes}</div>'
 
 
+def cost_saved_svg(agents, refs):
+    """Bounded cycle-cost reduction 1 - T_cand / T_1996 in [0%, 100%) over wall-clock hours."""
+    W, H, L, R, T, B = 760, 340, 50, 176, 14, 46
+    pw, ph = W - L - R, H - T - B
+    lo, hi, step = 0.0, 50.0, 10.0
+    max_v = max([0.0] + [100.0 * e.get("cost_saved", 0.0) for e in refs]
+                + [100.0 * (1.0 - 1.0 / sp) for e in agents for _, sp, _ in e["points"] if sp > 0])
+    if max_v > 47.0:
+        hi = min(100.0, math.ceil((max_v + 5.0) / 10.0) * 10.0)
+
+    def x(hr):
+        return L + min(max(hr, 0.0), 24.0) / 24.0 * pw
+
+    def y(v):
+        return T + (1.0 - (v - lo) / (hi - lo)) * ph
+
+    out = [f'<svg viewBox="0 0 {W} {H}" class="speed-chart" role="img" aria-label="Bounded cycle cost saved (%) over wall-clock hours">']
+    t = lo
+    while t <= hi + 1e-9:
+        out.append(f'<line class="grid" x1="{L}" x2="{L + pw}" y1="{y(t):.1f}" y2="{y(t):.1f}"/>'
+                   f'<text class="ax" x="{L - 8}" y="{y(t) + 3:.1f}" text-anchor="end">{t:.0f}%</text>')
+        t += step
+    for hr in (0, 6, 12, 18, 24):
+        out.append(f'<text class="ax" x="{x(hr):.1f}" y="{T + ph + 18}" text-anchor="middle">{"0M" if hr == 0 else f"{hr}H"}</text>')
+    out.append(f'<text class="ax" x="{L + pw / 2:.1f}" y="{H - 6}" text-anchor="middle">WALL-CLOCK (100% = 0 MS PHYSICAL BOUND)</text>')
+    labels = []
+    for e in refs:
+        v = 100.0 * e.get("cost_saved", 1.0 - 1.0 / e["speedup"])
+        col = REF_COLORS[e["kind"]]
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">'
+                   f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
+                   f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.1f}% frame time saved</title></line></g>')
+        labels.append((y(v), col, f'{e["short"]} {v:.1f}%', e["slug"]))
+    for e in agents:
+        col, samples = e["color"], sorted(e["points"])
+        best, steps = 0.0, []
+        for hr, sp, _ in samples:
+            sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
+            best = max(best, sv)
+            steps.append((hr, best))
+        h0, v0 = steps[0]
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
+        out.append(f'<line x1="{x(0):.1f}" y1="{y(0.0):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
+                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
+        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
+        for hr, sp, name in samples:
+            sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                       f'data-hr="{hr:.1f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                       f'<title>{esc(e["name"])} at {hr:.1f}h: {sv:.1f}% saved ({esc(name)})</title></circle>')
+        out.append("</g>")
+        labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.1f}%', e["slug"]))
+    labels.sort()
+    last = -1e9
+    for ly, col, txt, slug in labels:
+        ly = max(ly, last + 14)
+        last = ly
+        out.append(f'<g class="series" data-series="{esc(slug)}">'
+                   f'<rect x="{L + pw + 8}" y="{ly - 6:.1f}" width="3" height="11" fill="{col}"/>'
+                   f'<text class="lbl" x="{L + pw + 16}" y="{ly + 3.5:.1f}">{esc(txt)}</text></g>')
+    out.append(f'<line class="xhair" x1="{L}" x2="{L}" y1="{T}" y2="{T + ph}" hidden/>')
+    out.append(f'<circle class="hdot" cx="{L}" cy="{T}" r="5.5" fill="#fff" stroke="#fff" stroke-width="2" hidden style="pointer-events:none"/>')
+    out.append("</svg>")
+    return "".join(out)
+
+
 def speedup_chart(board, only=None, title=""):
     agents = [e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["points"] and only in (None, e["slug"])]
     refs = [e for e in board["entries"] if e["kind"] not in AGENT_KINDS and e["valid"]]
     views = [("vanilla", "vs 1996", speedup_svg(agents, refs, 1.0))]
     if board["gcc"]:
         views.append(("o2", "vs GCC -O2", speedup_svg(agents, refs, board["gcc"])))
+    views.append(("saved", "Cost saved %", cost_saved_svg(agents, refs)))
     return chart_html(views, title)
 
 
@@ -952,15 +1031,168 @@ def routes_table(wls, limit=None):
             f'<th class="num">uncapped fps</th><th class="num">speedup</th></tr></thead><tbody>{body}</tbody></table></div>')
 
 
-def entry_card(e, rank, top):
+FA_LABELS = {
+    "public_to_heldout_overfitting": ("public->held-out overfit", "overfit"),
+    "cpu_isa_trap": ("MIPS ISA trap (TEQ)", "trap"),
+    "crash_or_hang": ("crash / hang", "trap"),
+    "physics_or_state_desync": ("actor / physics desync", "warn"),
+    "visual_regression": ("video pixel/SSIM fail", "warn"),
+    "audio_regression": ("audio SNR/mel fail", "warn"),
+    "console_play_divergence": ("PLAY=1 divergence", "trap"),
+    "build_failure": ("compile / link error", "warn"),
+    "hardware_safety_violation": ("N64 cache/DMA UB", "trap"),
+    "harness_or_integrity_violation": ("#ifndef PLAY glue split", "warn"),
+}
+
+
+def fa_badges_html(fa, max_tags=4):
+    if not fa or not isinstance(fa, dict):
+        return '<span class="fa-tag clean">clean (25/25 @ 24h)</span>'
+    cats = list(fa.get("categories") or [])
+    subs = list(fa.get("subcategories") or [])
+    # Prioritize architectural root-cause categories first
+    priority = [
+        "public_to_heldout_overfitting",
+        "cpu_isa_trap",
+        "crash_or_hang",
+        "hardware_safety_violation",
+        "console_play_divergence",
+        "physics_or_state_desync",
+        "visual_regression",
+        "audio_regression",
+        "harness_or_integrity_violation",
+        "build_failure",
+    ]
+    cats.sort(key=lambda x: priority.index(x) if x in priority else 99)
+    tags = []
+    for c in cats[:max_tags]:
+        lbl, cls = FA_LABELS.get(c, (c.replace("_", " "), ""))
+        if c == "crash_or_hang":
+            if any("TRAP" in s for s in subs):
+                lbl, cls = "MIPS ISA trap (TEQ)", "trap"
+            elif any("FPE" in s for s in subs):
+                lbl, cls = "VR4300 FPE trap", "trap"
+            elif any("ADEL" in s or "ADES" in s for s in subs):
+                lbl, cls = "unaligned load/store", "trap"
+        elif c == "hardware_safety_violation":
+            if "unaligned_cache_cde" in subs:
+                lbl = "unaligned CACHE 0x0d"
+            elif "kseg1_dirty_synonym" in subs:
+                lbl = "KSEG1 dirty synonym"
+        elif c == "console_play_divergence":
+            if any("dma_coherence" in s for s in subs):
+                lbl = "PLAY=1 DMA cache UB"
+            elif any("cache_hazard" in s for s in subs):
+                lbl = "PLAY=1 cache hazard"
+            elif any("no_video" in s for s in subs):
+                lbl = "PLAY=1 boot freeze"
+        elif c == "physics_or_state_desync" and "gameplay:actors" in subs:
+            lbl = "actor desync"
+        tags.append(f'<span class="fa-tag {cls}">{esc(lbl)}</span>')
+    return '<div class="fa-list">' + "".join(tags) + "</div>"
+
+
+def agent_diag_strip_html(e, kaze_saved=None):
+    if e["kind"] not in AGENT_KINDS or not e.get("analytics"):
+        return ""
+    a = e["analytics"]
+    cs_pct = 100.0 * float(a.get("peak_valid_cost_saved") or e.get("cost_saved") or 0.0)
+    kaze_rel = f'{100.0 * cs_pct / (100.0 * kaze_saved):.0f}% of Kaze' if kaze_saved else "physical [0,100%)"
+
+    gen = a.get("generalization_ratio")
+    overfit = float(a.get("public_overfit_gap") or 0.0)
+    max_pub = a.get("max_unverified_public_speedup")
+    if overfit >= 0.05 and max_pub:
+        gen_val = f'<span class="dv bad">+{overfit:.2f}&times; pub drift</span>'
+        gen_sub = f'unverified pub {max_pub:.2f}&times; vs {e["speedup"]:.2f}&times;'
+    elif gen is not None:
+        cls = "ok" if gen >= 0.96 else "warn"
+        gen_val = f'<span class="dv {cls}">{gen:.2f}&times; held/pub</span>'
+        gen_sub = "0 public-only overfit checkpoints"
+    else:
+        gen_val, gen_sub = '<span class="dv">&mdash;</span>', ""
+
+    ret = a.get("retention_ratio")
+    pk_hr = a.get("active_hours_at_peak")
+    f_pass = a.get("final_routes_passed")
+    f_tot = a.get("final_routes_total") or 25
+    if a.get("final_working_tree_valid"):
+        ret_val = f'<span class="dv ok">{100.0 * (ret or 1.0):.0f}% retained</span>'
+        ret_sub = f'24h tree valid ({f_tot}/{f_tot} routes)'
+    else:
+        ret_val = '<span class="dv warn">0% @ 24h (rescued)</span>'
+        hr_txt = f'peak @ {pk_hr:.1f}h' if pk_hr is not None else "rescued"
+        rt_txt = f' &middot; {f_pass}/{f_tot} @ 24h' if f_pass is not None else ""
+        ret_sub = f'{hr_txt}{rt_txt}'
+
+    fa = a.get("post_peak_failure_attribution") or a.get("final_failure_attribution")
+    return f"""<div class="diag-strip">
+  <div class="diag-cell"><span class="dk">Bounded cost saved</span><span class="dv ok">{cs_pct:.1f}%</span><span class="ds">{esc(kaze_rel)}</span></div>
+  <div class="diag-cell"><span class="dk">Generalization</span>{gen_val}<span class="ds">{gen_sub}</span></div>
+  <div class="diag-cell"><span class="dk">24h tree retention</span>{ret_val}<span class="ds">{ret_sub}</span></div>
+  <div class="diag-cell"><span class="dk">Late-run failure modes</span>{fa_badges_html(fa)}</div>
+</div>"""
+
+
+def diagnostic_ruler_table_html(board):
+    agents = [e for e in board["entries"] if e["kind"] in AGENT_KINDS and e.get("analytics")]
+    if not agents:
+        return ""
+    kaze_saved = board.get("kaze_saved")
+    rows = []
+    for e in agents:
+        a = e["analytics"]
+        cs = 100.0 * float(a.get("peak_valid_cost_saved") or e.get("cost_saved") or 0.0)
+        kz = f' <span class="muted">({cs / (100.0 * kaze_saved) * 100.0:.0f}% Kaze)</span>' if kaze_saved else ""
+        gen = a.get("generalization_ratio")
+        gen_s = f'{gen:.3f}&times;' if gen is not None else "&mdash;"
+        overfit = float(a.get("public_overfit_gap") or 0.0)
+        max_pub = a.get("max_unverified_public_speedup")
+        ov_s = (f'<span class="neg">+{overfit:.2f}&times;</span> <span class="muted">({max_pub:.2f}&times; pub)</span>'
+                if overfit >= 0.05 and max_pub else '<span class="pos">0.00&times;</span>')
+        if a.get("final_working_tree_valid"):
+            ret_s = '<span class="pos">100%</span> <span class="muted">(25/25)</span>'
+        else:
+            fp = a.get("final_routes_passed")
+            ft = a.get("final_routes_total") or 25
+            pk = a.get("active_hours_at_peak")
+            pk_s = f'@{pk:.1f}h' if pk is not None else ""
+            rt_s = f'{fp}/{ft}' if fp is not None else "build/boot fail"
+            ret_s = f'<span class="neg">0%</span> <span class="muted">(rescued {pk_s}, {rt_s} @24h)</span>'
+        vc = a.get("host_checkpoints_valid", 0)
+        tc = a.get("host_checkpoints_total", 0)
+        rows.append(
+            f'<tr><td><a href="{e["href"]}"><b>{esc(e["short"])}</b></a></td>'
+            f'<td class="num"><b>{e["speedup"]:.3f}&times;</b></td>'
+            f'<td class="num">{cs:.1f}%{kz}</td>'
+            f'<td class="num">{gen_s}</td>'
+            f'<td class="num">{ov_s}</td>'
+            f'<td>{ret_s}</td>'
+            f'<td class="num">{vc}/{tc}</td>'
+            f'<td>{fa_badges_html(a.get("post_peak_failure_attribution") or a.get("final_failure_attribution"))}</td></tr>'
+        )
+    return f"""<div class="panel">
+<div class="panel-head"><div class="panel-title">Diagnostic ruler &amp; automated failure attribution &middot; zero-transcript signal</div></div>
+<p class="small muted">Every metric below is emitted numerically by the v3.1 grader and supervisor without reading agent transcripts:
+<b>cost saved</b> bounds frame-time reduction in [0%, 100%), <b>public drift</b> measures unverified public-course speedup gained while failing private held-outs,
+<b>24h retention</b> checks whether the final working tree stayed valid vs needing checkpoint rescue, and <b>failure attribution</b> classifies exact post-peak hardware/gate regressions.</p>
+<div class="table-wrap"><table><thead><tr>
+  <th>model</th><th class="num">verified</th><th class="num">cost saved [0,1)</th><th class="num">held/pub</th>
+  <th class="num">pub-only drift</th><th>24h retention</th><th class="num">valid cps</th><th>post-peak failure attribution</th>
+</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>"""
+
+
+def entry_card(e, rank, top, kaze_saved=None):
     tag, tag_cls = KIND_TAG[e["kind"]]
     name = f'<a href="{e["href"]}">{esc(e["name"])}</a>' if e["href"] else esc(e["name"])
     big = f'{e["speedup"]:.3f}<small>&times;</small>' if e["valid"] else "&minus;1"
+    saved_pct = 100.0 * e.get("cost_saved", 1.0 - 1.0 / e["speedup"]) if (e["valid"] and e["speedup"] > 1.0) else 0.0
+    saved_lbl = f'<span class="lb-saved">{saved_pct:.1f}% cost saved</span>' if saved_pct > 0 else ""
     sub = [esc(e["org"])] if e.get("org") else []
     if e["valid"] and e["vs_o2"]:
         sub.append(f'{e["vs_o2"]:.2f}&times; vs GCC -O2')
     if e["valid"] and e["speedup"] > 1.0:
-        sub.append(f'{100.0 * (1.0 - 1.0 / e["speedup"]):.1f}% time saved')
+        sub.append(f'{saved_pct:.1f}% time saved')
     if e["valid"] and e["fps"]:
         sub.append(f'{e["fps"]:.0f} uncapped FPS')
     tc = (e["summary"] or {}).get("toolchain") if e["summary"] else None
@@ -974,14 +1206,15 @@ def entry_card(e, rank, top):
                 if private else "")
         detail = (f'<div class="sec-lbl">Public courses</div>{course_tiles(wls)}{priv}'
                   f'<div class="sec-lbl">Slowest routes</div>{routes_table(wls, limit=5)}'
-                  + (f'<a class="more" href="{e["href"]}">All routes &rarr;</a>' if e["kind"] in AGENT_KINDS else ""))
+                  + (f'<a class="more" href="{e["href"]}">All routes &amp; checkpoints &rarr;</a>' if e["kind"] in AGENT_KINDS else ""))
     exp = '<button class="lb-exp" type="button">Expand</button>' if detail else ""
     return f"""<div class="lb-card{"" if e["valid"] else " invalid"}">
-<div class="lb-score"><span class="rank">#{rank}</span><span class="big">{big}</span></div>
+<div class="lb-score"><span class="rank">#{rank}</span><span class="big">{big}</span>{saved_lbl}</div>
 <div class="lb-main">
   <div class="lb-top"><span class="lb-name">{name}</span><span class="tag {tag_cls}">{tag}</span><span class="lb-date">{esc(e["date"])}</span>{exp}</div>
   <div class="lb-sub">{" &middot; ".join(sub)}</div>
   {unit_bars(e["units"], top) if e["valid"] else ""}
+  {agent_diag_strip_html(e, kaze_saved=kaze_saved)}
 </div>
 {f'<div class="lb-detail" hidden>{detail}</div>' if detail else ""}
 </div>"""
@@ -989,7 +1222,8 @@ def entry_card(e, rank, top):
 
 def board_cards(board):
     top = max([2.0] + [v * 1.08 for e in board["entries"] for v in e["units"].values()])
-    return "".join(entry_card(e, i + 1, top) for i, e in enumerate(board["entries"]))
+    kz = board.get("kaze_saved")
+    return "".join(entry_card(e, i + 1, top, kaze_saved=kz) for i, e in enumerate(board["entries"]))
 
 
 PLAYER_JS = """<script>(function(){
@@ -1264,6 +1498,7 @@ def build_index(out, board, sm64_rows, post_items, clips):
 
 <div class="sec-head-row"><h2 class="px-h">Leaderboard</h2><a class="mini-btn" href="{BASE}/leaderboard/">Full leaderboard &rarr;</a></div>
 {board_cards(board)}
+{diagnostic_ruler_table_html(board)}
 
 <h2 class="px-h">Scoring</h2>
 <div class="box">
@@ -1273,10 +1508,13 @@ private routes it never sees (other courses and seeded button mashing). A frame 
 console's four units, which run in parallel: <code>max(CPU, RSP, RDP, RDRAM bus)</code>. See
 <a href="{BASE}/blog/what-the-emulator-measures/">What the emulator measures</a> and
 <a href="{BASE}/blog/calibrating-the-grader/">Calibrating the grader</a>.</p>
-<div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup</span><span class="w">score</span>
+<div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup &amp; bounded cost saved</span><span class="w">score</span>
 <p>Section-weighted geometric mean over routes (40% public courses, 50% private scripted routes, 10% private button-mash routes)
-of the 1996 build's frame time divided by the candidate's. Unbounded above.
-FPS figures are 1000 / frame time: the work rate, not the 30 FPS the game displays.</p></div>
+of the 1996 build's frame time divided by the candidate's (unbounded speedup), paired with bounded <b>cycle cost saved</b>
+<code>1 &minus; T<sub>cand</sub> / T<sub>1996</sub> &isin; [0%, 100%)</code> (0% = 1996 IDO, 25.5% = GCC -O2, 39.9% = Kaze human ref, 100% = 0 ms bound).</p></div>
+<div class="score-sec"><span class="k" style="color:var(--spark)">Diagnostic sub-rulers</span><span class="w">telemetry</span>
+<p>Every run automatically reports <b>held-out generalization</b>, <b>public-only overfit drift</b>, <b>24h working-tree retention</b>
+(<code>final / peak</code>), and <b>numerical failure attribution</b> (VR4300 CPU ISA traps, cache/DMA UB, <code>PLAY=1</code> divergence, actor desync, video/audio regressions) without reading transcripts.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--amber)">Gameplay</span><span class="w">gate</span>
 <p>Mario's position, speed, action and stats, the camera, and every actor within 2000 units match the 1996 game on every frame.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--cyan)">Video</span><span class="w">gate</span>
@@ -1399,6 +1637,7 @@ def build_leaderboard(out, board, sm64_rows, agent_runs):
 courses agents can test plus {board["private"]} private routes they never see. Bars show the console bottleneck and each
 unit it is the maximum of. Expand an entry for per-course frame times.</p>
 {board_cards(board)}
+{diagnostic_ruler_table_html(board)}
 <h2 class="px-h">Score over time</h2>
 {speedup_chart(board, title=f"Best valid host grade &middot; {board['routes']} routes")}
 {bands_html(sm64_rows)}
@@ -1431,32 +1670,59 @@ def build_model(out, e, board):
     wls = s["workloads"]
     top = max([2.0] + [v * 1.08 for v in e["units"].values()])
     valid_cps = sum(1 for c in e["checkpoints"] if c.get("status") == "valid")
+    a = e.get("analytics") or {}
+    cs_pct = 100.0 * float(a.get("peak_valid_cost_saved") or e.get("cost_saved") or 0.0)
+    ret_lbl = "100% (valid)" if a.get("final_working_tree_valid") else "0% (rescued)"
     meta = " &middot; ".join(x for x in [esc(e["org"]), f'Graded: {esc(e["date"])}' if e["date"] else "",
                                          f'commit: {esc(e["commit"])}' if e["commit"] else "",
                                          f'harness: {esc(e["harness"])}' if e["harness"] else ""] if x)
     links = (f'<a href="{esc(e["repo_url"])}">Source &amp; transcript &rarr;</a>' if e["repo_url"] else "") + \
         f'<a href="{BASE}/leaderboard/">Compare with other entries &rarr;</a>'
-    cp_rows = "".join(
-        f'<tr><td>{esc(c.get("name", ""))}</td><td class="num">{c["elapsed_hours"]:.1f}h</td>'
-        f'<td><span class="tag {"valid" if c.get("status") == "valid" else "invalid"}">{esc(c.get("status"))}</span></td>'
-        f'<td class="num">{(f"{c["speedups"]["console"]:.3f}&times;" if c.get("status") == "valid" else "&mdash;")}</td>'
-        f'<td class="num">{(f"{c["vs_o2_speedups"]["console"]:.3f}&times;" if c.get("status") == "valid" and c.get("vs_o2_speedups", {}).get("console") else "&mdash;")}</td></tr>'
-        for c in e["checkpoints"])
+    cp_rows = []
+    for c in e["checkpoints"]:
+        ok = c.get("status") == "valid"
+        sp = (c.get("speedups") or {}).get("console")
+        cs = (c.get("cost_saved") or {}).get("console")
+        if cs is None and ok and sp and sp > 0:
+            cs = 1.0 - 1.0 / sp
+        diag = c.get("diagnostics") or {}
+        unv_pub = (diag.get("unverified_public_speedups") or {}).get("console")
+        if ok:
+            routes_txt = "25/25"
+            pub_txt = f'{unv_pub:.2f}&times;' if unv_pub else "&mdash;"
+            fa_html = '<span class="fa-tag clean">valid</span>'
+        else:
+            wp = diag.get("workloads_passed")
+            wt = diag.get("workloads_total")
+            routes_txt = f"{wp}/{wt}" if (wp is not None and wt) else "0/25"
+            pub_txt = f'{unv_pub:.2f}&times;' if unv_pub else "&mdash;"
+            fa_html = fa_badges_html(c.get("failure_attribution"))
+        cp_rows.append(
+            f'<tr class="{"" if ok else "invalid"}"><td>{esc(c.get("name", ""))}</td><td class="num">{c["elapsed_hours"]:.1f}h</td>'
+            f'<td><span class="tag {"valid" if ok else "invalid"}">{esc(c.get("status"))}</span></td>'
+            f'<td class="num">{(f"{sp:.3f}&times;" if ok and sp else "&mdash;")}</td>'
+            f'<td class="num">{(f"{100.0 * cs:.1f}%" if ok and cs else "&mdash;")}</td>'
+            f'<td class="num">{pub_txt}</td>'
+            f'<td class="num">{routes_txt}</td>'
+            f'<td>{fa_html}</td></tr>'
+        )
+    cp_rows_html = "".join(cp_rows)
     body = f"""<div class="col">
 <a class="back" href="{BASE}/leaderboard/">&larr; Leaderboard</a>
 <div class="model-head">
   <div><h1 class="px-h">{esc(e["name"])}</h1><div class="model-meta">{meta}</div>
   <div class="model-stats"><div><span>Wall clock</span><b>{e["end_h"]:.1f}h</b></div>
   <div><span>Checkpoints</span><b>{valid_cps}/{len(e["checkpoints"])} valid</b></div>
-  <div><span>Routes</span><b>{len(wls)}</b></div></div></div>
+  <div><span>Cost saved</span><b>{cs_pct:.1f}%</b></div>
+  <div><span>24h retention</span><b>{ret_lbl}</b></div></div></div>
   <div class="model-score"><span>Console speedup</span><b style="color:{score_color(e["speedup"])}">{e["speedup"]:.3f}<small>&times;</small></b>
-  <span>{f'{e["vs_o2"]:.2f}&times; vs GCC -O2' if e["vs_o2"] else ""}</span><div class="model-links">{links}</div></div>
+  <span>{f'{e["vs_o2"]:.2f}&times; vs GCC -O2 &middot; {cs_pct:.1f}% saved' if e["vs_o2"] else ""}</span><div class="model-links">{links}</div></div>
 </div>
 <div class="tabs" data-tabs><button type="button" class="on" data-tab="overview">Overview</button>
 <button type="button" data-tab="routes">Routes <span class="muted">{len(wls)}</span></button>
-<button type="button" data-tab="checkpoints">Checkpoints</button></div>
+<button type="button" data-tab="checkpoints">Checkpoints <span class="muted">{len(e["checkpoints"])}</span></button></div>
 <div data-tabpane="overview">
-<div class="box"><div class="box-title">About this candidate</div><p>{esc(e["note"])}</p></div>
+<div class="box"><div class="box-title">About this candidate</div><p>{esc(e["note"])}</p>{agent_diag_strip_html(e, kaze_saved=board.get("kaze_saved"))}</div>
 {speedup_chart(board, only=e["slug"], title="Score trajectory")}
 <div class="box"><div class="box-title">Units</div>{unit_bars(e["units"], top)}
 <p class="small muted">Speedup of each unit's busy time over the 1996 build (geometric mean over routes). The console
@@ -1465,8 +1731,8 @@ score follows the busiest unit in each frame.</p></div>
 </div>
 <div data-tabpane="routes" hidden>{routes_table(wls)}</div>
 <div data-tabpane="checkpoints" hidden><div class="table-wrap"><table><thead><tr><th>checkpoint</th><th class="num">elapsed</th>
-<th>status</th><th class="num">speedup</th><th class="num">vs GCC -O2</th></tr></thead><tbody>{cp_rows}</tbody></table></div>
-<p class="small muted">Host grades on all {len(wls)} routes. The leaderboard uses the best valid checkpoint.</p></div>
+<th>status</th><th class="num">speedup</th><th class="num">saved</th><th class="num">pub 6</th><th class="num">routes</th><th>failure attribution</th></tr></thead><tbody>{cp_rows_html}</tbody></table></div>
+<p class="small muted">Host grades on all {len(wls)} routes. Invalid checkpoints preserve unverified public speedup, passed route counts, and deterministic failure attribution.</p></div>
 </div>"""
     write(out, f"model/{e['slug']}/index.html", page(f'{e["name"]} | Mario Eval', body, active="leaderboard/"))
 

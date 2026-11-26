@@ -189,6 +189,25 @@ struct Runner : ares::Platform {
     return paddr < mem.size ? (u8)mem.read<N64::Byte>(paddr) : 0;
   }
 
+  static auto excCodeName(s64 code) -> const char* {
+    switch(code) {
+    case  1: return "TLBM";
+    case  2: return "TLBL";
+    case  3: return "TLBS";
+    case  4: return "ADEL";
+    case  5: return "ADES";
+    case  6: return "IBE";
+    case  7: return "DBE";
+    case  9: return "BP";
+    case 10: return "RI";
+    case 12: return "OV";
+    case 13: return "TRAP";
+    case 15: return "FPE";
+    case 23: return "WATCH";
+    default: return "EXC";
+    }
+  }
+
   auto fail(const std::string& why) -> void {
     if(!failed) { failed = true; failure = why; }
   }
@@ -292,7 +311,13 @@ struct Runner : ares::Platform {
       << ",\"cache_cde_unaligned_ops\":" << N64::cpu.profile.cacheCdeUnalignedOps
       << ",\"cache_kseg1_dirty_synonyms\":" << N64::cpu.profile.cacheKseg1DirtySynonyms
       << ",\"dcache_coherence_errors\":" << (N64::rsp.profile.dcacheCoherenceErrors + N64::rdp.profile.dcacheCoherenceErrors)
-      << ",\"host_seconds\":" << seconds << "}\n";
+      << ",\"cpu_fault_exceptions\":" << N64::cpu.profile.faultExceptions
+      << ",\"cpu_trap_exceptions\":" << N64::cpu.profile.trapExceptions;
+    if(N64::cpu.profile.firstFaultCode > 0) {
+      r << ",\"first_fault_exc\":\"" << excCodeName(N64::cpu.profile.firstFaultCode) << "\""
+        << ",\"first_fault_pc\":\"0x" << std::hex << (u32)N64::cpu.profile.firstFaultPC << std::dec << "\"";
+    }
+    r << ",\"host_seconds\":" << seconds << "}\n";
   }
 };
 

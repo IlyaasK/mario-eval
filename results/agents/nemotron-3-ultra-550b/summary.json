@@ -4334,15 +4334,5 @@
   }
  },
  "status": "valid",
- "failure_attribution": {
-  "primary_category": "profile_budget_regression",
-  "categories": [
-   "profile_budget_regression"
-  ],
-  "subcategories": [
-   "budget:memory"
-  ],
-  "public_only_pass": false
- },
  "grader_seconds": 105.2
 }

@@ -762,6 +762,72 @@
      "memory": 0.0
     },
     "vs_o2_speedups": {}
+   },
+   "reason": "failed gates: ['video']",
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 25,
+    "workloads_passed": 18,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 6,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 6,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": false,
+    "unverified_public_speedups": {
+     "console": 1.729768,
+     "stutter": 1.737186,
+     "speed": 1.734392,
+     "rdp": 1.146876,
+     "rsp": 1.742881,
+     "traffic": 1.282925,
+     "memory": 1.029251
+    },
+    "unverified_passed_speedups": {
+     "console": 1.715575,
+     "stutter": 1.740226,
+     "speed": 1.719563,
+     "rdp": 1.140375,
+     "rsp": 1.77064,
+     "traffic": 1.276285,
+     "memory": 1.02948
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "public_to_heldout_overfitting",
+    "categories": [
+     "public_to_heldout_overfitting",
+     "visual_regression"
+    ],
+    "subcategories": [
+     "unseen_course_mechanics",
+     "high_entropy_input_fragility",
+     "structural_visual_corruption"
+    ],
+    "public_only_pass": true
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -810,6 +876,27 @@
      "memory": 0.0
     },
     "vs_o2_speedups": {}
+   },
+   "reason": "build failed; see build.log",
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -858,6 +945,72 @@
      "memory": 0.0
     },
     "vs_o2_speedups": {}
+   },
+   "reason": "failed gates: ['video']",
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 25,
+    "workloads_passed": 18,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 6,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 6,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": false,
+    "unverified_public_speedups": {
+     "console": 1.785622,
+     "stutter": 1.790433,
+     "speed": 1.793957,
+     "rdp": 1.146876,
+     "rsp": 1.742881,
+     "traffic": 1.292578,
+     "memory": 1.026266
+    },
+    "unverified_passed_speedups": {
+     "console": 1.771684,
+     "stutter": 1.789659,
+     "speed": 1.778198,
+     "rdp": 1.140375,
+     "rsp": 1.77064,
+     "traffic": 1.285608,
+     "memory": 1.02709
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "public_to_heldout_overfitting",
+    "categories": [
+     "public_to_heldout_overfitting",
+     "visual_regression"
+    ],
+    "subcategories": [
+     "unseen_course_mechanics",
+     "high_entropy_input_fragility",
+     "structural_visual_corruption"
+    ],
+    "public_only_pass": true
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -906,7 +1059,111 @@
      "memory": 0.0
     },
     "vs_o2_speedups": {}
+   },
+   "reason": "PLAY=1 runtime smoke failed: play_dma_coherence_hazard",
+   "failure_attribution": {
+    "primary_category": "console_play_divergence",
+    "categories": [
+     "console_play_divergence"
+    ],
+    "subcategories": [
+     "play_runtime:play_dma_coherence_hazard"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   }
- ]
+ ],
+ "run_analytics": {
+  "host_checkpoints_total": 8,
+  "host_checkpoints_valid": 4,
+  "host_checkpoints_valid_rate": 0.5,
+  "peak_valid_speedup": 1.639806,
+  "peak_valid_cost_saved": 0.390172,
+  "peak_valid_vs_o2_speedup": 1.220999,
+  "human_expert_progress": 0.979,
+  "generalization_ratio": 0.993167,
+  "active_hours_to_first_valid": 9.6519,
+  "active_hours_to_beat_o2": 9.6519,
+  "active_hours_at_peak": 15.7333,
+  "final_working_tree_valid": false,
+  "final_working_tree_speedup": 0.0,
+  "retention_ratio": 0.0,
+  "late_regression_rescued": true,
+  "public_only_overfit_checkpoints": 2,
+  "max_unverified_public_speedup": 1.785622,
+  "peak_valid_public_speedup": 1.646565,
+  "public_overfit_gap": 0.145816,
+  "final_routes_passed": 18,
+  "final_routes_total": 25,
+  "final_sections": {
+   "public": {
+    "passed": 6,
+    "total": 6,
+    "valid": true
+   },
+   "heldout_scripted": {
+    "passed": 6,
+    "total": 8,
+    "valid": false
+   },
+   "heldout_mash": {
+    "passed": 6,
+    "total": 11,
+    "valid": false
+   }
+  },
+  "final_failure_category": "console_play_divergence",
+  "final_failure_attribution": {
+   "primary_category": "console_play_divergence",
+   "categories": [
+    "console_play_divergence"
+   ],
+   "subcategories": [
+    "play_runtime:play_dma_coherence_hazard"
+   ],
+   "public_only_pass": false
+  },
+  "post_peak_failure_attribution": {
+   "primary_category": "public_to_heldout_overfitting",
+   "categories": [
+    "public_to_heldout_overfitting",
+    "visual_regression",
+    "build_failure",
+    "console_play_divergence"
+   ],
+   "subcategories": [
+    "unseen_course_mechanics",
+    "high_entropy_input_fragility",
+    "structural_visual_corruption",
+    "compile_or_link_error",
+    "play_runtime:play_dma_coherence_hazard"
+   ]
+  },
+  "checkpoint_failure_counts": {
+   "public_to_heldout_overfitting": 2,
+   "build_failure": 1,
+   "console_play_divergence": 1
+  },
+  "observed_failure_modes": [
+   "public_to_heldout_overfitting",
+   "visual_regression",
+   "unseen_course_mechanics",
+   "high_entropy_input_fragility",
+   "structural_visual_corruption",
+   "build_failure",
+   "compile_or_link_error",
+   "console_play_divergence",
+   "play_runtime:play_dma_coherence_hazard"
+  ]
+ }
 }

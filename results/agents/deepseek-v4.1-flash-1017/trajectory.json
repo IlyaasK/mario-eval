@@ -323,16 +323,6 @@
     },
     "generalization_ratio": 0.993792
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -383,8 +373,90 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio', 'hardware']",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 21,
+    "workloads_passed": 21,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 6,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 9,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": false,
+    "unverified_public_speedups": {
+     "console": 1.697336,
+     "stutter": 1.721175,
+     "speed": 1.700965,
+     "rdp": 1.146885,
+     "rsp": 1.722512,
+     "traffic": 1.278978,
+     "memory": 1.0029
+    },
+    "unverified_passed_speedups": {
+     "console": 1.673096,
+     "stutter": 1.713853,
+     "speed": 1.676347,
+     "rdp": 1.143983,
+     "rsp": 1.765899,
+     "traffic": 1.273612,
+     "memory": 1.003548
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "public_to_heldout_overfitting",
+    "categories": [
+     "public_to_heldout_overfitting",
+     "crash_or_hang"
+    ],
+    "subcategories": [
+     "unseen_course_mechanics",
+     "high_entropy_input_fragility",
+     "execution:timeout",
+     "infinite_loop_or_deadlock"
+    ],
+    "public_only_pass": true
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-2",
@@ -392,8 +464,69 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio', 'hardware']",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 0,
+    "workloads_passed": 0,
+    "sections": {
+     "public": {
+      "passed": 0,
+      "total": 6,
+      "valid": false
+     },
+     "heldout_scripted": {
+      "passed": 0,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 0,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": false,
+    "heldout_valid": false
+   },
+   "failure_attribution": {
+    "primary_category": "crash_or_hang",
+    "categories": [
+     "crash_or_hang"
+    ],
+    "subcategories": [
+     "execution:timeout",
+     "infinite_loop_or_deadlock"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-3",
@@ -401,8 +534,44 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "build failed; see build.log",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-4",
@@ -410,8 +579,92 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio', 'hardware']",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 21,
+    "workloads_passed": 20,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 6,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 8,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": false,
+    "unverified_public_speedups": {
+     "console": 1.749358,
+     "stutter": 1.769911,
+     "speed": 1.756502,
+     "rdp": 1.146885,
+     "rsp": 1.742873,
+     "traffic": 1.288689,
+     "memory": 1.004346
+    },
+    "unverified_passed_speedups": {
+     "console": 1.727055,
+     "stutter": 1.764669,
+     "speed": 1.733316,
+     "rdp": 1.142361,
+     "rsp": 1.789282,
+     "traffic": 1.283083,
+     "memory": 1.00501
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "public_to_heldout_overfitting",
+    "categories": [
+     "public_to_heldout_overfitting",
+     "crash_or_hang",
+     "visual_regression"
+    ],
+    "subcategories": [
+     "unseen_course_mechanics",
+     "high_entropy_input_fragility",
+     "execution:timeout",
+     "infinite_loop_or_deadlock",
+     "structural_visual_corruption"
+    ],
+    "public_only_pass": true
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-5",
@@ -419,8 +672,96 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio', 'hardware']",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 19,
+    "workloads_passed": 12,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 1,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 5,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": false,
+    "unverified_public_speedups": {
+     "console": 1.854224,
+     "stutter": 1.85597,
+     "speed": 1.868602,
+     "rdp": 1.146901,
+     "rsp": 1.743095,
+     "traffic": 1.313041,
+     "memory": 1.004288
+    },
+    "unverified_passed_speedups": {
+     "console": 1.821807,
+     "stutter": 1.857432,
+     "speed": 1.838099,
+     "rdp": 1.137057,
+     "rsp": 1.746666,
+     "traffic": 1.301028,
+     "memory": 1.004478
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "public_to_heldout_overfitting",
+    "categories": [
+     "public_to_heldout_overfitting",
+     "crash_or_hang",
+     "physics_or_state_desync",
+     "visual_regression",
+     "audio_regression"
+    ],
+    "subcategories": [
+     "unseen_course_mechanics",
+     "high_entropy_input_fragility",
+     "execution:timeout",
+     "infinite_loop_or_deadlock",
+     "gameplay:actors",
+     "structural_visual_corruption",
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": true
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-6",
@@ -428,8 +769,77 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio', 'hardware']",
-   "rewards": {},
-   "speedups": {}
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 11,
+    "workloads_passed": 7,
+    "sections": {
+     "public": {
+      "passed": 3,
+      "total": 6,
+      "valid": false
+     },
+     "heldout_scripted": {
+      "passed": 1,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 3,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": false,
+    "heldout_valid": false,
+    "unverified_passed_speedups": {
+     "console": 1.802616,
+     "stutter": 1.817838,
+     "speed": 1.835447,
+     "rdp": 1.121732,
+     "rsp": 1.726664,
+     "traffic": 1.282543,
+     "memory": 1.003298
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "harness_or_integrity_violation",
+    "categories": [
+     "harness_or_integrity_violation"
+    ],
+    "subcategories": [
+     "static_integrity_violation"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   }
   },
   {
    "name": "cont-checkpoint-7",
@@ -437,8 +847,24 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio']",
-   "rewards": {},
-   "speedups": {},
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 19,
@@ -480,6 +906,33 @@
      "traffic": 1.314399,
      "memory": 1.002189
     }
+   },
+   "failure_attribution": {
+    "primary_category": "crash_or_hang",
+    "categories": [
+     "crash_or_hang",
+     "physics_or_state_desync",
+     "visual_regression",
+     "audio_regression"
+    ],
+    "subcategories": [
+     "execution:timeout",
+     "infinite_loop_or_deadlock",
+     "gameplay:actors",
+     "structural_visual_corruption",
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -488,8 +941,24 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio']",
-   "rewards": {},
-   "speedups": {},
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 21,
@@ -531,6 +1000,26 @@
      "traffic": 1.312329,
      "memory": 1.005845
     }
+   },
+   "failure_attribution": {
+    "primary_category": "harness_or_integrity_violation",
+    "categories": [
+     "harness_or_integrity_violation"
+    ],
+    "subcategories": [
+     "static_integrity_violation"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -539,50 +1028,213 @@
    "workload_set": "d08c03e7f5863ef6be246e1b095d341e0d493ec53c86f5203e872025c0d932c6",
    "status": "invalid",
    "reason": "failed gates: ['execution', 'gameplay', 'video', 'audio']",
-   "rewards": {},
-   "speedups": {},
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 21,
-    "workloads_passed": 12,
+    "workloads_passed": 0,
     "sections": {
      "public": {
-      "passed": 6,
+      "passed": 0,
       "total": 6,
-      "valid": true
+      "valid": false
      },
      "heldout_scripted": {
-      "passed": 1,
+      "passed": 0,
       "total": 8,
       "valid": false
      },
      "heldout_mash": {
-      "passed": 5,
+      "passed": 0,
       "total": 11,
       "valid": false
      }
     },
-    "public_valid": true,
+    "public_valid": false,
     "heldout_valid": false,
     "unverified_public_speedups": {
-     "console": 1.986142,
-     "stutter": 1.990724,
-     "speed": 2.034691,
+     "console": 1.791768,
+     "stutter": 1.641904,
+     "speed": 1.944865,
      "rdp": 1.146901,
      "rsp": 1.743088,
-     "traffic": 1.335956,
-     "memory": 1.005268
-    },
-    "unverified_passed_speedups": {
-     "console": 1.953567,
-     "stutter": 1.973945,
-     "speed": 2.002768,
-     "rdp": 1.137057,
-     "rsp": 1.746658,
-     "traffic": 1.32366,
-     "memory": 1.00552
+     "traffic": 1.318921,
+     "memory": 1.005266
     }
+   },
+   "failure_attribution": {
+    "primary_category": "harness_or_integrity_violation",
+    "categories": [
+     "harness_or_integrity_violation",
+     "console_play_divergence",
+     "crash_or_hang",
+     "hardware_safety_violation",
+     "physics_or_state_desync",
+     "visual_regression",
+     "audio_regression"
+    ],
+    "subcategories": [
+     "static_integrity_violation",
+     "play_runtime:play_cache_hazard",
+     "arithmetic_or_fpu_trap(FPE)",
+     "execution:timeout",
+     "unaligned_cache_cde",
+     "gameplay:actors",
+     "subpixel_or_edge_drift",
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   }
- ]
+ ],
+ "run_analytics": {
+  "host_checkpoints_total": 11,
+  "host_checkpoints_valid": 2,
+  "host_checkpoints_valid_rate": 0.1818,
+  "peak_valid_speedup": 1.565728,
+  "peak_valid_cost_saved": 0.361319,
+  "peak_valid_vs_o2_speedup": 1.16584,
+  "human_expert_progress": 0.9066,
+  "generalization_ratio": 0.993792,
+  "active_hours_to_first_valid": 2.0017,
+  "active_hours_to_beat_o2": 2.0017,
+  "active_hours_at_peak": 4.0319,
+  "final_working_tree_valid": false,
+  "final_working_tree_speedup": 0.0,
+  "retention_ratio": 0.0,
+  "late_regression_rescued": true,
+  "public_only_overfit_checkpoints": 4,
+  "max_unverified_public_speedup": 1.92089,
+  "peak_valid_public_speedup": 1.571589,
+  "public_overfit_gap": 0.355162,
+  "final_routes_passed": 0,
+  "final_routes_total": 25,
+  "final_sections": {
+   "public": {
+    "passed": 0,
+    "total": 6,
+    "valid": false
+   },
+   "heldout_scripted": {
+    "passed": 0,
+    "total": 8,
+    "valid": false
+   },
+   "heldout_mash": {
+    "passed": 0,
+    "total": 11,
+    "valid": false
+   }
+  },
+  "final_failure_category": "harness_or_integrity_violation",
+  "final_failure_attribution": {
+   "primary_category": "harness_or_integrity_violation",
+   "categories": [
+    "harness_or_integrity_violation",
+    "console_play_divergence",
+    "crash_or_hang",
+    "hardware_safety_violation",
+    "physics_or_state_desync",
+    "visual_regression",
+    "audio_regression"
+   ],
+   "subcategories": [
+    "static_integrity_violation",
+    "play_runtime:play_cache_hazard",
+    "arithmetic_or_fpu_trap(FPE)",
+    "execution:timeout",
+    "unaligned_cache_cde",
+    "gameplay:actors",
+    "subpixel_or_edge_drift",
+    "audio:spectral_or_snr_degradation"
+   ],
+   "public_only_pass": false
+  },
+  "post_peak_failure_attribution": {
+   "primary_category": "public_to_heldout_overfitting",
+   "categories": [
+    "public_to_heldout_overfitting",
+    "crash_or_hang",
+    "build_failure",
+    "visual_regression",
+    "physics_or_state_desync",
+    "audio_regression",
+    "harness_or_integrity_violation",
+    "console_play_divergence",
+    "hardware_safety_violation"
+   ],
+   "subcategories": [
+    "unseen_course_mechanics",
+    "high_entropy_input_fragility",
+    "execution:timeout",
+    "infinite_loop_or_deadlock",
+    "compile_or_link_error",
+    "structural_visual_corruption",
+    "gameplay:actors",
+    "audio:spectral_or_snr_degradation",
+    "static_integrity_violation",
+    "play_runtime:play_cache_hazard",
+    "arithmetic_or_fpu_trap(FPE)",
+    "unaligned_cache_cde",
+    "subpixel_or_edge_drift"
+   ]
+  },
+  "checkpoint_failure_counts": {
+   "public_to_heldout_overfitting": 3,
+   "crash_or_hang": 2,
+   "build_failure": 1,
+   "harness_or_integrity_violation": 3
+  },
+  "observed_failure_modes": [
+   "public_to_heldout_overfitting",
+   "crash_or_hang",
+   "unseen_course_mechanics",
+   "high_entropy_input_fragility",
+   "execution:timeout",
+   "infinite_loop_or_deadlock",
+   "build_failure",
+   "compile_or_link_error",
+   "visual_regression",
+   "structural_visual_corruption",
+   "physics_or_state_desync",
+   "audio_regression",
+   "gameplay:actors",
+   "audio:spectral_or_snr_degradation",
+   "harness_or_integrity_violation",
+   "static_integrity_violation",
+   "console_play_divergence",
+   "hardware_safety_violation",
+   "play_runtime:play_cache_hazard",
+   "arithmetic_or_fpu_trap(FPE)",
+   "unaligned_cache_cde",
+   "subpixel_or_edge_drift"
+  ]
+ }
 }

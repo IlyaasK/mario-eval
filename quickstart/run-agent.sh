@@ -472,6 +472,20 @@ for lp in agent_logs:
     except Exception:
         pass
 
+final_diag = (final_cp or {}).get("diagnostics") or {}
+final_fa = (final_cp or {}).get("failure_attribution")
+pub_only_cps = [
+    c for c in checkpoints
+    if c.get("status") != "valid"
+    and (c.get("diagnostics") or {}).get("public_valid") is True
+    and (c.get("diagnostics") or {}).get("heldout_valid") is False
+]
+max_unv_pub = max(
+    [float(((c.get("diagnostics") or {}).get("unverified_public_speedups") or {}).get(profile) or 0.0) for c in pub_only_cps],
+    default=0.0,
+)
+pub_overfit_gap = round(max(0.0, max_unv_pub - peak_sp), 6) if (max_unv_pub > 0.0 and peak_sp > 0.0) else 0.0
+
 run_analytics = {
     "commits_count": max(commits_total, int((bisect_rec or {}).get("commits_total") or 0)),
     "trailing_unverified_commits": trailing_unverified,
@@ -504,8 +518,13 @@ run_analytics = {
     "final_working_tree_speedup": final_wt_sp if final_cp is not None else None,
     "retention_ratio": retention,
     "late_regression_rescued": bool(final_cp is not None and not final_wt_valid and peak_sp > 1.0),
-    **({"final_failure_category": (final_cp.get("failure_attribution") or {}).get("primary_category")}
-       if (final_cp is not None and not final_wt_valid and final_cp.get("failure_attribution")) else {}),
+    "public_only_overfit_checkpoints": len(pub_only_cps),
+    **({"max_unverified_public_speedup": round(max_unv_pub, 6)} if max_unv_pub > 0.0 else {}),
+    "public_overfit_gap": pub_overfit_gap,
+    **({"final_routes_passed": final_diag.get("workloads_passed"), "final_routes_total": final_diag.get("workloads_total")}
+       if final_cp is not None and final_diag.get("workloads_total") else {}),
+    **({"final_failure_category": final_fa.get("primary_category"), "final_failure_attribution": final_fa}
+       if (final_cp is not None and not final_wt_valid and final_fa) else {}),
 }
 
 out_obj = {

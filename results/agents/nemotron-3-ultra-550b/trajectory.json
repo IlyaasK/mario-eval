@@ -146,16 +146,6 @@
     },
     "generalization_ratio": 0.997513
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -331,16 +321,6 @@
     },
     "generalization_ratio": 0.993134
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -401,6 +381,26 @@
     "memory": -1.0
    },
    "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
     "console": 0.0,
     "stutter": 0.0,
     "speed": 0.0,
@@ -541,16 +541,6 @@
     },
     "generalization_ratio": 0.996153
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -618,6 +608,26 @@
     "rsp": 0.0,
     "traffic": 0.0,
     "memory": 0.0
+   },
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   },
   {
@@ -636,6 +646,51 @@
     "memory": -1.0
    },
    "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "diagnostics": {
+    "workloads_total": 25,
+    "workloads_completed": 0,
+    "workloads_passed": 0,
+    "sections": {
+     "public": {
+      "passed": 0,
+      "total": 6,
+      "valid": false
+     },
+     "heldout_scripted": {
+      "passed": 0,
+      "total": 8,
+      "valid": false
+     },
+     "heldout_mash": {
+      "passed": 0,
+      "total": 11,
+      "valid": false
+     }
+    },
+    "public_valid": false,
+    "heldout_valid": false
+   },
+   "failure_attribution": {
+    "primary_category": "crash_or_hang",
+    "categories": [
+     "crash_or_hang"
+    ],
+    "subcategories": [
+     "execution:timeout",
+     "infinite_loop_or_deadlock"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
     "console": 0.0,
     "stutter": 0.0,
     "speed": 0.0,
@@ -775,16 +830,6 @@
      }
     },
     "generalization_ratio": 0.993134
-   },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
    },
    "diagnostics": {
     "workloads_total": 25,
@@ -961,16 +1006,6 @@
     },
     "generalization_ratio": 0.992999
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -1146,16 +1181,6 @@
     },
     "generalization_ratio": 0.986486
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -1216,6 +1241,26 @@
     "memory": -1.0
    },
    "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
     "console": 0.0,
     "stutter": 0.0,
     "speed": 0.0,
@@ -1357,16 +1402,6 @@
     },
     "generalization_ratio": 0.988004
    },
-   "failure_attribution": {
-    "primary_category": "profile_budget_regression",
-    "categories": [
-     "profile_budget_regression"
-    ],
-    "subcategories": [
-     "budget:memory"
-    ],
-    "public_only_pass": false
-   },
    "diagnostics": {
     "workloads_total": 25,
     "workloads_completed": 25,
@@ -1434,7 +1469,82 @@
     "rsp": 0.0,
     "traffic": 0.0,
     "memory": 0.0
+   },
+   "failure_attribution": {
+    "primary_category": "build_failure",
+    "categories": [
+     "build_failure"
+    ],
+    "subcategories": [
+     "compile_or_link_error"
+    ],
+    "public_only_pass": false
+   },
+   "version": "3.1",
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
    }
   }
- ]
+ ],
+ "run_analytics": {
+  "host_checkpoints_total": 12,
+  "host_checkpoints_valid": 7,
+  "host_checkpoints_valid_rate": 0.5833,
+  "peak_valid_speedup": 1.052841,
+  "peak_valid_cost_saved": 0.050189,
+  "peak_valid_vs_o2_speedup": 0.783945,
+  "human_expert_progress": 0.1259,
+  "generalization_ratio": 0.988004,
+  "active_hours_to_first_valid": 2.0019,
+  "active_hours_to_beat_o2": null,
+  "active_hours_at_peak": 23.7283,
+  "final_working_tree_valid": false,
+  "final_working_tree_speedup": 0.0,
+  "retention_ratio": 0.0,
+  "late_regression_rescued": true,
+  "public_only_overfit_checkpoints": 0,
+  "max_unverified_public_speedup": null,
+  "peak_valid_public_speedup": 1.060492,
+  "public_overfit_gap": 0.0,
+  "final_routes_passed": 0,
+  "final_routes_total": 25,
+  "final_sections": null,
+  "final_failure_category": "build_failure",
+  "final_failure_attribution": {
+   "primary_category": "build_failure",
+   "categories": [
+    "build_failure"
+   ],
+   "subcategories": [
+    "compile_or_link_error"
+   ],
+   "public_only_pass": false
+  },
+  "post_peak_failure_attribution": {
+   "primary_category": "build_failure",
+   "categories": [
+    "build_failure"
+   ],
+   "subcategories": [
+    "compile_or_link_error"
+   ]
+  },
+  "checkpoint_failure_counts": {
+   "build_failure": 4,
+   "crash_or_hang": 1
+  },
+  "observed_failure_modes": [
+   "build_failure",
+   "compile_or_link_error",
+   "crash_or_hang",
+   "execution:timeout",
+   "infinite_loop_or_deadlock"
+  ]
+ }
 }
