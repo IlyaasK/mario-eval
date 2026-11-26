@@ -234,6 +234,19 @@ save_artifacts_fast() {
   dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true
   in_task bash -c 'cd /task/game && git bundle create /tmp/game.bundle --all' >/dev/null 2>&1 \
     && dc cp task:/tmp/game.bundle "$RUN_DIR/game.bundle" >/dev/null 2>&1 || true
+  in_task bash -c '
+    rm -rf /tmp/mev-agy-transcripts
+    found=0
+    for f in /home/agent/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl; do
+      [ -f "$f" ] || continue
+      mkdir -p /tmp/mev-agy-transcripts
+      cid=$(basename "$(dirname "$(dirname "$(dirname "$f")")")")
+      cp -f "$f" "/tmp/mev-agy-transcripts/${cid}.transcript.jsonl" && found=1 || true
+    done
+    [ "$found" = 1 ]
+  ' >/dev/null 2>&1 \
+    && mkdir -p "$RUN_DIR/agy-transcripts" \
+    && dc cp task:/tmp/mev-agy-transcripts/. "$RUN_DIR/agy-transcripts/" >/dev/null 2>&1 || true
 }
 
 extract_commit_tree() {
@@ -260,7 +273,7 @@ for raw in sys.stdin.buffer.read().split(b"\0"):
 
 rebuild_trajectory_json() {
   local commits_total="${1:-0}" trailing_unverified="${2:-0}"
-  python3 - "$RUN_DIR" "$START" "$GAME" "$PROFILE" "$PAUSED_S" "$commits_total" "$trailing_unverified" <<'PY' || true
+  python3 - "$RUN_DIR" "$START" "$GAME" "$PROFILE" "$PAUSED_S" "$commits_total" "$trailing_unverified" "$REPO" <<'PY' || true
 import json, os, pathlib, sys
 
 run_dir = pathlib.Path(sys.argv[1])
@@ -270,6 +283,7 @@ profile = sys.argv[4]
 total_paused = float(sys.argv[5])
 commits_total = int(sys.argv[6])
 trailing_unverified = int(sys.argv[7])
+repo_dir = pathlib.Path(sys.argv[8])
 
 existing = {}
 tp = run_dir / "trajectory.json"
@@ -337,6 +351,7 @@ if hist.exists():
 
 
 def summarize_grade(s):
+    secs = (s.get("profiles", {}).get(profile) or {}).get("sections")
     return {
         "status": s.get("status"),
         **({"reason": s["reason"]} if s.get("reason") else {}),
@@ -345,6 +360,7 @@ def summarize_grade(s):
         "speedups": s.get("speedups", {}),
         "cost_saved": s.get("cost_saved", {}),
         "vs_o2_speedups": {k: v.get("vs_o2_speedup") for k, v in s.get("profiles", {}).items()},
+        **({"sections": secs} if secs else {}),
         **({"fidelity": s["fidelity"]} if s.get("fidelity") else {}),
         **({"capability_ruler": s["capability_ruler"]} if s.get("capability_ruler") else {}),
         **({"failure_attribution": s["failure_attribution"]} if s.get("failure_attribution") else {}),
@@ -381,6 +397,7 @@ for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_di
     checkpoints.append(entry)
 
 best_valid = None
+best_valid_summary = None
 for cp in checkpoints:
     cands = []
     if cp.get("status") == "valid":
@@ -391,7 +408,7 @@ for cp in checkpoints:
             "cost_saved": cp.get("cost_saved", {}).get(profile),
             "vs_o2_speedup": cp.get("vs_o2_speedups", {}).get(profile),
             "reward": cp.get("rewards", {}).get(profile),
-        }))
+        }, cp))
     lv = cp.get("last_valid")
     if isinstance(lv, dict) and lv.get("status") == "valid":
         cands.append((lv.get("speedups", {}).get(profile, 0.0), {
@@ -401,10 +418,11 @@ for cp in checkpoints:
             "cost_saved": lv.get("cost_saved", {}).get(profile),
             "vs_o2_speedup": lv.get("vs_o2_speedups", {}).get(profile),
             "reward": lv.get("rewards", {}).get(profile),
-        }))
-    for sp, rec in cands:
+        }, lv))
+    for sp, rec, src_sum in cands:
         if sp and (best_valid is None or sp > best_valid["speedup"]):
             best_valid = rec
+            best_valid_summary = src_sum
 
 bisect_rec = existing.get("bisect_last_valid")
 if isinstance(bisect_rec, dict) and bisect_rec.get("status") == "valid":
@@ -420,11 +438,27 @@ if isinstance(bisect_rec, dict) and bisect_rec.get("status") == "valid":
             "vs_o2_speedup": bisect_rec.get("vs_o2_speedup"),
             "reward": bisect_rec.get("reward"),
         }
+        best_valid_summary = bisect_rec
 
 final_cp = next((c for c in checkpoints if c["name"] == "final"), None)
 peak_sp = float((best_valid or {}).get("speedup") or 0.0)
 peak_vo2 = (best_valid or {}).get("vs_o2_speedup")
 peak_cs = (best_valid or {}).get("cost_saved")
+peak_hr = (best_valid or {}).get("elapsed_hours")
+gen_ratio = ((best_valid_summary or {}).get("fidelity") or {}).get("generalization_ratio")
+peak_valid_pub_sp = ((((best_valid_summary or {}).get("capability_ruler") or {}).get("splits") or {}).get("public") or {}).get("raw_console_speedup")
+
+human_expert_progress = None
+if game == "sm64" and peak_cs:
+    kaze_p = repo_dir / "results" / "baselines" / "kaze-return-to-yoshis-island" / "summary.json"
+    if kaze_p.is_file():
+        try:
+            kaze_cs = float((json.loads(kaze_p.read_text()).get("cost_saved") or {}).get(profile) or 0.0)
+            if kaze_cs > 0.0:
+                human_expert_progress = round(float(peak_cs) / kaze_cs, 4)
+        except Exception:
+            pass
+
 final_wt_valid = (final_cp.get("status") == "valid") if final_cp else None
 final_wt_sp = float(final_cp.get("speedups", {}).get(profile) or 0.0) if (final_cp and final_wt_valid) else 0.0
 retention = round(final_wt_sp / peak_sp, 4) if (final_cp is not None and peak_sp > 0.0) else None
@@ -454,23 +488,78 @@ for cp in checkpoints:
 
 full_checks = [c for c in checks if not c.get("fast")]
 valid_checks = [c for c in checks if c.get("status") == "valid"]
+clean_full_valid_checks = [c for c in valid_checks if not c.get("git_dirty") and not c.get("fast")]
 unique_heads = {c.get("git_head") for c in checks if c.get("git_head")}
 unique_roms = {c.get("rom_sha256") for c in checks if c.get("rom_sha256")}
 max_pub_sp = max([float(c.get("speedups", {}).get(profile) or 0.0) for c in valid_checks], default=0.0)
-repro_gap = round(max_pub_sp - peak_sp, 6) if max_pub_sp > 0.0 else None
+
+# Compare container 6-course `mev check` speedup against host clean-rebuild 6-course
+# public speedup on matching commits (avoiding 6-course vs 25-route or peak_sp=0 distortion).
+def extract_host_pub_sp(g_obj):
+    if not isinstance(g_obj, dict):
+        return 0.0
+    if g_obj.get("status") == "valid":
+        sp = (((g_obj.get("capability_ruler") or {}).get("splits") or {}).get("public") or {}).get("raw_console_speedup")
+        if sp:
+            return float(sp)
+        sp = ((g_obj.get("sections") or {}).get("public") or {}).get("speedup")
+        if sp:
+            return float(sp)
+        return float((g_obj.get("speedups") or {}).get(profile) or 0.0)
+    return float(((g_obj.get("diagnostics") or {}).get("unverified_public_speedups") or {}).get(profile) or 0.0)
+
+host_grades = []
+for cp in checkpoints:
+    if cp.get("git_head"):
+        host_grades.append((cp["git_head"], extract_host_pub_sp(cp), (cp.get("failure_attribution") or {}).get("primary_category")))
+    lv = cp.get("last_valid")
+    if isinstance(lv, dict) and lv.get("git_head"):
+        host_grades.append((lv["git_head"], extract_host_pub_sp(lv), (lv.get("failure_attribution") or {}).get("primary_category")))
+
+matched_repro_gaps = []
+for c in (clean_full_valid_checks or valid_checks):
+    ch = c.get("git_head") or ""
+    c_sp = float((c.get("speedups") or {}).get(profile) or 0.0)
+    if not ch or c_sp <= 0.0:
+        continue
+    for gh, h_pub, p_cat in host_grades:
+        if gh.startswith(ch) or ch.startswith(gh):
+            if h_pub > 0.0:
+                matched_repro_gaps.append(max(0.0, c_sp - h_pub))
+            elif p_cat == "build_failure":
+                matched_repro_gaps.append(max(0.0, c_sp - 1.0))
+repro_gap = round(max(matched_repro_gaps), 6) if matched_repro_gaps else None
 
 agent_logs = sorted(run_dir.glob("agent-*.log"))
+agy_transcripts = sorted((run_dir / "agy-transcripts").glob("*.transcript.jsonl")) if (run_dir / "agy-transcripts").is_dir() else []
 mev_profile_hits = 0
 mev_stress_hits = 0
 opt_log_hits = 0
-for lp in agent_logs:
-    try:
-        txt = lp.read_text(errors="ignore")
-        mev_profile_hits += txt.count("mev profile")
-        mev_stress_hits += txt.count("mev stress")
-        opt_log_hits += txt.count("OPTIMIZATION_LOG")
-    except Exception:
-        pass
+if agy_transcripts:
+    for tp_f in agy_transcripts:
+        try:
+            for line in tp_f.read_text(errors="ignore").splitlines():
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                if rec.get("type") != "PLANNER_RESPONSE":
+                    continue
+                for tc in rec.get("tool_calls") or []:
+                    arg_blob = json.dumps(tc.get("args") or {})
+                    mev_profile_hits += arg_blob.count("mev profile")
+                    mev_stress_hits += arg_blob.count("mev stress")
+                    opt_log_hits += arg_blob.count("OPTIMIZATION_LOG")
+        except Exception:
+            pass
+else:
+    for lp in agent_logs:
+        try:
+            txt = lp.read_text(errors="ignore")
+            mev_profile_hits += txt.count("mev profile")
+            mev_stress_hits += txt.count("mev stress")
+            opt_log_hits += txt.count("OPTIMIZATION_LOG")
+        except Exception:
+            pass
 
 final_diag = (final_cp or {}).get("diagnostics") or {}
 final_fa = (final_cp or {}).get("failure_attribution")
@@ -480,17 +569,59 @@ pub_only_cps = [
     and (c.get("diagnostics") or {}).get("public_valid") is True
     and (c.get("diagnostics") or {}).get("heldout_valid") is False
 ]
-max_unv_pub = max(
-    [float(((c.get("diagnostics") or {}).get("unverified_public_speedups") or {}).get(profile) or 0.0) for c in pub_only_cps],
-    default=0.0,
+unv_pub_candidates = [
+    float(((c.get("diagnostics") or {}).get("unverified_public_speedups") or {}).get(profile) or 0.0)
+    for c in pub_only_cps
+]
+for c in checkpoints:
+    lv = c.get("last_valid")
+    if (
+        isinstance(lv, dict)
+        and lv.get("status") != "valid"
+        and (lv.get("diagnostics") or {}).get("public_valid") is True
+        and (lv.get("diagnostics") or {}).get("heldout_valid") is False
+    ):
+        unv_pub_candidates.append(
+            float(((lv.get("diagnostics") or {}).get("unverified_public_speedups") or {}).get(profile) or 0.0)
+        )
+max_unv_pub = max(unv_pub_candidates, default=0.0)
+baseline_valid_sp = peak_sp if peak_sp > 0.0 else 1.0
+pub_overfit_gap = round(max(0.0, max_unv_pub - baseline_valid_sp), 6) if max_unv_pub > 0.0 else 0.0
+
+observed_modes = []
+post_peak_cats = []
+post_peak_subs = []
+post_peak_primary = None
+for cp in checkpoints:
+    if cp.get("status") == "valid":
+        continue
+    fa = cp.get("failure_attribution") or {}
+    cats = fa.get("categories") or ([fa["primary_category"]] if fa.get("primary_category") else [])
+    subs = fa.get("subcategories") or []
+    for m in list(cats) + list(subs):
+        if m and m not in observed_modes:
+            observed_modes.append(m)
+    if peak_hr is None or cp["elapsed_hours"] >= peak_hr:
+        if post_peak_primary is None and fa.get("primary_category"):
+            post_peak_primary = fa["primary_category"]
+        for c_m in cats:
+            if c_m and c_m not in post_peak_cats:
+                post_peak_cats.append(c_m)
+        for s_m in subs:
+            if s_m and s_m not in post_peak_subs:
+                post_peak_subs.append(s_m)
+
+post_peak_fa = (
+    {"primary_category": post_peak_primary, "categories": post_peak_cats, "subcategories": post_peak_subs}
+    if post_peak_primary else None
 )
-pub_overfit_gap = round(max(0.0, max_unv_pub - peak_sp), 6) if (max_unv_pub > 0.0 and peak_sp > 0.0) else 0.0
 
 run_analytics = {
     "commits_count": max(commits_total, int((bisect_rec or {}).get("commits_total") or 0)),
     "trailing_unverified_commits": trailing_unverified,
     "agent_trace_summary": {
         "invocations": len(agent_logs),
+        **({"agy_transcripts": len(agy_transcripts)} if agy_transcripts else {}),
         "quota_pauses": len(pause_intervals),
         "mev_profile_mentions": mev_profile_hits,
         "mev_stress_mentions": mev_stress_hits,
@@ -511,9 +642,12 @@ run_analytics = {
     "peak_valid_speedup": peak_sp if peak_sp > 0 else None,
     "peak_valid_vs_o2_speedup": peak_vo2,
     "peak_valid_cost_saved": peak_cs,
+    **({"peak_valid_public_speedup": peak_valid_pub_sp} if peak_valid_pub_sp is not None else {}),
+    **({"human_expert_progress": human_expert_progress} if human_expert_progress is not None else {}),
+    **({"generalization_ratio": gen_ratio} if gen_ratio is not None else {}),
     "active_hours_to_first_valid": first_valid_hr,
     "active_hours_to_beat_o2": first_beat_o2_hr,
-    "active_hours_at_peak": (best_valid or {}).get("elapsed_hours"),
+    "active_hours_at_peak": peak_hr,
     "final_working_tree_valid": final_wt_valid,
     "final_working_tree_speedup": final_wt_sp if final_cp is not None else None,
     "retention_ratio": retention,
@@ -523,11 +657,15 @@ run_analytics = {
     "public_overfit_gap": pub_overfit_gap,
     **({"final_routes_passed": final_diag.get("workloads_passed"), "final_routes_total": final_diag.get("workloads_total")}
        if final_cp is not None and final_diag.get("workloads_total") else {}),
+    **({"final_sections": final_diag["sections"]} if final_cp is not None and final_diag.get("sections") else {}),
     **({"final_failure_category": final_fa.get("primary_category"), "final_failure_attribution": final_fa}
        if (final_cp is not None and not final_wt_valid and final_fa) else {}),
+    **({"post_peak_failure_attribution": post_peak_fa} if post_peak_fa else {}),
+    **({"observed_failure_modes": observed_modes} if observed_modes else {}),
 }
 
 out_obj = {
+    "version": "3.1",
     "run": run_dir.name,
     "game": game,
     "primary_profile": profile,
@@ -548,6 +686,8 @@ grade_checkpoint() {
   local name="$1" dir="$RUN_DIR/$1"
   mkdir -p "$dir"
   commit
+  local wt_dirty=""
+  wt_dirty="$(in_task git -C /task/game status --porcelain 2>/dev/null || true)"
   rm -rf "$dir/src"
   dc cp task:/task/game "$dir/src" >/dev/null
   rm -rf "$dir/src/.git" "$dir/src/build" "$dir/src/build_"*
@@ -562,61 +702,115 @@ grade_checkpoint() {
   if [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
   "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
-  dc cp task:/task/.mev-history.jsonl "$RUN_DIR/mev-history.jsonl" >/dev/null 2>&1 || true
+  save_artifacts_fast
+
+  # Cache clean working-tree grades by full commit SHA so fallback searches
+  # across checkpoints never re-compile or re-emulate an already graded commit.
+  if [ -z "$wt_dirty" ] && [ -n "$cur_head" ] && [ -f "$dir/grade/summary.json" ]; then
+    local head_cache="$RUN_DIR/.graded-commits/$cur_head"
+    if [ ! -f "$head_cache/grade/summary.json" ]; then
+      mkdir -p "$head_cache"
+      cp -rf "$dir/grade" "$head_cache/grade"
+      cp -f "$dir/grade.txt" "$head_cache/grade.txt" 2>/dev/null || true
+    fi
+  fi
 
   # If the wall-clock snapshot landed mid-experiment on a broken working tree or
-  # scratch branch, prefer the latest CLEAN (git_dirty=false) verified commit in
-  # mev-history.jsonl so dirty-tree checks never poison last_valid_commit.
+  # on a commit with a held-out regression, probe up to 3 distinct recent clean
+  # public-valid commits (newest-first, cached in .graded-commits/) so an earlier
+  # clean milestone rescues the checkpoint even if the latest commit overfit.
   local status last_valid_commit=""
   status=$(python3 -c "import json; print(json.load(open('$dir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
   if [ "$status" != "valid" ]; then
+    local raw_cands=""
     if [ -f "$RUN_DIR/mev-history.jsonl" ]; then
-      last_valid_commit=$(python3 - "$RUN_DIR/mev-history.jsonl" "$START" <<'PY' 2>/dev/null || true
+      raw_cands=$(python3 - "$RUN_DIR/mev-history.jsonl" "$START" <<'PY' 2>/dev/null || true
 import json, sys
 t0 = float(sys.argv[2])
-best_clean_full = ""
-best_clean_any = ""
-best_any = ""
+tier_clean_full, tier_clean_fast, tier_dirty = [], [], []
 for line in open(sys.argv[1]):
     try:
         d = json.loads(line)
         if d.get("ts", t0) < t0 - 60:
             continue
-        if d.get("status") == "valid" and d.get("git_head"):
-            best_any = d["git_head"]
+        gh = d.get("git_head")
+        if d.get("status") == "valid" and gh:
             if not d.get("git_dirty"):
-                best_clean_any = d["git_head"]
                 if not d.get("fast"):
-                    best_clean_full = d["git_head"]
+                    tier_clean_full.append(gh)
+                else:
+                    tier_clean_fast.append(gh)
+            else:
+                tier_dirty.append(gh)
     except Exception:
         pass
-print(best_clean_full or best_clean_any or best_any)
+ordered = list(reversed(tier_clean_full)) + list(reversed(tier_clean_fast)) + list(reversed(tier_dirty))
+seen = []
+for h in ordered:
+    if not any(h.startswith(s) or s.startswith(h) for s in seen):
+        seen.append(h)
+print("\n".join(seen[:6]))
 PY
 )
     fi
-    if [ -z "$last_valid_commit" ]; then
-      local alt_branch_sha
-      alt_branch_sha="$(in_task bash -c '
-        cd /task/game || exit 0
-        h=$(git rev-parse HEAD 2>/dev/null || true)
-        for b in refs/heads/main refs/heads/master $(git for-each-ref --sort=-committerdate --format="%(refname)" refs/heads/ 2>/dev/null); do
-          s=$(git rev-parse --verify "$b" 2>/dev/null || true)
-          if [ -n "$s" ] && [ "$s" != "$h" ]; then
-            echo "$s"
-            exit 0
-          fi
-        done
-      ' 2>/dev/null || true)"
-      [ -n "$alt_branch_sha" ] && last_valid_commit="$alt_branch_sha"
-    fi
-  fi
-  if [ -n "$last_valid_commit" ]; then
-    if extract_commit_tree "$last_valid_commit" "$dir/src" "$dir/last-valid-src"; then
-      "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$dir/last-valid-grade" "${args[@]}" \
-        > "$dir/last-valid-grade.txt" 2>&1 || true
+    local alt_branch_sha
+    alt_branch_sha="$(in_task bash -c '
+      cd /task/game || exit 0
+      h=$(git rev-parse HEAD 2>/dev/null || true)
+      for b in refs/heads/main refs/heads/master $(git for-each-ref --sort=-committerdate --format="%(refname)" refs/heads/ 2>/dev/null); do
+        s=$(git rev-parse --verify "$b" 2>/dev/null || true)
+        if [ -n "$s" ] && [ "$s" != "$h" ]; then
+          echo "$s"
+          exit 0
+        fi
+      done
+    ' 2>/dev/null || true)"
+    [ -n "$alt_branch_sha" ] && raw_cands=$(printf '%s\n%s\n' "$raw_cands" "$alt_branch_sha")
+
+    local skip_head=""
+    [ -z "$wt_dirty" ] && skip_head="$cur_head"
+    local resolved_cands=()
+    local rc full_sha already
+    while IFS= read -r rc; do
+      [ -n "$rc" ] || continue
+      full_sha="$(in_task git -C /task/game rev-parse --verify "${rc}^{commit}" 2>/dev/null || true)"
+      [ -n "$full_sha" ] || continue
+      [ -n "$skip_head" ] && [ "$full_sha" = "$skip_head" ] && continue
+      already=0
+      for existing_sha in "${resolved_cands[@]}"; do
+        [ "$existing_sha" = "$full_sha" ] && already=1 && break
+      done
+      [ "$already" = 1 ] && continue
+      resolved_cands+=("$full_sha")
+      [ "${#resolved_cands[@]}" -ge 3 ] && break
+    done <<< "$raw_cands"
+
+    local first_tested_sha="" cand_sha cache_dir cand_status
+    for cand_sha in "${resolved_cands[@]}"; do
+      cache_dir="$RUN_DIR/.graded-commits/$cand_sha"
+      if [ ! -f "$cache_dir/grade/summary.json" ]; then
+        if extract_commit_tree "$cand_sha" "$dir/src" "$dir/last-valid-src"; then
+          mkdir -p "$cache_dir"
+          "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$cache_dir/grade" "${args[@]}" \
+            > "$cache_dir/grade.txt" 2>&1 || true
+        fi
+        rm -rf "$dir/last-valid-src"
+      fi
+      [ -f "$cache_dir/grade/summary.json" ] || continue
+      [ -z "$first_tested_sha" ] && first_tested_sha="$cand_sha"
+      cand_status=$(python3 -c "import json; print(json.load(open('$cache_dir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
+      if [ "$cand_status" = "valid" ]; then
+        last_valid_commit="$cand_sha"
+        break
+      fi
+    done
+    [ -z "$last_valid_commit" ] && [ -n "$first_tested_sha" ] && last_valid_commit="$first_tested_sha"
+    if [ -n "$last_valid_commit" ] && [ -d "$RUN_DIR/.graded-commits/$last_valid_commit/grade" ]; then
+      rm -rf "$dir/last-valid-grade"
+      cp -rf "$RUN_DIR/.graded-commits/$last_valid_commit/grade" "$dir/last-valid-grade"
+      cp -f "$RUN_DIR/.graded-commits/$last_valid_commit/grade.txt" "$dir/last-valid-grade.txt" 2>/dev/null || true
       printf '%s\n' "$last_valid_commit" > "$dir/last-valid-commit"
     fi
-    rm -rf "$dir/last-valid-src"
   fi
   local n_commits trailing_unv
   n_commits="$(in_task bash -c 'cd /task/game && git rev-list --count HEAD 2>/dev/null || echo 1' 2>/dev/null | tr -d ' ' || echo 1)"

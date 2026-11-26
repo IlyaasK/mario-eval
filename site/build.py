@@ -1103,8 +1103,9 @@ def agent_diag_strip_html(e, kaze_saved=None):
     overfit = float(a.get("public_overfit_gap") or 0.0)
     max_pub = a.get("max_unverified_public_speedup")
     if overfit >= 0.05 and max_pub:
+        base_sp = e["speedup"] if (e.get("speedup") and e["speedup"] > 0) else 1.0
         gen_val = f'<span class="dv bad">+{overfit:.2f}&times; pub drift</span>'
-        gen_sub = f'unverified pub {max_pub:.2f}&times; vs {e["speedup"]:.2f}&times;'
+        gen_sub = f'unverified pub {max_pub:.2f}&times; vs {base_sp:.2f}&times;'
     elif gen is not None:
         cls = "ok" if gen >= 0.96 else "warn"
         gen_val = f'<span class="dv {cls}">{gen:.2f}&times; held/pub</span>'
