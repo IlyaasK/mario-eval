@@ -6,6 +6,7 @@
 ^ab\.chatgpt\.com$
 ^generativelanguage\.googleapis\.com$
 ^oauth2\.googleapis\.com$
+^www\.googleapis\.com$
 ^daily-cloudcode-pa\.googleapis\.com$
 ^cloudcode-pa\.googleapis\.com$
 ^aicode\.googleapis\.com$

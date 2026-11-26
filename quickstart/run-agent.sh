@@ -656,16 +656,19 @@ for line in lines[-80:]:
         d = json.loads(line)
         if not isinstance(d, dict):
             continue
-        t = d.get("type")
+        t = d.get("type") or d.get("event")
+        res = d.get("result") if isinstance(d.get("result"), dict) else {}
         if t == "error":
             msg = d.get("message") or d.get("error") or json.dumps(d)
             error_texts.append(str(msg))
         elif t == "result" and (
-            str(d.get("status", "")).upper() in ("ERROR", "FAILED")
+            str(d.get("status") or res.get("status") or "").upper() in ("ERROR", "FAILED")
             or d.get("is_error")
+            or res.get("is_error")
             or d.get("error")
+            or res.get("error")
         ):
-            # Antigravity CLI (`agy --output-format json|stream-json`) emits final error events as type="result".
+            # Antigravity CLI (`agy --output-format stream-json` -> event="result") & Claude (type="result").
             error_texts.append(json.dumps(d))
         elif t in ("turn.failed", "item.failed") and d.get("error"):
             # OpenAI Codex CLI (`codex exec --json`) emits quota/rate errors as type="turn.failed".
@@ -816,7 +819,7 @@ start_agent() {
   # Start directly in /task/game (matching TASK.md) and drop high-volume streaming delta events.
   dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" -e "MEV_FRESH_SESSION=$fresh" task setsid --wait bash -lc \
     "cd /task/game && echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
-    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 { print; fflush() }' > "$AGENT_LOG" &
+    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 && !(index($0, "\"event\":\"step_update\"") > 0 && index($0, "\"state\":\"ACTIVE\"") > 0 && index($0, "\"text_delta\":") > 0) { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
 }
 
@@ -859,7 +862,8 @@ for line in p.read_text(errors="replace").splitlines()[-80:]:
         d = json.loads(line)
         if not isinstance(d, dict):
             continue
-        t = d.get("type")
+        t = d.get("type") or d.get("event")
+        res = d.get("result") if isinstance(d.get("result"), dict) else {}
         if t == "final":
             r = d.get("reason")
             if isinstance(r, dict) and r.get("kind"):
@@ -873,8 +877,12 @@ for line in p.read_text(errors="replace").splitlines()[-80:]:
         if t == "error" and d.get("message"):
             reason = "error:" + str(d["message"])[:120]
             continue
-        if t == "result" and (str(d.get("status", "")).upper() in ("ERROR", "FAILED") or d.get("is_error")):
-            reason = "error:" + str(d.get("error") or d.get("result") or d.get("status"))[:120]
+        if t == "result":
+            st = str(d.get("status") or res.get("status") or "").upper()
+            if st in ("ERROR", "FAILED") or d.get("is_error") or res.get("is_error"):
+                reason = "error:" + str(d.get("error") or res.get("error") or d.get("result") or st)[:120]
+            elif res.get("finished_reason") or d.get("stop_reason"):
+                reason = str(res.get("finished_reason") or d.get("stop_reason"))
             continue
         msg = d.get("message") or d
         if isinstance(msg, dict) and msg.get("stopReason"):
