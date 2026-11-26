@@ -488,13 +488,17 @@ for cp in checkpoints:
 
 full_checks = [c for c in checks if not c.get("fast")]
 valid_checks = [c for c in checks if c.get("status") == "valid"]
-clean_full_valid_checks = [c for c in valid_checks if not c.get("git_dirty") and not c.get("fast")]
+full_valid_checks = [c for c in valid_checks if not c.get("fast")]
+clean_full_valid_checks = [c for c in full_valid_checks if not c.get("git_dirty")]
 unique_heads = {c.get("git_head") for c in checks if c.get("git_head")}
 unique_roms = {c.get("rom_sha256") for c in checks if c.get("rom_sha256")}
-max_pub_sp = max([float(c.get("speedups", {}).get(profile) or 0.0) for c in valid_checks], default=0.0)
+max_pub_sp = max([float(c.get("speedups", {}).get(profile) or 0.0) for c in (full_valid_checks or valid_checks)], default=0.0)
 
 # Compare container 6-course `mev check` speedup against host clean-rebuild 6-course
-# public speedup on matching commits (avoiding 6-course vs 25-route or peak_sp=0 distortion).
+# public speedup (avoiding 2-course `--fast`, 6-vs-25-route, or peak_sp=0 distortion).
+# Note: agents commonly run `mev check` before `git commit` (so git_dirty=True and
+# git_head points at the parent commit); when no clean-tree commit SHA matches directly,
+# compare max full 6-course container check speedup against max host 6-course public speedup.
 def extract_host_pub_sp(g_obj):
     if not isinstance(g_obj, dict):
         return 0.0
@@ -510,25 +514,33 @@ def extract_host_pub_sp(g_obj):
 
 host_grades = []
 for cp in checkpoints:
-    if cp.get("git_head"):
-        host_grades.append((cp["git_head"], extract_host_pub_sp(cp), (cp.get("failure_attribution") or {}).get("primary_category")))
+    host_grades.append((cp.get("git_head") or "", extract_host_pub_sp(cp), (cp.get("failure_attribution") or {}).get("primary_category")))
     lv = cp.get("last_valid")
-    if isinstance(lv, dict) and lv.get("git_head"):
-        host_grades.append((lv["git_head"], extract_host_pub_sp(lv), (lv.get("failure_attribution") or {}).get("primary_category")))
+    if isinstance(lv, dict):
+        host_grades.append((lv.get("git_head") or "", extract_host_pub_sp(lv), (lv.get("failure_attribution") or {}).get("primary_category")))
 
 matched_repro_gaps = []
-for c in (clean_full_valid_checks or valid_checks):
+for c in clean_full_valid_checks:
     ch = c.get("git_head") or ""
     c_sp = float((c.get("speedups") or {}).get(profile) or 0.0)
     if not ch or c_sp <= 0.0:
         continue
     for gh, h_pub, p_cat in host_grades:
-        if gh.startswith(ch) or ch.startswith(gh):
+        if gh and (gh.startswith(ch) or ch.startswith(gh)):
             if h_pub > 0.0:
                 matched_repro_gaps.append(max(0.0, c_sp - h_pub))
             elif p_cat == "build_failure":
                 matched_repro_gaps.append(max(0.0, c_sp - 1.0))
-repro_gap = round(max(matched_repro_gaps), 6) if matched_repro_gaps else None
+
+if matched_repro_gaps:
+    repro_gap = round(max(matched_repro_gaps), 6)
+elif full_valid_checks and host_grades:
+    max_full_pub = max([float((c.get("speedups") or {}).get(profile) or 0.0) for c in full_valid_checks], default=0.0)
+    max_host_pub = max([h_pub for _, h_pub, _ in host_grades], default=0.0)
+    base_host_pub = max_host_pub if max_host_pub > 0.0 else 1.0
+    repro_gap = round(max(0.0, max_full_pub - base_host_pub), 6)
+else:
+    repro_gap = None
 
 agent_logs = sorted(run_dir.glob("agent-*.log"))
 agy_transcripts = sorted((run_dir / "agy-transcripts").glob("*.transcript.jsonl")) if (run_dir / "agy-transcripts").is_dir() else []
@@ -753,19 +765,28 @@ print("\n".join(seen[:6]))
 PY
 )
     fi
-    local alt_branch_sha
-    alt_branch_sha="$(in_task bash -c '
+    local recent_branch_shas
+    recent_branch_shas="$(in_task bash -c '
       cd /task/game || exit 0
+      root=$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -n 1 || true)
+      for s in $(git rev-list --max-count=5 HEAD 2>/dev/null); do
+        [ -n "$root" ] && [ "$s" = "$root" ] && continue
+        echo "$s"
+      done
       h=$(git rev-parse HEAD 2>/dev/null || true)
       for b in refs/heads/main refs/heads/master $(git for-each-ref --sort=-committerdate --format="%(refname)" refs/heads/ 2>/dev/null); do
         s=$(git rev-parse --verify "$b" 2>/dev/null || true)
-        if [ -n "$s" ] && [ "$s" != "$h" ]; then
+        if [ -n "$s" ] && [ "$s" != "$h" ] && [ "$s" != "$root" ]; then
           echo "$s"
-          exit 0
+          break
         fi
       done
     ' 2>/dev/null || true)"
-    [ -n "$alt_branch_sha" ] && raw_cands=$(printf '%s\n%s\n' "$raw_cands" "$alt_branch_sha")
+    # Prepend recent non-root branch commits ahead of dirty-tree parent SHAs so
+    # commits created via `edit -> mev check -> git commit` are probed newest-first.
+    if [ -n "$recent_branch_shas" ]; then
+      raw_cands=$(printf '%s\n%s\n' "$recent_branch_shas" "$raw_cands")
+    fi
 
     local skip_head=""
     [ -z "$wt_dirty" ] && skip_head="$cur_head"
