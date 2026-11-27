@@ -1,10 +1,7 @@
-# mario-eval: one image with everything grading needs.
-#   - pinned libdragon toolchain (trusted rebuild of submissions)
-#   - n64run (ares + mario-eval instrumentation, CPU interpreter, lavapipe)
-#   - the grader
-# Build the two component images first:
-#   docker build -t mario-eval-toolchain toolchain/
-#   docker build -t mario-eval-runner runner/
+# mario-eval: grading and build image for Super Mario 64.
+#   - pinned MIPS64 GCC toolchain (trusted rebuild of submissions)
+#   - n64run (ares + mario-eval CPU/RSP/RDP/RDRAM instrumentation, lavapipe)
+#   - the grader + -O3 C++ gate accelerator (_fast_video.so)
 ARG RUNNER_IMAGE=mario-eval-runner
 FROM ${RUNNER_IMAGE} AS runner
 
@@ -17,10 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=runner /usr/local/bin/n64run /usr/local/bin/n64run
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
-COPY grader /opt/mario-eval/grader
+COPY grader/fast_video.cpp /opt/mario-eval/grader/fast_video.cpp
 RUN g++ -O3 -std=c++20 -shared -fPIC -pthread \
       /opt/mario-eval/grader/fast_video.cpp \
       -o /opt/mario-eval/grader/_fast_video.so -lz
+COPY grader/*.py /opt/mario-eval/grader/
 COPY tools /opt/mario-eval/tools
 ENV PYTHONPATH=/opt/mario-eval
 WORKDIR /work

@@ -131,11 +131,55 @@ struct LevelCommand *mev_entry_script(void) {
     return (struct LevelCommand *) sMevEntryScript;
 }
 
+static s32 mev_is_valid_boot_level(s32 level) {
+    if (level < 4 || level > 36) {
+        return FALSE;
+    }
+    if (level == 25 || level == 32 || level == 35) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 s32 mev_select_boot_level(UNUSED s16 arg, UNUSED s32 prev) {
     u16 btn = gControllerPads[0].button;
     s32 level = LEVEL_BOB;
+    s32 act = 1;
 
-    if (btn & L_TRIG) {
+    if (btn & START_BUTTON) {
+        s32 raw_level = ((btn & R_CBUTTONS) ? 1 : 0)
+                      | ((btn & L_CBUTTONS) ? 2 : 0)
+                      | ((btn & D_CBUTTONS) ? 4 : 0)
+                      | ((btn & U_CBUTTONS) ? 8 : 0)
+                      | ((btn & B_BUTTON) ? 16 : 0)
+                      | ((btn & A_BUTTON) ? 32 : 0);
+        s32 raw_act = 1
+                    + ((btn & Z_TRIG) ? 1 : 0)
+                    + ((btn & L_TRIG) ? 2 : 0)
+                    + ((btn & U_JPAD) ? 4 : 0);
+        if (mev_is_valid_boot_level(raw_level)) {
+            level = raw_level;
+        }
+        if (raw_act < 1) {
+            act = 1;
+        } else if (raw_act > 6) {
+            act = 6;
+        } else {
+            act = raw_act;
+        }
+        /* Consume the digital boot-selector chord so buttons like U_CBUTTONS ('8')
+         * or Z_TRIG ('Z') do not leak into Mario's Frame-0 gameplay state. */
+        gControllerPads[0].button = 0;
+        gControllerPads[0].stick_x = 0;
+        gControllerPads[0].stick_y = 0;
+        gControllers[0].buttonDown = 0;
+        gControllers[0].buttonPressed = 0;
+        gControllers[0].rawStickX = 0;
+        gControllers[0].rawStickY = 0;
+        gControllers[0].stickX = 0;
+        gControllers[0].stickY = 0;
+        gControllers[0].stickMag = 0;
+    } else if (btn & L_TRIG) {
         level = LEVEL_WF;
     } else if (btn & R_TRIG) {
         level = LEVEL_JRB;
@@ -145,20 +189,10 @@ s32 mev_select_boot_level(UNUSED s16 arg, UNUSED s32 prev) {
         level = LEVEL_DDD;
     } else if (btn & D_JPAD) {
         level = LEVEL_BITFS;
-    } else if (btn & L_JPAD) {
-        level = LEVEL_CCM;
-    } else if (btn & R_JPAD) {
-        level = LEVEL_SSL;
-    } else if (btn & U_CBUTTONS) {
-        level = LEVEL_LLL;
-    } else if (btn & D_CBUTTONS) {
-        level = LEVEL_HMC;
-    } else if (btn & L_CBUTTONS) {
-        level = LEVEL_WDW;
     }
 
     gCurrSaveFileNum = 1;
-    gCurrActNum = 1;
+    gCurrActNum = act;
     gDebugLevelSelect = FALSE;
     save_file_erase(0);
     save_file_set_flags(SAVE_FLAG_FILE_EXISTS);

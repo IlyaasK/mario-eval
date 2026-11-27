@@ -17,9 +17,12 @@
                                 smoke by default on SM64). Pass workload IDs (e.g.
                                 `mev check jrb`) and/or `--fast` (incremental build, skips
                                 PLAY=1) for a ~5s gate-verified loop.
-  mev stress [--frames N] [--seed S]
-                                run local seeded button-mash stress tests (checks completion,
-                                4 MB RAM, D-cache DMA coherence, KSEG1 CACHE & synonym safety)
+  mev stress [--frames N] [--seed S] [--all-courses]
+                                run seeded random-input differential stress tests against
+                                baseline.z64 across the 6 public courses (or 18 SM64 courses
+                                with --all-courses)
+  mev diff REPLAY [--frames N]  run any custom replay file against /task/game and baseline.z64
+                                and check execution, hardware, gameplay, video, and audio gates
   mev workloads                 list public workloads
   mev restore-assets            restore extracted SM64 assets offline if deleted
 
@@ -76,7 +79,7 @@ def _clean_make_env():
     return env
 
 
-def _prune_old_temps(max_age_s=7200):
+def _prune_old_temps(max_age_s=7200, max_keep=4):
     now = time.time()
     keep = set()
     last_link = pathlib.Path("/tmp/mev-last-check")
@@ -86,16 +89,24 @@ def _prune_old_temps(max_age_s=7200):
         except OSError:
             pass
     tmp_root = pathlib.Path("/tmp")
+    dirs = []
     for p in tmp_root.glob("mev-*"):
         if not p.is_dir() or p.is_symlink():
             continue
         try:
-            if p.resolve() in keep:
+            rp = p.resolve()
+            if rp in keep:
                 continue
-            if now - p.stat().st_mtime > max_age_s:
+            mt = p.stat().st_mtime
+            if now - mt > max_age_s:
                 shutil.rmtree(p, ignore_errors=True)
+            else:
+                dirs.append((mt, p))
         except OSError:
             pass
+    dirs.sort(key=lambda x: x[0], reverse=True)
+    for _mt, old_p in dirs[max_keep:]:
+        shutil.rmtree(old_p, ignore_errors=True)
 
 
 def config():
@@ -198,6 +209,36 @@ def find_elf(cfg):
     return None
 
 
+def _symbolize_pc(elf, pc_hex):
+    """Map a hex virtual PC (e.g. '0x802a1234') to 'func+0xoffset' using ELF symbols."""
+    if not elf or not pc_hex or not pathlib.Path(elf).is_file():
+        return str(pc_hex or "")
+    try:
+        addr = int(str(pc_hex), 16) & 0xFFFFFFFF
+        r = subprocess.run(["mips64-elf-nm", "-n", "-S", "--defined-only", str(elf)],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode != 0:
+            return str(pc_hex)
+        best = None
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[-2] in "tTwW":
+                s_addr = int(parts[0], 16) & 0xFFFFFFFF
+                s_size = int(parts[1], 16) if len(parts) == 4 else 0
+                if s_addr <= addr:
+                    best = (s_addr, s_size, parts[-1])
+                else:
+                    break
+        if best is not None:
+            s_addr, s_size, name = best
+            off = addr - s_addr
+            if s_size == 0 or off < max(s_size, 65536):
+                return f"{pc_hex} ({name}+0x{off:x})"
+    except Exception:
+        pass
+    return str(pc_hex)
+
+
 def _max_coherence_errors(cfg, frames):
     hw = cfg.get("hardware", {})
     if "max_dcache_coherence_errors" in hw:
@@ -218,7 +259,7 @@ def build(clean=False, quiet_stdout=False, clear_last_check_on_fail=False):
         sys.exit("integrity check failed: " + "; ".join(audit_errs[:3]))
 
     rom = GAME / cfg["rom"]
-    jobs = str(os.cpu_count() or 8)
+    jobs = str(max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 8)))
     base_cmd = cfg.get("build_cmd", ["make"])
     cmd = [base_cmd[0], f"-j{jobs}", *base_cmd[1:]] if base_cmd[0] == "make" else list(base_cmd)
     make_env = _clean_make_env()
@@ -399,7 +440,7 @@ def summarize(out_dir, workload, full_frames=240, as_json=False, cfg=None):
     ic_ms = (m.get("icache_misses", 0.0) * 48.0) / cpu_cpm
     dc_ms = (m.get("dcache_misses", 0.0) * 40.0) / cpu_cpm
     wb_ms = (m.get("dcache_writebacks", 0.0) * 40.0) / cpu_cpm
-    uc_ms = (m.get("uncached_reads", 0.0) * 40.0 + m.get("uncached_writes", 0.0) * 52.0) / cpu_cpm
+    uc_ms = (m.get("uncached_reads", 0.0) * 40.0 + m.get("uncached_writes", 0.0) * 10.0) / cpu_cpm
     bus_ms = m.get("cpu_bus_contention_cycles", 0.0) / cpu_cpm
     insn_ms = max(0.0, m.get("cpu_ms", 0.0) - (ic_ms + dc_ms + wb_ms + uc_ms + bus_ms))
     print(f"  CPU breakdown: insn/other={insn_ms:.2f}ms  I$fill={ic_ms:.2f}ms  D$fill={dc_ms:.2f}ms  "
@@ -503,13 +544,13 @@ def run_all_workloads(args):
     _prune_old_temps()
     cfg = config()
     rom = build(quiet_stdout=True)
-    frames = args.frames or min(120, cfg["frames"])
+    frames = args.frames or cfg["frames"]
     if frames < 2:
         sys.exit("--frames must be >= 2")
     iargs = idle_args(cfg)
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-all-"))
     pub_wls = [w for w in cfg["workloads"] if w.get("split", "public") == "public"]
-    jobs = min(len(pub_wls), os.cpu_count() or 8)
+    jobs = min(len(pub_wls), max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 8)))
 
     def _go(w):
         wid = w["id"]
@@ -564,7 +605,7 @@ def run(args, profile=False):
     _prune_old_temps()
     cfg = config()
     rom = build(quiet_stdout=True)
-    frames = args.frames or min(120, cfg["frames"])
+    frames = args.frames or cfg["frames"]
     out = pathlib.Path(tempfile.mkdtemp(prefix=f"mev-{args.workload}-"))
     iranges = idle_range_list(cfg)
     iargs = []
@@ -673,7 +714,26 @@ def check(args):
             shutil.rmtree(handoff, ignore_errors=True)
 
     summary_path = out / "summary.json"
-    if not is_subset and summary_path.exists():
+    s = None
+    if summary_path.exists():
+        try:
+            s = json.loads(summary_path.read_text())
+        except Exception:
+            s = None
+    primary = "console"
+    prof_file = pathlib.Path("/task/PROFILE")
+    if prof_file.is_file():
+        primary = prof_file.read_text().strip() or "console"
+
+    check_ok = False
+    if s is not None:
+        pinfo_top = s.get("profiles", {}).get(primary)
+        check_ok = (
+            s.get("status") == "valid"
+            and isinstance(pinfo_top, dict)
+            and bool(pinfo_top.get("valid"))
+        )
+    if not is_subset and check_ok:
         last_dir_link = pathlib.Path("/tmp/mev-last-check")
         tmp_link = pathlib.Path(f"/tmp/.mev-last-check.{os.getpid()}")
         try:
@@ -683,9 +743,8 @@ def check(args):
         except OSError:
             pass
 
-    if summary_path.exists():
+    if s is not None:
         try:
-            s = json.loads(summary_path.read_text())
             git_dirty = bool(subprocess.run(
                 ["git", "-C", str(GAME), "status", "--porcelain"],
                 capture_output=True, text=True,
@@ -700,6 +759,7 @@ def check(args):
                     "rom_sha256": (s.get("rom_sha256") or "")[:12],
                     "fast": bool(args.fast),
                     "status": s.get("status"),
+                    "profile_valid": check_ok,
                     "reason": s.get("reason"),
                     "rewards": s.get("rewards", {}),
                     "speedups": s.get("speedups", {}),
@@ -710,11 +770,6 @@ def check(args):
                 }
                 with open("/task/.mev-history.jsonl", "a") as hf:
                     hf.write(json.dumps(rec) + "\n")
-
-            primary = "console"
-            prof_file = pathlib.Path("/task/PROFILE")
-            if prof_file.is_file():
-                primary = prof_file.read_text().strip() or "console"
 
             pinfo = s.get("profiles", {}).get(primary)
             fid = s.get("fidelity") or {}
@@ -780,21 +835,24 @@ def check(args):
                              for wid, vw in vid_wls.items() if float(vw.get("worst_bad_fraction", 0.0)) > 0.0002]
                 if drift_wls:
                     notes = ", ".join(f"{wid}={pct:.3f}%" for wid, pct in drift_wls)
-                    print(f"  NOTE: non-zero pixel drift detected ({notes}; limit 0.200%) — verify held-out safety before committing!")
+                    lim_pct = 100.0 * float(cfg.get("video", {}).get("max_bad_fraction", 0.0035))
+                    print(f"  NOTE: non-zero pixel drift detected ({notes}; limit {lim_pct:.3f}%) — verify held-out safety before committing!")
                 hazards = []
                 for wid, hw in hw_wls.items():
                     max_coh = hw.get("max_dcache_coherence_errors")
                     max_syn = int(hw.get("max_kseg1_dirty_synonyms", 0))
                     coh = int(hw.get("dcache_coherence_errors", 0))
+                    rcoh = int(hw.get("rdram_dma_coherence_errors", 0))
+                    oob = int(hw.get("oob_rdram_accesses", 0))
                     uc = int(hw.get("cache_uncached_ops", 0))
                     ua = int(hw.get("cache_cde_unaligned_ops", 0))
                     syn = int(hw.get("cache_kseg1_dirty_synonyms", 0))
-                    if (max_coh is not None and coh > max_coh) or uc or ua or syn > max_syn or not hw.get("pass", True):
-                        hazards.append((wid, coh, max_coh, uc, ua, syn))
+                    if (max_coh is not None and coh > max_coh) or rcoh > 0 or oob > 0 or uc or ua or syn > max_syn or not hw.get("pass", True):
+                        hazards.append((wid, coh, max_coh, rcoh, oob, uc, ua, syn))
                 if hazards:
                     hstr = ", ".join(
-                        f"{w}(coh={c}{f'/{mc}' if mc is not None else ''},kseg1_cache={u},cde_unaligned={a},kseg1_syn={sn})"
-                        for w, c, mc, u, a, sn in hazards
+                        f"{w}(coh={c}{f'/{mc}' if mc is not None else ''},rdram_coh={rc},oob={ob},kseg1_cache={u},cde_unaligned={a},kseg1_syn={sn})"
+                        for w, c, mc, rc, ob, u, a, sn in hazards
                     )
                     print(f"  WARNING hardware hazards: {hstr}")
 
@@ -811,6 +869,7 @@ def check(args):
                     print("Diagnostic profiles (non-scoring, do NOT affect primary): " + "  ".join(diag_parts))
 
             if s.get("status") != "valid":
+                elf_sym = find_elf(cfg)
                 for gname, gval in s.get("gates", {}).items():
                     if not gval.get("pass", True):
                         if "workloads" not in gval:
@@ -820,7 +879,10 @@ def check(args):
                         if bad:
                             print(f"\nFailed gate [{gname}]:")
                             for wk, wv in bad[:6]:
-                                print(f"  {wk}: {json.dumps(wv)}")
+                                wv_disp = dict(wv)
+                                if "first_fault_pc" in wv_disp and elf_sym:
+                                    wv_disp["first_fault_pc"] = _symbolize_pc(elf_sym, wv_disp["first_fault_pc"])
+                                print(f"  {wk}: {json.dumps(wv_disp)}")
         except Exception as exc:
             if r.stdout:
                 print(r.stdout, end="")
@@ -833,74 +895,282 @@ def check(args):
     else:
         print(f"\nfull report: {summary_path} (symlink: /tmp/mev-last-check/summary.json)")
     print_time_remaining()
-    sys.exit(r.returncode)
+    sys.exit(r.returncode if r.returncode != 0 else (0 if check_ok else 1))
 
 
-def stress(args):
-    """Run local seeded button-mash stress replays across public courses to catch
-    generalization crashes, RAM overflows, D-cache coherence bugs, and KSEG1 hazards."""
+def _baseline_idle_args():
+    b_idle = CACHE / "baseline.idle.json"
+    if not b_idle.is_file():
+        return []
+    out = []
+    for r in json.loads(b_idle.read_text()):
+        out += ["--idle-range", r]
+    return out
+
+
+def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None):
+    """Compare candidate run in cand_dir against baseline.z64 run in base_dir."""
+    import zlib
+    sys.path.insert(0, "/opt/mario-eval")
+    from grader.grade import compare_audio, compare_obs, compare_video, load_run, metrics
+
+    c_res = json.loads((cand_dir / "result.json").read_text()) if (cand_dir / "result.json").is_file() else {"status": "missing"}
+    b_res = json.loads((base_dir / "result.json").read_text()) if (base_dir / "result.json").is_file() else {"status": "missing"}
+    if b_res.get("status") != "completed":
+        return {"pass": False, "label": label, "reason": f"baseline did not complete ({b_res.get('status')})"}
+
+    ex_ok = (
+        c_res.get("status") == "completed"
+        and int(c_res.get("frames", 0)) == frames
+        and int(c_res.get("cpu_fault_exceptions", 0)) == 0
+        and int(c_res.get("cpu_trap_exceptions", 0)) == 0
+    )
+    fault_str = ""
+    if c_res.get("first_fault_exc"):
+        pc_s = _symbolize_pc(elf_sym, c_res.get("first_fault_pc"))
+        fault_str = f"{c_res['first_fault_exc']}@{pc_s}"
+    if not ex_ok:
+        return {
+            "pass": False, "label": label, "status": c_res.get("status", "error"),
+            "reason": fault_str or f"status={c_res.get('status')} frames={c_res.get('frames', 0)}/{frames}",
+        }
+
+    cand = load_run(cand_dir)
+    ref = load_run(base_dir)
+    m = metrics(cand)
+    base_m = metrics(ref)
+
+    hw_cfg = cfg.get("hardware", {})
+    limit_ram = int(hw_cfg.get("rdram_bytes", 4194304))
+    max_oob = int(hw_cfg.get("max_oob_rdram_accesses", 0))
+    max_rdram_coh = int(hw_cfg.get("max_rdram_dma_coherence_errors", 0))
+    max_coh = _max_coherence_errors(cfg, frames)
+    max_syn = int(hw_cfg.get("max_kseg1_dirty_synonyms", 0))
+    hi = m["highest_byte"]
+    oob = int(m.get("oob_rdram_accesses", 0))
+    rcoh = int(m.get("rdram_dma_coherence_errors", 0))
+    coh = int(m.get("dcache_coherence_errors", 0))
+    uc = int(m.get("cache_uncached_ops", 0))
+    ua = int(m.get("cache_cde_unaligned_ops", 0))
+    syn = int(m.get("cache_kseg1_dirty_synonyms", 0))
+    hw_ok = (
+        hi <= limit_ram and oob <= max_oob and rcoh <= max_rdram_coh
+        and (max_coh is None or coh <= max_coh)
+        and uc == 0 and ua == 0 and syn <= max_syn
+    )
+
+    gp_cfg = cfg
+    # On Rainbow Ride (LEVEL_RR = 15), accepted `rr-statics` bakes 14 yaw-0 decoration objects into static DLs.
+    if len(ref["obs"]) >= 8:
+        lvl_hi = (int.from_bytes(ref["obs"][4:8], "big") >> 16) & 0xFFFF
+        if lvl_hi == 15:
+            r_ac = int.from_bytes(ref["obs"][31 * 4:32 * 4], "big")
+            c_ac = int.from_bytes(cand["obs"][31 * 4:32 * 4], "big") if len(cand["obs"]) >= 128 else -1
+            if r_ac - c_ac == 14:
+                exact_no_ac = [f for f in cfg.get("gameplay", {}).get("exact_fields", []) if f != "actor_count"]
+                gp_cfg = {**cfg, "gameplay": {**cfg.get("gameplay", {}), "exact_fields": exact_no_ac, "actor_tolerance": None}}
+    gp = compare_obs(ref["obs"], cand["obs"], frames, cfg.get("contract", "sm64"), gp_cfg)
+
+    ref_vid_z = base_dir / "video.bin.z"
+    if not ref_vid_z.is_file():
+        ref_vid_z.write_bytes(zlib.compress((base_dir / "video.bin").read_bytes(), 1))
+    vd = compare_video(base_dir, {}, cand["video_path"], ref["rows"], cand["rows"], cfg)
+    # Custom/stress replays do not have precomputed variant videos (f3dex2, no-lod, rr-statics),
+    # so accept high structural block-SSIM (>= 0.90, worst >= 0.78) when only variant pixels differ.
+    ssim = float(vd.get("ssim_score", 0.0))
+    wssim = float(vd.get("worst_ssim_frame_score", 0.0))
+    vd_ok = bool(vd.get("pass")) or (ssim >= 0.90 and wssim >= 0.78)
+
+    au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
+    au_ok = bool(au.get("pass"))
+
+    for d in (cand_dir, base_dir):
+        for fn in ("video.bin", "video.bin.z", "obs.bin", "audio.bin"):
+            (d / fn).unlink(missing_ok=True)
+
+    sp = (base_m["est_console_ms"] / m["est_console_ms"]) if m.get("est_console_ms") else 0.0
+    reasons = []
+    if not hw_ok:
+        reasons.append(f"hw(ram={hi // 1024}KiB,oob={oob},rdram_coh={rcoh},coh={coh},syn={syn})")
+    if not gp.get("pass"):
+        reasons.append(f"gameplay(f={gp.get('frame')},{gp.get('field')})")
+    if not vd_ok:
+        reasons.append(f"video(ssim={ssim:.4f},bad={100*vd.get('worst_bad_fraction',0):.2f}%)")
+    if not au_ok:
+        au_desc = au.get("reason") or f"snr={au.get('snr_db')}"
+        reasons.append(f"audio({au_desc})")
+    return {
+        "pass": hw_ok and bool(gp.get("pass")) and vd_ok and au_ok,
+        "label": label,
+        "speedup": sp,
+        "cand_ms": m["est_console_ms"],
+        "base_ms": base_m["est_console_ms"],
+        "max_ram_kib": hi / 1024.0,
+        "oob": oob,
+        "rdram_coh": rcoh,
+        "sp_coh": int(m.get("sp_dmem_coherence_errors", 0)),
+        "vid_pct": 100.0 * float(vd.get("worst_bad_fraction", 0.0)),
+        "ssim": ssim,
+        "strict_orig_vid": bool(vd.get("pass")),
+        "gp": gp,
+        "vd": vd,
+        "au": au,
+        "hw_ok": hw_ok,
+        "reasons": reasons,
+    }
+
+
+def diff_replay(args):
+    """Run any custom controller replay file against /task/game and baseline.z64."""
     _prune_old_temps()
+    rpath = pathlib.Path(args.replay)
+    if not rpath.is_file():
+        sys.exit(f"replay file not found: {rpath}")
+    base_rom = CACHE / "baseline.z64"
+    if not base_rom.is_file():
+        sys.exit(f"baseline reference ROM missing at {base_rom}")
     cfg = config()
-    frames = args.frames or 180
+    frames = args.frames or cfg["frames"]
     if frames < 2:
         sys.exit("--frames must be >= 2")
     rom = build(quiet_stdout=True)
-    iargs = idle_args(cfg)
+    elf_sym = find_elf(cfg)
+    c_iargs = idle_args(cfg)
+    b_iargs = _baseline_idle_args()
+    out = pathlib.Path(tempfile.mkdtemp(prefix="mev-diff-"))
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            fc = pool.submit(_run_one_n64, rom, "cand", rpath, out / "cand", frames, c_iargs)
+            fb = pool.submit(_run_one_n64, base_rom, "baseline", rpath, out / "base", frames, b_iargs)
+            fc.result()
+            fb.result()
+        ev = _eval_differential_pair(rpath.name, out / "cand", out / "base", frames, cfg, elf_sym=elf_sym)
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+    tag = "PASS" if ev["pass"] else "FAIL"
+    if "cand_ms" not in ev:
+        print(f"[{tag}] {rpath}: {ev.get('reason', 'execution failed')}")
+        print_time_remaining()
+        sys.exit(1)
+    vnote = "" if ev["strict_orig_vid"] else " (variant-tolerant SSIM check; un-precomputed replay)"
+    print(f"[{tag}] {rpath} ({frames} frames): console {ev['base_ms']:.2f}ms -> {ev['cand_ms']:.2f}ms ({ev['speedup']:.3f}x)")
+    print(f"  gates: hw={'PASS' if ev['hw_ok'] else 'FAIL'} (ram={ev['max_ram_kib']:.0f}KiB, oob={ev['oob']}, rdram_coh={ev['rdram_coh']})"
+          f"  gameplay={'PASS' if ev['gp'].get('pass') else 'FAIL'}"
+          f"  video={'PASS' if not any(r.startswith('video') for r in ev['reasons']) else 'FAIL'} (bad={ev['vid_pct']:.3f}%, ssim={ev['ssim']:.4f}){vnote}"
+          f"  audio={'PASS' if ev['au'].get('pass') else 'FAIL'}")
+    if ev["reasons"]:
+        print("  failures: " + ", ".join(ev["reasons"]))
+    print_time_remaining()
+    sys.exit(0 if ev["pass"] else 1)
+
+
+def _encode_sm64_boot_pad(level_id, act=1):
+    btn = ["S"]
+    for bit, ch in ((1, "6"), (2, "4"), (4, "2"), (8, "8"), (16, "B"), (32, "A")):
+        if level_id & bit:
+            btn.append(ch)
+    act_bits = max(0, min(5, act - 1))
+    for bit, ch in ((1, "Z"), (2, "L"), (4, "u")):
+        if act_bits & bit:
+            btn.append(ch)
+    return "".join(btn)
+
+
+_ALL_SM64_COURSES = (
+    ("bbh", 4), ("ccm", 5), ("hmc", 7), ("ssl", 8), ("bob", 9),
+    ("sl", 10), ("wdw", 11), ("jrb", 12), ("thi", 13), ("ttc", 14),
+    ("rr", 15), ("bitdw", 17), ("bitfs", 19), ("bits", 21),
+    ("lll", 22), ("ddd", 23), ("wf", 24), ("ttm", 36),
+)
+
+
+def stress(args):
+    """Run seeded random-input differential stress replays across SM64 courses against baseline.z64."""
+    _prune_old_temps()
+    cfg = config()
+    frames = args.frames or cfg["frames"]
+    if frames < 2:
+        sys.exit("--frames must be >= 2")
+    rom = build(quiet_stdout=True)
+    elf_sym = find_elf(cfg)
+    c_iargs = idle_args(cfg)
+    b_iargs = _baseline_idle_args()
+    base_rom = CACHE / "baseline.z64"
+    has_base = base_rom.is_file()
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-stress-"))
     pub_wls = [w for w in cfg["workloads"] if w.get("split", "public") == "public"]
     rng = random.Random(args.seed)
-    # Never press START ('S') in button-mash stress so the pause menu cannot soft-stall courses.
+    # Never press START ('S') after frame 0 so the pause menu cannot soft-stall courses.
     buttons_pool = [".", "A", "B", "Z", "AZ", "BZ", "8", "2", "4", "6", "A4", "A6", "R"]
 
+    if getattr(args, "all_courses", False):
+        course_targets = [(cname, f"{_encode_sm64_boot_pad(lid, 1)} 0 0", lid in (14, 15, 17, 19, 21, 22, 36))
+                          for cname, lid in _ALL_SM64_COURSES]
+    else:
+        course_targets = []
+        for w in pub_wls:
+            orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
+            course_targets.append((w["id"], orig_lines[0] if orig_lines else ". 0 0", w["id"] in ("bitfs", "rr")))
+
     items = []
-    for w in pub_wls:
-        wid = w["id"]
-        orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
-        # Keep frame 0 boot course selector intact, randomize subsequent frames in bursts
-        lines = [orig_lines[0] if orig_lines else ". 0 0"]
+    for wid, f0_line, narrow in course_targets:
+        lines = [f0_line]
         cur_btn, cur_x, cur_y, hold = ".", 0, 0, 0
+        ang = rng.uniform(0.0, 2.0 * math.pi)
         for _ in range(1, frames):
             if hold <= 0:
-                cur_btn = rng.choice(buttons_pool)
-                cur_x = rng.randint(-80, 80)
-                cur_y = rng.randint(-80, 80)
-                hold = rng.randint(4, 18)
+                if narrow:
+                    cur_btn = rng.choice([".", "A", "Z", "8", "2", "4", "6"])
+                    ang = (ang + math.pi + rng.uniform(-0.45, 0.45)) % (2.0 * math.pi)
+                    mag = rng.choice((24, 34, 44))
+                    cur_x, cur_y = int(round(mag * math.sin(ang))), int(round(mag * math.cos(ang)))
+                    hold = rng.randint(3, 6)
+                else:
+                    cur_btn = rng.choice(buttons_pool)
+                    cur_x = rng.randint(-80, 80)
+                    cur_y = rng.randint(-80, 80)
+                    hold = rng.randint(4, 14)
             lines.append(f"{cur_btn} {cur_x} {cur_y}")
             hold -= 1
         rpath = out / f"stress-{wid}.txt"
         rpath.write_text("\n".join(lines) + "\n")
         items.append((wid, rpath))
 
-    def _run_one(item):
-        wid, rpath = item
-        wdir = out / wid
-        _run_one_n64(rom, wid, rpath, wdir, frames, iargs)
-        res = json.loads((wdir / "result.json").read_text()) if (wdir / "result.json").is_file() else {"status": "missing"}
-        return wid, res
+    try:
+        jobs = min(len(items) * (2 if has_base else 1), max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 8)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+            futs = {}
+            for wid, rpath in items:
+                futs[("c", wid)] = pool.submit(_run_one_n64, rom, wid, rpath, out / wid / "cand", frames, c_iargs)
+                if has_base:
+                    futs[("b", wid)] = pool.submit(_run_one_n64, base_rom, f"base-{wid}", rpath, out / wid / "base", frames, b_iargs)
+            for f in futs.values():
+                f.result()
 
-    jobs = min(len(items), os.cpu_count() or 8)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        results = list(pool.map(_run_one, items))
-
-    limit_ram = cfg["hardware"]["rdram_bytes"]
-    max_coh = _max_coherence_errors(cfg, frames)
-    max_syn = int(cfg.get("hardware", {}).get("max_kseg1_dirty_synonyms", 0))
-    ok = True
-    print(f"Local button-mash stress test (seed={args.seed}, {frames} frames across {len(items)} courses):")
-    for wid, res in results:
-        st = res.get("status", "error")
-        hi = (res.get("highest_line", -1) + 1) * 16
-        coh = int(res.get("dcache_coherence_errors", 0))
-        uc = int(res.get("cache_uncached_ops", 0))
-        ua = int(res.get("cache_cde_unaligned_ops", 0))
-        syn = int(res.get("cache_kseg1_dirty_synonyms", 0))
-        coh_ok = True if max_coh is None else (coh <= max_coh)
-        good = (st == "completed" and hi <= limit_ram and uc == 0 and ua == 0 and syn <= max_syn and coh_ok)
-        if not good:
-            ok = False
-        tag = "PASS" if good else "FAIL"
-        coh_s = f"{coh}/{max_coh}" if max_coh is not None else str(coh)
-        print(f"  [{tag}] {wid:8s} status={st}  max_ram={hi/1024:.0f}KiB  kseg1_cache={uc}  cde_unaligned={ua}  kseg1_syn={syn}  dma_coh={coh_s}")
+        ok = True
+        print(f"Differential button-mash stress test (seed={args.seed}, {frames} frames across {len(items)} courses):")
+        for wid, _rpath in items:
+            if has_base:
+                ev = _eval_differential_pair(wid, out / wid / "cand", out / wid / "base", frames, cfg, elf_sym=elf_sym)
+                if not ev["pass"]:
+                    ok = False
+                tag = "PASS" if ev["pass"] else "FAIL"
+                if "cand_ms" not in ev:
+                    print(f"  [{tag}] {wid:8s} {ev.get('reason', 'failed')}")
+                else:
+                    fail_s = ("  FAIL: " + ", ".join(ev["reasons"])) if ev["reasons"] else ""
+                    print(f"  [{tag}] {wid:8s} {ev['base_ms']:6.2f}->{ev['cand_ms']:6.2f}ms ({ev['speedup']:5.2f}x)"
+                          f"  ram={ev['max_ram_kib']:4.0f}KiB  oob={ev['oob']}  rdram_coh={ev['rdram_coh']}"
+                          f"  ssim={ev['ssim']:.4f}{fail_s}")
+            else:
+                res = json.loads((out / wid / "cand" / "result.json").read_text())
+                good = (res.get("status") == "completed" and int(res.get("oob_rdram_accesses", 0)) == 0)
+                if not good:
+                    ok = False
+                print(f"  [{'PASS' if good else 'FAIL'}] {wid:8s} status={res.get('status')}")
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
     print_time_remaining()
     sys.exit(0 if ok else 1)
 
@@ -917,28 +1187,32 @@ def restore_assets():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p_bld = sub.add_parser("build")
+    p_bld = sub.add_parser("build", help="build /task/game and print ROM sha256 & active Make config")
     p_bld.add_argument("--clean", action="store_true", help="run `make clean` before building")
-    sub.add_parser("workloads")
-    p_chk = sub.add_parser("check")
+    sub.add_parser("workloads", help="list the 6 public SM64 course IDs")
+    p_chk = sub.add_parser("check", help="grade /task/game on public courses with full or --fast gates")
     p_chk.add_argument("workloads", nargs="*", help="optional subset of public workloads (e.g. bob jrb)")
     p_chk.add_argument("--fast", action="store_true", help="reuse incremental build and skip PLAY=1 rebuild")
-    p_chk.add_argument("--play-smoke", action="store_true", help="boot and verify the PLAY=1 console ROM (default on plain `mev check` for SM64)")
+    p_chk.add_argument("--play-smoke", action="store_true", help="boot and verify the PLAY=1 console ROM (default on plain `mev check`)")
     p_chk.add_argument("--no-play-smoke", action="store_true", help="skip PLAY=1 boot smoke on full `mev check`")
-    p_str = sub.add_parser("stress")
-    p_str.add_argument("--frames", type=int, default=180)
-    p_str.add_argument("--seed", type=int, default=1337)
+    p_str = sub.add_parser("stress", help="run differential random-input stress tests against baseline.z64")
+    p_str.add_argument("--frames", type=int, default=240, help="frames per course (default: 240)")
+    p_str.add_argument("--seed", type=int, default=1337, help="PRNG seed for controller inputs (default: 1337)")
+    p_str.add_argument("--all-courses", action="store_true", help="stress-test across 18 SM64 courses instead of only the 6 public courses")
+    p_dif = sub.add_parser("diff", help="run custom replay against /task/game and baseline.z64")
+    p_dif.add_argument("replay", help="path to controller replay .txt")
+    p_dif.add_argument("--frames", type=int, default=0, help="override frame count (default: line count of replay)")
     sub.add_parser("restore-assets", help="restore missing SM64 assets from the offline archive")
-    p_run = sub.add_parser("run")
-    p_run.add_argument("workload", nargs="?", default=None)
+    p_run = sub.add_parser("run", help="run one or --all public courses and print hardware cost breakdown")
+    p_run.add_argument("workload", nargs="?", default=None, help="public course ID (bob, wf, jrb, ddd, bitfs, rr)")
     p_run.add_argument("--all", action="store_true", help="run all public workloads in parallel")
-    p_run.add_argument("--frames", type=int, default=0)
+    p_run.add_argument("--frames", type=int, default=0, help="override frame count (default: workload frames)")
     p_run.add_argument("--top", type=int, default=0, help="include top-N function profile (alias for `mev profile`)")
     p_run.add_argument("--json", action="store_true", help="emit machine-readable JSON")
-    p_prof = sub.add_parser("profile")
-    p_prof.add_argument("workload")
-    p_prof.add_argument("--frames", type=int, default=0)
-    p_prof.add_argument("--top", type=int, default=25)
+    p_prof = sub.add_parser("profile", help="attribute CPU/I-cache/D-cache/RDP/RDRAM hotspots on a course")
+    p_prof.add_argument("workload", help="public course ID (bob, wf, jrb, ddd, bitfs, rr)")
+    p_prof.add_argument("--frames", type=int, default=0, help="override frame count (default: workload frames)")
+    p_prof.add_argument("--top", type=int, default=25, help="number of top functions/symbols to show (default: 25)")
     args = ap.parse_args()
     if args.cmd == "build":
         print(build(clean=args.clean))
@@ -953,6 +1227,8 @@ def main():
         check(args)
     elif args.cmd == "stress":
         stress(args)
+    elif args.cmd == "diff":
+        diff_replay(args)
     elif args.cmd == "restore-assets":
         restore_assets()
 

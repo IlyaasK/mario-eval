@@ -1,0 +1,24 @@
+{
+  "offline-parity-gate": {
+    "PreToolUse": [
+      {
+        "matcher": "search_web|search_marketplace|read_url_content|.*browser.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '{\"decision\":\"deny\",\"reason\":\"Offline evaluation benchmark: web search and browser tools are disabled for parity across all evaluated models.\"}\\n'"
+          }
+        ]
+      },
+      {
+        "matcher": "ask_question",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '{\"decision\":\"deny\",\"reason\":\"Unattended 24-hour benchmark: no human operator is present; proceed autonomously.\"}\\n'"
+          }
+        ]
+      }
+    ]
+  }
+}

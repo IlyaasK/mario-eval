@@ -1,10 +1,6 @@
-# Super Mario 64 evaluation target
+# Super Mario 64 Evaluation Target
 
-Super Mario 64 (`us`, `n64decomp/sm64`) is the flagship 24-hour evaluation
-target in Mario Eval alongside Pip's Garden (`workload/`). Because this
-repository never distributes Nintendo code or assets (`sm64/decomp/`, `cache/`,
-and `*.z64` are git-ignored), you prepare the target once from a legally dumped
-US ROM you own.
+Mario Eval evaluates long-horizon systems engineering on the complete US Super Mario 64 decompilation (`n64decomp/sm64`). Because this repository never distributes Nintendo code, ROMs, or assets (`sm64/decomp/`, `cache/`, and `*.z64` are git-ignored), you prepare the target once from a legally dumped US `.z64` ROM you own.
 
 ## 1. Prepare `sm64/decomp`
 
@@ -14,114 +10,40 @@ US ROM you own.
 
 `sm64/setup.sh`:
 1. Verifies the US big-endian `.z64` SHA-1 (`9bef1128717f958171a4afac3ed78ee2bb4e86ce`).
-2. Checks out [`n64decomp/sm64`](https://github.com/n64decomp/sm64) at pinned
-   commit `9921382a68bb0c865e5e45eb594d9c64db59b1af` into `sm64/decomp/`.
-3. Extracts assets inside `mario-eval` and **deletes `baserom.us.z64`** so the
-   retail ROM binary never lingers in the workspace or task container.
-4. Applies [`sm64/patches/0001-mario-eval-harness.patch`](patches/0001-mario-eval-harness.patch)
-   and copies the protected harness files [`sm64/harness/mev.c`](harness/mev.c)
-   and [`sm64/harness/mev.h`](harness/mev.h) into `sm64/decomp/src/game/`.
-5. Builds the host tools (including `ido-static-recomp`) and verifies both the
-   playable `#ifdef PLAY` check (`make check-play`) and the baseline ROM.
+2. Checks out [`n64decomp/sm64`](https://github.com/n64decomp/sm64) at pinned commit `9921382a68bb0c865e5e45eb594d9c64db59b1af` into `sm64/decomp/`.
+3. Extracts assets inside `mario-eval` and **deletes `baserom.us.z64`** so the retail ROM binary never lingers in the workspace or task container.
+4. Applies [`sm64/patches/0001-mario-eval-harness.patch`](patches/0001-mario-eval-harness.patch) and copies the protected harness files [`sm64/harness/mev.c`](harness/mev.c) and [`sm64/harness/mev.h`](harness/mev.h) into `sm64/decomp/src/game/`.
+5. Builds the host tools (including `ido-static-recomp`) and verifies both `make check-play` (`PLAY=1`) and the benchmark ROM.
 
-## 2. Precompute and calibrate
+## 2. Precompute & Calibrate
 
 ```sh
-python3 sm64/corpus/make_replays.py --heldout /path/to/private-heldout-sm64
-./scripts/precompute.sh --game sm64 --heldout /path/to/private-heldout-sm64
-./scripts/calibrate.sh  --game sm64 --heldout /path/to/private-heldout-sm64
+# Public dev cache (staged into mario-eval-task alongside baseline.z64 for mev diff / mev stress)
+./scripts/precompute.sh
+
+# Private held-out replays + host reference cache (keep PRIVATE_SEED outside git)
+python3 sm64/corpus/make_replays.py --heldout /private/replays --heldout-seed "$PRIVATE_SEED"
+./scripts/precompute.sh --heldout /private/replays --cache /private/reference
+MEV_REFERENCE_DIR=/private/reference ./scripts/calibrate.sh --heldout /private/replays
 ```
 
-The SM64 calibration ladder (`sm64/calibration/`) spans 12 valid rungs plus 5
-invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`):
+The SM64 calibration ladder (`sm64/calibration/`) spans 12 valid hardware optimization rungs (`r0-unchanged` through `r10-kaze-master` and `r11-beyond-kaze`) plus 5 invalid shortcut traps (`i0-gcc-fastmath` through `i4-tamper`). See [`calibration/r10-trials.md`](calibration/r10-trials.md) for the technique-by-technique record of Kaze Emanuar's and ultrasm64's optimizations.
 
-- `r0-unchanged` to `r9-kaze-partial`: compiler flags and a growing subset of
-  Kaze Emanuar's techniques.
-- **`r10-kaze-master`, the human-expert reference (1.67x console speedup, 1.21x vs `-O2`; 1.65x across all 25 public+held-out routes)**:
-  a reconstruction of applicable optimizations from Kaze's public videos,
-  on-screen code, and two code downloads (the "How Optimizations made Mario 64
-  SLOWER" repository and the audio code from "Revolutionizing N64 programming!").
-  It is not Kaze's own engine, which rewrites physics and assets in ways that
-  change the game.
-  Techniques that change gameplay or audio (one-raycast walls, his sound engine)
-  are left out. His table-free trig is kept, with a 512-byte correction map so
-  every sine and cosine equals the vanilla table bit for bit, and his vertical
-  object culling skips objects whose drawing moves other objects (held Spiny,
-  collision children). With both, gameplay and audio are bit-identical to
-  vanilla on the public routes and on seeded button mashing, except that the
-  accepted Rainbow Ride decoration variant itself changes 54 PCM samples on the
-  public RR route (99 dB SNR). Visual changes he
-  ships are accepted as precomputed variants (full-detail Mario, no LOD, F3DEX2,
-  reduced-aliasing opaque modes, Rainbow Ride decoration baked into the level).
-  Every remaining Kaze and ultrasm64 technique was then measured one at a time
-  on top of r10; the record, including what was not adopted and why, is
-  [`calibration/r10-trials.md`](calibration/r10-trials.md).
-- `r11-beyond-kaze` (1.65x on an earlier/smaller base; stacking its D-cache
-  struct reorders onto `r10-kaze-master` reaches 1.70x): adds techniques Kaze
-  never described (object fields ordered for the 16-byte D-cache lines, skipped
-  unchanged stores, audio struct reorder, double buffering), to check that the
-  reward keeps rising past the human reference.
-
-## 3. Smoke test & run a 24-hour SM64 optimization agent
+## 3. Build Task Container, Smoke Test & Run
 
 ```sh
-./scripts/build-images.sh --game sm64
-./quickstart/smoke-test.sh --game sm64
+./scripts/build-images.sh
+./quickstart/smoke-test.sh
 
 cd quickstart && cp -n .env.example .env && docker compose up -d
+MEV_REFERENCE_DIR=/private/reference \
 AGENT_CMD='claude -p --dangerously-skip-permissions' \
-  ./run-agent.sh --game sm64 --hours 24 --profile console --heldout /path/to/private-heldout-sm64
+  ./run-agent.sh --hours 24 --profile console --heldout /private/replays
 ```
 
-`scripts/build-images.sh --game sm64` runs `python3 -m grader.grade export-public`
-to stage only the 6 public reference baselines into `/opt/mario-eval/reference`
-inside `mario-eval-task`, asserting at Docker build time that zero `heldout`
-files, zero `calibration` patches, and zero `.z64` ROM binaries exist inside the
-container.
+## v4 Harness & Suite Design
 
-## Harness, 14-Course Suite & Gate Design
-
-- **14-course lag torture + generalization suite**:
-  - **Public (6)**: `bob` (Bob-omb Battlefield), `wf` (Whomp's Fortress), `jrb`
-    (Jolly Roger Bay fog/water fillrate wall), `ddd` (Dire, Dire Docks Area 2 —
-    Bowser's Sub room, SM64's most infamous retail lag spot), `bitfs` (Bowser in
-    the Fire Sea dynamic platforms & lava), and `rr` (Rainbow Ride).
-  - **Held-out (8)**: `ccm` (Cool, Cool Mountain snow & cabin), `lll` (Lethal
-    Lava Land), `ssl` (Shifting Sand Land), `hmc` (Hazy Maze Cave fog/overdraw),
-    `wdw` (Wet-Dry World dynamic water & elevators), plus alternate trajectories
-    `bob2`, `jrb2`, and `ddd2` (plus seeded `mash-*` runs across all 11 courses).
-- **Deterministic logical frames (`#ifndef PLAY`)**: `thread5_game_loop` reads
-  controller input synchronously per logical frame (`mev_read_pad_sync()`),
-  waits for both `MESG_SP_COMPLETE` and `MESG_DP_COMPLETE` on `M_GFXTASK`, runs
-  two deterministic 544-sample `M_AUDTASK` subframes (`1088` stereo samples /
-  30 Hz frame) on `rspAspMain`, and emits `@mev` over IS-Viewer. Building with
-  `PLAY=1` (`make check-play`, verified on every submission) restores normal
-  60 Hz VBlank pacing and asynchronous `thread4_sound` console execution. The
-  emulator charges CPU time spent in the idle thread's halt loop to idle, not to
-  CPU work, and it recognizes that loop from the instructions themselves (a
-  branch to its own address, plus its `nop` delay slot) rather than from the
-  `thread1_idle` symbol, so moving work there or renaming it cannot buy free
-  frame time.
-- **Player Equivalence + Hyrum's Law**: Gates on what the player sees, hears,
-  and controls (`level_area`, `mario_stats`, `mario_action`, sub-pixel
-  `mario_pos`, `mario_floor_height`, `cam_pos`, `cam_focus`, every actor within
-  2000 units of Mario, whole-frame video, and audio SNR). All active actors are
-  recorded (up to 256 per frame; the public routes peak at 81 in Bob-omb
-  Battlefield), so the actor gate runs on every frame of every route instead of
-  being skipped past a 64-actor cap. Fixing engine C/memory
-  undefined behavior (`AVOID_UB`, uninitialized locals, out-of-bounds reads) and
-  hibernating distant off-screen objects is rewarded; altering 1996 SM64
-  gameplay/physics quirks (quarter-step counts, wall-kick timing, BLJs) fails
-  the gameplay gate.
-- **Accepted visual variants (`full-detail`, `ra-zb-opa`, `f3dex2`, `no-lod`,
-  `rr-statics`)**: Always drawing high-polygon Mario (`actors/mario/geo.inc.c`),
-  switching to Nintendo's F3DEX2 microcode, and/or using
-  SGI's `G_RM_RA_ZB_OPA_SURF` / `G_RM_RA_OPA_SURF` reduced-aliasing opaque
-  modes (preserving `AA_EN` VI coverage while dropping `IM_RD` framebuffer
-  reads, as used by Kaze Emanuar and later N64 first-party games) are accepted
-  as whole frames by the video gate. The precompute builds each *distinct*
-  combination: it drops combinations that only add `full-detail` on top of
-  `no-lod` (Mario's level of detail is all `full-detail` changes, and `no-lod`
-  already removes every LOD switch), stores one video per byte-identical
-  combination, and the gate compares each frame against the distinct reference
-  frames at that frame index.
+- **Generic `(level, act)` boot selector (`mev_select_boot_level`)**: Holding `S` (`START_BUTTON`) on Frame 0 decodes any valid SM64 `level` (`4..36` excluding stubs `{25, 32, 35}`) from `{6:1, 4:2, 2:4, 8:8, B:16, A:32}` and `act` (`1..6`) from `1 + {Z:1, L:2, u:4}`, without leaking which courses or acts are in the private held-out set. Without `S`, the 6 public single-button shortcuts (`.`=`bob`, `L`=`wf`, `R`=`jrb`, `u`=`ddd`, `d`=`bitfs`, `Z`=`rr`) boot Act 1.
+- **0% Public / 100% Held-Out Weight**: The 6 public courses are purely for local profiling and `mev check`; 100% of the final score comes from 20 private held-out trajectories (`75%` scripted multi-course/multi-act routes + `25%` seeded random-input mash routes across 18 SM64 courses).
+- **Differential Oracle (`mev diff` & `mev stress`)**: `export-public` stages `baseline.z64` into `/opt/mario-eval/reference/`, allowing agents to differentially test arbitrary custom replays (`mev diff <replay.txt>`) and random-input stress tests (`mev stress`) against the unmodified baseline ROM offline.
+- **Accepted Visual Variants**: `full-detail`, `no-lod`, `f3dex2`, `ra-zb-opa`, and `rr-statics` (individually or combined) are precomputed and verified with whole-frame `3×3` `±2/31` pixel tolerance (`<= 0.2%`) and 16×16 block-SSIM (`>= 0.98`).

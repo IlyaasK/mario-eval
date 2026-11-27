@@ -42,7 +42,7 @@ index b267233..7a6eab1 100644
 +endif
  O_FILES := $(foreach file,$(C_FILES),$(BUILD_DIR)/$(file:.c=.o)) \
             $(foreach file,$(S_FILES),$(BUILD_DIR)/$(file:.s=.o)) \
-@@ -397,7 +401,8 @@ CC_CHECK := gcc
+@@ -397,7 +404,8 @@ CC_CHECK := gcc
  CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(CC_CFLAGS) $(TARGET_CFLAGS) -std=gnu90 -Wall -Wextra -Wno-format-security -Wno-main -DNON_MATCHING -DAVOID_UB $(DEF_INC_CFLAGS)
  
  # C compiler options
@@ -52,7 +52,7 @@ index b267233..7a6eab1 100644
  ifeq ($(COMPILER),gcc)
    CFLAGS += -mno-shared -march=vr4300 -mfix4300 -mabi=32 -mhard-float -mdivide-breaks -fno-stack-protector -fno-common -fno-zero-initialized-in-bss -fno-PIC -mno-abicalls -fno-strict-aliasing -fno-inline-functions -ffreestanding -fwrapv -Wall -Wextra
  else
-@@ -489,7 +494,11 @@ clean:
+@@ -489,7 +497,11 @@ clean:
  	$(RM) -r $(BUILD_DIR_BASE)
  
  distclean: clean
@@ -65,7 +65,7 @@ index b267233..7a6eab1 100644
  	$(MAKE) -C $(TOOLS_DIR) clean
  	$(MAKE) -C $(TOOLS_DIR)/sm64tools clean
  
-@@ -909,7 +918,13 @@ $(BUILD_DIR)/libgcc.a: $(LIBGCC_O_FILES)
+@@ -909,7 +921,12 @@ $(BUILD_DIR)/libgcc.a: $(LIBGCC_O_FILES)
  	$(V)$(AR) rcs -o $@ $(LIBGCC_O_FILES)
  
  # Link SM64 ELF file
@@ -79,7 +79,7 @@ index b267233..7a6eab1 100644
 -	$(V)$(LD) -L $(BUILD_DIR) -T undefined_syms.txt -T $(BUILD_DIR)/$(LD_SCRIPT) -Map $(BUILD_DIR)/sm64.$(VERSION).map --no-check-sections $(addprefix -R ,$(SEG_FILES)) -o $@ $(O_FILES) -lultra -lgoddard -lgcc
 +	$(V)$(LD) -L $(BUILD_DIR) -T undefined_syms.txt -T $(BUILD_DIR)/$(LD_SCRIPT) -Map $(BUILD_DIR)/sm64.$(VERSION).map --no-check-sections $(addprefix -R ,$(SEG_FILES)) -o $@ $(O_FILES) -lultra -lgoddard -lgcc $(TOOLCHAIN_LIBGCC)
  
-@@ -930,7 +945,10 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
+@@ -930,7 +947,11 @@ $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
  
  
  
@@ -145,7 +145,7 @@ index a5140d7..f6a0187 100644
 +    task->ucode_boot = rspF3DBootStart;
 +    task->ucode_boot_size = (u8 *) rspF3DBootEnd - (u8 *) rspF3DBootStart;
 +    task->ucode = rspAspMainStart;
-+    task->ucode_size = 0x800;
++    task->ucode_size = ((u32) ((u8 *) rspAspMainEnd - (u8 *) rspAspMainStart) < (u32) (0x1000 - ((u8 *) rspF3DBootEnd - (u8 *) rspF3DBootStart))) ? (u32) ((u8 *) rspAspMainEnd - (u8 *) rspAspMainStart) : (u32) (0x1000 - ((u8 *) rspF3DBootEnd - (u8 *) rspF3DBootStart));
 +    task->ucode_data = rspAspMainDataStart;
 +    task->ucode_data_size = (rspAspMainDataEnd - rspAspMainDataStart) * sizeof(u64);
 +    task->dram_stack = NULL;

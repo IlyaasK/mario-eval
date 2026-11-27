@@ -520,6 +520,9 @@ extern "C" int compare_video_v3(
                         orig_exact[static_cast<size_t>(i)] = 1;
                         continue;
                     }
+                    if (n_ref_paths > 1) {
+                        any_need_variants.store(1, std::memory_order_relaxed);
+                    }
                     decode_pixels(cand_f, c_rgb.data(), w * h, bpp);
                     double of = mismatch_frac(c_rgb.data(), orig_f, r_rgb.data(), diff_idx, w, h, bpp, tol);
                     orig_fracs[static_cast<size_t>(i)] = of;
@@ -663,13 +666,16 @@ extern "C" int compare_video_v3(
     }
 
     // 3. Deterministic sequential reduction: choose one consistent variant r across
-    //    all frames minimizing (failed_frames, worst_frac, r).
+    //    all frames minimizing (failed_frames, worst_frac, sum_frac, -exact_frames, r).
     int best_r = 0;
     double best_worst_frac = 2.0;
+    double best_sum_frac = 1e18;
     double best_mean_frac = 1.0;
     int best_worst_frame = -1;
     int best_failed = frames + 1;
+    int best_exact = -1;
     int best_variant = 0;
+    std::vector<int> zero_fail_refs;
 
     for (int r = 0; r < n_ref_paths; ++r) {
         const size_t row = static_cast<size_t>(r) * n_frames;
@@ -677,11 +683,15 @@ extern "C" int compare_video_v3(
         double r_sum_frac = 0.0;
         int r_worst_frame = -1;
         int r_failed = 0;
+        int r_exact = 0;
         int r_variant = 0;
         for (int i = 0; i < frames; ++i) {
             const size_t fi = static_cast<size_t>(i);
             const double f = frac_mat[row + fi];
             r_sum_frac += f;
+            if (exact_mat[row + fi]) {
+                ++r_exact;
+            }
             if (f > limit) {
                 ++r_failed;
             }
@@ -695,13 +705,27 @@ extern "C" int compare_video_v3(
                 r_worst_frame = i;
             }
         }
-        if (r_failed < best_failed ||
-            (r_failed == best_failed && r_worst_frac < best_worst_frac)) {
+        if (r_failed == 0 && r_worst_frac <= limit) {
+            zero_fail_refs.push_back(r);
+        }
+        bool better = false;
+        if (r_failed != best_failed) {
+            better = (r_failed < best_failed);
+        } else if (r_worst_frac != best_worst_frac) {
+            better = (r_worst_frac < best_worst_frac);
+        } else if (std::abs(r_sum_frac - best_sum_frac) > 1e-15) {
+            better = (r_sum_frac < best_sum_frac);
+        } else if (r_exact != best_exact) {
+            better = (r_exact > best_exact);
+        }
+        if (better) {
             best_r = r;
             best_worst_frac = r_worst_frac;
+            best_sum_frac = r_sum_frac;
             best_mean_frac = r_sum_frac / static_cast<double>(frames);
             best_worst_frame = r_worst_frame;
             best_failed = r_failed;
+            best_exact = r_exact;
             best_variant = r_variant;
         }
     }
@@ -728,6 +752,40 @@ extern "C" int compare_video_v3(
                 cand_buf, ref_bufs[static_cast<size_t>(best_r)],
                 frames, w, h, bpp, threads, ms, ws, wf, tau, wd
             );
+            // If multiple refs passed the pixel gate (0 failed frames) and best_r
+            // did not achieve near-exact SSIM, pick the pixel-passing ref with highest SSIM.
+            if (zero_fail_refs.size() > 1 && (ms < 0.999 || ws < 0.95)) {
+                for (int alt_r : zero_fail_refs) {
+                    if (alt_r == best_r) continue;
+                    double ams = 1.0, aws = 1.0, atau = 0.05, awd = 0.0;
+                    int awf = -1;
+                    compute_video_ssim_metrics(
+                        cand_buf, ref_bufs[static_cast<size_t>(alt_r)],
+                        frames, w, h, bpp, threads, ams, aws, awf, atau, awd
+                    );
+                    if (ams > ms + 1e-9 || (std::abs(ams - ms) <= 1e-9 && aws > ws + 1e-9)) {
+                        best_r = alt_r;
+                        ms = ams; ws = aws; wf = awf; tau = atau; wd = awd;
+                        const size_t row = static_cast<size_t>(alt_r) * n_frames;
+                        double rw = 0.0, rs = 0.0;
+                        int rwf = -1, rv = 0;
+                        for (int i = 0; i < frames; ++i) {
+                            const size_t fi = static_cast<size_t>(i);
+                            const double f = frac_mat[row + fi];
+                            rs += f;
+                            if (alt_r > 0 && !exact_mat[fi] && (exact_mat[row + fi] || (orig_fracs[fi] > limit && f <= limit))) {
+                                ++rv;
+                            }
+                            if (f > rw) { rw = f; rwf = i; }
+                        }
+                        *out_worst_frac = rw;
+                        *out_worst_frame = rwf;
+                        *out_variant_frames = rv;
+                        if (out_best_ref) *out_best_ref = alt_r;
+                        if (out_mean_frac) *out_mean_frac = rs / static_cast<double>(frames);
+                    }
+                }
+            }
             if (out_ssim_score) *out_ssim_score = ms;
             if (out_worst_ssim_score) *out_worst_ssim_score = ws;
             if (out_worst_ssim_frame) *out_worst_ssim_frame = wf;
@@ -785,4 +843,300 @@ extern "C" int compare_video_fast(
         out_pass, out_worst_frac, out_worst_frame, out_failed_frames, out_variant_frames,
         nullptr
     );
+}
+
+namespace {
+
+static inline uint32_t be32(const uint8_t* p) {
+    return (static_cast<uint32_t>(p[0]) << 24) |
+           (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) << 8)  |
+           static_cast<uint32_t>(p[3]);
+}
+
+static inline uint16_t be16(const uint8_t* p) {
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) | p[1]);
+}
+
+static inline float be_f32(const uint8_t* p) {
+    uint32_t u = be32(p);
+    float f;
+    std::memcpy(&f, &u, sizeof(float));
+    return f;
+}
+
+static bool kuhn_augment(
+    int u,
+    const std::vector<std::vector<int>>& adj,
+    int* match_b,
+    uint8_t* seen
+) {
+    for (int v : adj[static_cast<size_t>(u)]) {
+        if (seen[v]) continue;
+        seen[v] = 1;
+        if (match_b[v] < 0 || kuhn_augment(match_b[v], adj, match_b, seen)) {
+            match_b[v] = u;
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+// Fast C++ implementation of SM64 player-equivalence compare_obs() over 4224-byte
+// big-endian mev_obs_t records (1056 32-bit words per frame, 256 actor slots).
+// When out_pass == 0, out_first_fail_frame identifies the exact first failing frame
+// so Python only decodes that single frame to format human-readable failure details.
+extern "C" int compare_obs_sm64_fast(
+    const uint8_t* ref_buf,
+    const uint8_t* cand_buf,
+    int frames,
+    double tol_mario_pos,
+    double tol_mario_vel,
+    double tol_floor_height,
+    double tol_cam_pos,
+    double tol_cam_focus,
+    double actor_tol,
+    double actor_radius,
+    int* out_pass,
+    int* out_failed_frames,
+    int* out_first_fail_frame,
+    double* out_gameplay_score,
+    double* out_max_pos_drift
+) {
+    if (!ref_buf || !cand_buf || frames <= 0) return 1;
+    constexpr size_t FRAME_BYTES = 4224;
+    constexpr int MAX_ACTORS = 256;
+
+    double worst_drift = 0.0;
+    double score_sum = 0.0;
+    int failed_frames = 0;
+    int first_fail_frame = -1;
+
+    std::vector<int> near_idx;
+    near_idx.reserve(MAX_ACTORS);
+    std::vector<std::vector<int>> adj(MAX_ACTORS);
+    int match_b[MAX_ACTORS];
+    uint8_t seen[MAX_ACTORS];
+
+    auto check_vec_tol = [](const uint8_t* rp, const uint8_t* cp, int count, double tol,
+                            double& max_excess, bool& failed, double* raw_max_out) {
+        double ftol = std::max(tol, 1e-9);
+        double best = 0.0;
+        for (int k = 0; k < count; ++k) {
+            double rf = static_cast<double>(be_f32(rp + k * 4));
+            double cf = static_cast<double>(be_f32(cp + k * 4));
+            if (!std::isfinite(rf) || !std::isfinite(cf)) {
+                failed = true;
+                max_excess = INFINITY;
+                return;
+            }
+            double d = std::abs(rf - cf);
+            if (d > best) best = d;
+        }
+        if (raw_max_out && best > *raw_max_out) *raw_max_out = best;
+        if (best > ftol) {
+            failed = true;
+            double r = best / ftol;
+            if (r > max_excess) max_excess = r;
+        }
+    };
+
+    for (int i = 0; i < frames; ++i) {
+        const uint8_t* rf = ref_buf + static_cast<size_t>(i) * FRAME_BYTES;
+        const uint8_t* cf = cand_buf + static_cast<size_t>(i) * FRAME_BYTES;
+        if (std::memcmp(rf, cf, FRAME_BYTES) == 0) {
+            score_sum += 1.0;
+            continue;
+        }
+
+        bool frame_exact_ok = true;
+        bool frame_failed = false;
+
+        // Exact fields: frame (w0), level_area (w1), mario_action (w4),
+        // mario_stats[4] (w20..23), actor_count (w31).
+        if (be32(rf + 0 * 4) != be32(cf + 0 * 4) ||
+            be32(rf + 1 * 4) != be32(cf + 1 * 4) ||
+            be32(rf + 4 * 4) != be32(cf + 4 * 4) ||
+            std::memcmp(rf + 20 * 4, cf + 20 * 4, 16) != 0 ||
+            be32(rf + 31 * 4) != be32(cf + 31 * 4)) {
+            frame_exact_ok = false;
+            frame_failed = true;
+        }
+
+        double max_excess_ratio = 0.0;
+        // Float tolerances: mario_pos (w8..10), mario_vel (w11..13),
+        // mario_floor_height (w15), cam_pos (w24..26), cam_focus (w27..29).
+        check_vec_tol(rf + 8 * 4,  cf + 8 * 4,  3, tol_mario_pos,    max_excess_ratio, frame_failed, &worst_drift);
+        check_vec_tol(rf + 11 * 4, cf + 11 * 4, 3, tol_mario_vel,    max_excess_ratio, frame_failed, nullptr);
+        check_vec_tol(rf + 15 * 4, cf + 15 * 4, 1, tol_floor_height, max_excess_ratio, frame_failed, nullptr);
+        check_vec_tol(rf + 24 * 4, cf + 24 * 4, 3, tol_cam_pos,      max_excess_ratio, frame_failed, nullptr);
+        check_vec_tol(rf + 27 * 4, cf + 27 * 4, 3, tol_cam_focus,    max_excess_ratio, frame_failed, nullptr);
+
+        bool actor_miss = false;
+        if (actor_tol >= 0.0) {
+            uint32_t r_cnt = be32(rf + 31 * 4);
+            uint32_t c_cnt = be32(cf + 31 * 4);
+            if (r_cnt == c_cnt && r_cnt > 0 && r_cnt <= static_cast<uint32_t>(MAX_ACTORS)) {
+                const int cnt = static_cast<int>(r_cnt);
+                const uint8_t* r_apos = rf + 32 * 4;
+                const uint8_t* c_apos = cf + 32 * 4;
+                const uint8_t* r_ast  = rf + 800 * 4;
+                const uint8_t* c_ast  = cf + 800 * 4;
+
+                bool in_order_ok = (std::memcmp(r_ast, c_ast, static_cast<size_t>(cnt) * 4) == 0);
+                if (in_order_ok) {
+                    for (int k = 0; k < cnt * 3; ++k) {
+                        double rv = static_cast<double>(be_f32(r_apos + k * 4));
+                        double cv = static_cast<double>(be_f32(c_apos + k * 4));
+                        if (!std::isfinite(rv) || !std::isfinite(cv) || std::abs(rv - cv) > actor_tol) {
+                            in_order_ok = false;
+                            break;
+                        }
+                    }
+                }
+                if (!in_order_ok) {
+                    const double mx = static_cast<double>(be_f32(rf + 8 * 4));
+                    const double my = static_cast<double>(be_f32(rf + 9 * 4));
+                    const double mz = static_cast<double>(be_f32(rf + 10 * 4));
+                    const double rad2 = actor_radius * actor_radius;
+                    near_idx.clear();
+                    for (int a = 0; a < cnt; ++a) {
+                        const double rx = static_cast<double>(be_f32(r_apos + (a * 3 + 0) * 4));
+                        const double ry = static_cast<double>(be_f32(r_apos + (a * 3 + 1) * 4));
+                        const double rz = static_cast<double>(be_f32(r_apos + (a * 3 + 2) * 4));
+                        const double dx = rx - mx, dy = ry - my, dz = rz - mz;
+                        if (dx * dx + dy * dy + dz * dz <= rad2) {
+                            near_idx.push_back(a);
+                        }
+                    }
+                    if (!near_idx.empty()) {
+                        for (int a : near_idx) {
+                            adj[static_cast<size_t>(a)].clear();
+                            const uint32_t rs = be32(r_ast + a * 4);
+                            const double rx = static_cast<double>(be_f32(r_apos + (a * 3 + 0) * 4));
+                            const double ry = static_cast<double>(be_f32(r_apos + (a * 3 + 1) * 4));
+                            const double rz = static_cast<double>(be_f32(r_apos + (a * 3 + 2) * 4));
+                            for (int b = 0; b < cnt; ++b) {
+                                if (be32(c_ast + b * 4) != rs) continue;
+                                const double cx = static_cast<double>(be_f32(c_apos + (b * 3 + 0) * 4));
+                                const double cy = static_cast<double>(be_f32(c_apos + (b * 3 + 1) * 4));
+                                const double cz = static_cast<double>(be_f32(c_apos + (b * 3 + 2) * 4));
+                                if (std::isfinite(cx) && std::isfinite(cy) && std::isfinite(cz) &&
+                                    std::abs(rx - cx) <= actor_tol &&
+                                    std::abs(ry - cy) <= actor_tol &&
+                                    std::abs(rz - cz) <= actor_tol) {
+                                    adj[static_cast<size_t>(a)].push_back(b);
+                                }
+                            }
+                        }
+                        std::fill(match_b, match_b + cnt, -1);
+                        for (int a : near_idx) {
+                            std::memset(seen, 0, static_cast<size_t>(cnt));
+                            if (!kuhn_augment(a, adj, match_b, seen)) {
+                                actor_miss = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (actor_miss) {
+            frame_failed = true;
+        }
+        if (frame_failed) {
+            ++failed_frames;
+            if (first_fail_frame < 0) first_fail_frame = i;
+        }
+        double fscore = 0.0;
+        if (frame_exact_ok && std::isfinite(max_excess_ratio)) {
+            if (max_excess_ratio <= 1.0) {
+                fscore = 1.0;
+            } else {
+                double r2 = max_excess_ratio * max_excess_ratio;
+                fscore = 1.0 / (1.0 + r2 * r2);
+            }
+            if (actor_miss) fscore *= 0.5;
+        }
+        score_sum += fscore;
+    }
+
+    *out_pass = (first_fail_frame < 0) ? 1 : 0;
+    *out_failed_frames = failed_frames;
+    *out_first_fail_frame = first_fail_frame;
+    *out_gameplay_score = std::round((score_sum / static_cast<double>(frames)) * 1e6) / 1e6;
+    *out_max_pos_drift = std::round(worst_drift * 1e4) / 1e4;
+    return 0;
+}
+
+// Direct binary scan of 32-bit big-endian MIPS ELF executable PROGBITS sections
+// for `lui $rt, <imm16>` and MIPS trap instructions (teq/tne/tlt/tltu/tge/tgeu
+// + immediate variants), replacing two slow `mips64-elf-objdump -d` passes.
+extern "C" int scan_elf_mips_words(
+    const char* elf_path,
+    uint32_t lui_imm16,
+    int* out_lui_hits,
+    int* out_trap_hits
+) {
+    if (!elf_path || !out_lui_hits || !out_trap_hits) return 1;
+    std::ifstream f(elf_path, std::ios::binary | std::ios::ate);
+    if (!f) return 2;
+    std::streamsize sz = f.tellg();
+    if (sz < 52) return 3;
+    f.seekg(0, std::ios::beg);
+    std::vector<uint8_t> buf(static_cast<size_t>(sz));
+    if (!f.read(reinterpret_cast<char*>(buf.data()), sz)) return 4;
+
+    const uint8_t* d = buf.data();
+    // Require 32-bit (ELFCLASS32 = 1) big-endian (ELFDATA2MSB = 2) MIPS (EM_MIPS = 8) ELF.
+    if (d[0] != 0x7f || d[1] != 'E' || d[2] != 'L' || d[3] != 'F') return 5;
+    if (d[4] != 1 || d[5] != 2) return 6;
+    if (be16(d + 18) != 8) return 7;
+
+    const uint32_t shoff = be32(d + 32);
+    const uint16_t shentsize = be16(d + 46);
+    const uint16_t shnum = be16(d + 48);
+    if (shoff == 0 || shentsize < 40 || shnum == 0) return 8;
+    if (static_cast<uint64_t>(shoff) + static_cast<uint64_t>(shentsize) * shnum > buf.size()) return 9;
+
+    const uint32_t target_lui = 0x3c000000u | (lui_imm16 & 0xffffu);
+    int lui_hits = 0;
+    int trap_hits = 0;
+
+    for (uint16_t s = 0; s < shnum; ++s) {
+        const uint8_t* sh = d + shoff + static_cast<size_t>(s) * shentsize;
+        const uint32_t sh_type = be32(sh + 4);
+        const uint32_t sh_flags = be32(sh + 8);
+        const uint32_t sh_offset = be32(sh + 16);
+        const uint32_t sh_size = be32(sh + 20);
+        // SHT_PROGBITS (1) with SHF_EXECINSTR (0x4)
+        if (sh_type != 1u || (sh_flags & 0x4u) == 0u || sh_size < 4u) continue;
+        if (static_cast<uint64_t>(sh_offset) + sh_size > buf.size()) return 10;
+        const uint32_t n_words = sh_size >> 2;
+        const uint8_t* p = d + sh_offset;
+        for (uint32_t i = 0; i < n_words; ++i, p += 4) {
+            const uint32_t insn = be32(p);
+            if ((insn & 0xffe0ffffu) == target_lui && ((insn >> 16) & 0x1fu) != 0u) {
+                ++lui_hits;
+            }
+            const uint32_t op = insn >> 26;
+            if (op == 0u) {
+                const uint32_t fn = insn & 0x3fu;
+                if (fn == 0x30u || fn == 0x31u || fn == 0x32u || fn == 0x33u || fn == 0x34u || fn == 0x36u) {
+                    ++trap_hits;
+                }
+            } else if (op == 1u) {
+                const uint32_t rt = (insn >> 16) & 0x1fu;
+                if (rt == 0x08u || rt == 0x09u || rt == 0x0au || rt == 0x0bu || rt == 0x0cu || rt == 0x0eu) {
+                    ++trap_hits;
+                }
+            }
+        }
+    }
+
+    *out_lui_hits = lui_hits;
+    *out_trap_hits = trap_hits;
+    return 0;
 }

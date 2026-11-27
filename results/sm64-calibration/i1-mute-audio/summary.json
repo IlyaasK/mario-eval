@@ -1,12 +1,12 @@
 {
- "version": "3.1",
+ "version": "4.1",
  "target": "sm64",
  "fingerprint": {
-  "grader_version": "3.1",
-  "grader_sha256": "5c326562e0036868a47425e7f445b9511e9a1ac73a92f64dc5bf7a292bd526d1",
-  "n64run_sha256": "ff75e47479143b32281198cc5f90e7de02b2166c6d594af649e0238f1758bebd",
-  "corpus_config_sha256": "f752b3db2b2079b3243df788dd495e77c407300a54c0c020325bb54e35bbd8a0",
-  "reference_rom_sha256": "4e5b65ee04aa3ed01e361acb689f2d64b4ae486d3e748db3fdf567526c9e836a"
+  "grader_version": "4.1",
+  "grader_sha256": "986f362b28e470bf019d26781094d73e7c1ae72bc923ce606661a9613aed469a",
+  "n64run_sha256": "bf65fcc229c04d7c7b4288c4933486eb27720ba5049f546adc5d0ccf5e5926f7",
+  "corpus_config_sha256": "996ad14a15af2a49c6116e57f0ae379621f6f364d5ff7608188152b3d2bd7e70",
+  "reference_rom_sha256": "11c6f089306e988abe0281b1258d76fa21a50cb89d38b1f96066980b773e625d"
  },
  "gates": {
   "integrity": {
@@ -33,11 +33,39 @@
      "play_final_video_hash": "8ebbe476c7ce7f2",
      "footprint_bytes": 2632784,
      "highest_line": 262143,
+     "oob_rdram_accesses": 0,
      "cache_uncached_ops": 0,
      "cache_cde_unaligned_ops": 0,
      "cache_kseg1_dirty_synonyms": 0,
+     "sp_dmem_coherence_errors": 0,
+     "rdram_dma_coherence_errors": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 24.9987
+     "cpu_fault_exceptions": 0,
+     "cpu_trap_exceptions": 0,
+     "host_seconds": 40.1817
+    },
+    "controller": {
+     "status": "completed",
+     "failure": "",
+     "frames": 0,
+     "vi_fields": 1200,
+     "footprint_lines": 184955,
+     "play_video_fields": 1142,
+     "play_video_changes": 900,
+     "play_rsp_aud_cycles": 0,
+     "play_final_video_hash": "b97f14ac36608c27",
+     "footprint_bytes": 2959280,
+     "highest_line": 262143,
+     "oob_rdram_accesses": 0,
+     "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "sp_dmem_coherence_errors": 0,
+     "rdram_dma_coherence_errors": 0,
+     "dcache_coherence_errors": 0,
+     "cpu_fault_exceptions": 0,
+     "cpu_trap_exceptions": 0,
+     "host_seconds": 40.7656
     }
    }
   }
@@ -75,9 +103,10 @@
   "compiler": "ido",
   "ucode": "f3d_old",
   "opt_flags": "-g",
-  "elf_bytes": 8913260
+  "trap_insns": 193,
+  "elf_bytes": 8913836
  },
- "rom_sha256": "20e2d4ca85c2bbf50efe3da708023961b6372475a298a8ac80a652135ea8e512",
+ "rom_sha256": "8d7e9a841a3e4aaba068f24025fede6c0dbc4f9e11371ee6afe239ba0cb332ee",
  "rom_bytes": 8388608,
  "status": "invalid",
  "reason": "PLAY=1 runtime smoke failed: play_audio_silent",
@@ -99,11 +128,39 @@
      "play_final_video_hash": "8ebbe476c7ce7f2",
      "footprint_bytes": 2632784,
      "highest_line": 262143,
+     "oob_rdram_accesses": 0,
      "cache_uncached_ops": 0,
      "cache_cde_unaligned_ops": 0,
      "cache_kseg1_dirty_synonyms": 0,
+     "sp_dmem_coherence_errors": 0,
+     "rdram_dma_coherence_errors": 0,
      "dcache_coherence_errors": 0,
-     "host_seconds": 24.9987
+     "cpu_fault_exceptions": 0,
+     "cpu_trap_exceptions": 0,
+     "host_seconds": 40.1817
+    },
+    "controller": {
+     "status": "completed",
+     "failure": "",
+     "frames": 0,
+     "vi_fields": 1200,
+     "footprint_lines": 184955,
+     "play_video_fields": 1142,
+     "play_video_changes": 900,
+     "play_rsp_aud_cycles": 0,
+     "play_final_video_hash": "b97f14ac36608c27",
+     "footprint_bytes": 2959280,
+     "highest_line": 262143,
+     "oob_rdram_accesses": 0,
+     "cache_uncached_ops": 0,
+     "cache_cde_unaligned_ops": 0,
+     "cache_kseg1_dirty_synonyms": 0,
+     "sp_dmem_coherence_errors": 0,
+     "rdram_dma_coherence_errors": 0,
+     "dcache_coherence_errors": 0,
+     "cpu_fault_exceptions": 0,
+     "cpu_trap_exceptions": 0,
+     "host_seconds": 40.7656
     }
    }
   }
@@ -116,13 +173,13 @@
   "hardware": 0.0,
   "overall": 0.0,
   "effective_speedups": {
-   "console": 0.0,
-   "stutter": 0.0,
-   "speed": 0.0,
-   "rdp": 0.0,
-   "rsp": 0.0,
-   "traffic": 0.0,
-   "memory": 0.0
+   "console": 1.0,
+   "stutter": 1.0,
+   "speed": 1.0,
+   "rdp": 1.0,
+   "rsp": 1.0,
+   "traffic": 1.0,
+   "memory": 1.0
   },
   "effective_cost_saved": {
    "console": 0.0,
@@ -144,5 +201,5 @@
   ],
   "public_only_pass": false
  },
- "grader_seconds": 26.1
+ "grader_seconds": 91.4
 }

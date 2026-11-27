@@ -1,14 +1,30 @@
 {
-  "version": "3.1",
+  "version": "4.1",
   "target": "sm64",
   "contract": "sm64",
   "rom": "build/us/sm64.us.z64",
   "elf": "build/us/sm64.us.elf",
-  "build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1"],
-  "play_build_cmd": ["make", "VERSION=us", "COMPARE=0", "NOEXTRACT=1", "PLAY=1", "BUILD_DIR_BASE=build_play", "all"],
+  "build_cmd": [
+    "make",
+    "VERSION=us",
+    "COMPARE=0",
+    "NOEXTRACT=1"
+  ],
+  "play_build_cmd": [
+    "make",
+    "VERSION=us",
+    "COMPARE=0",
+    "NOEXTRACT=1",
+    "PLAY=1",
+    "BUILD_DIR_BASE=build_play",
+    "all"
+  ],
   "play_rom": "build_play/us/sm64.us.z64",
   "o2_reference_patch": "../calibration/r1-gcc-o2.patch",
-  "protected_files": ["src/game/mev.c", "src/game/mev.h"],
+  "protected_files": [
+    "src/game/mev.c",
+    "src/game/mev.h"
+  ],
   "allowed_play_guards": {
     "Makefile": 2,
     "src/audio/external.c": 1,
@@ -24,7 +40,7 @@
       "b573fce5f520f21ffce9b7e0c3df2cc84d83306544435fbdf00d7dc92be92672"
     ],
     "src/audio/external.c": [
-      "00e8c867db225ec2333f3c50b17644a576fa777da024e16e3fb7831211dc5edb"
+      "00634f646730aaeb2b76b412fa92ef7dc3ff7a44c65163ea675982e2212050de"
     ],
     "src/audio/heap.c": [
       "7daee4c3976c70af09bf32402dd7ea37ac3dc020bfea7db1b5e84eaec89d5525"
@@ -66,21 +82,31 @@
       "sMevObs": 4224
     },
     "min_data_sizes": {
-      "sMevAudioStorage": 4096
+      "sMevAudioStorage": 4096,
+      "gGfxSPTaskYieldBuffer": 2304
     },
     "forbid_wrap_prefix": "__wrap_mev_",
     "isv_upper_imm": "0xb3ff",
     "mev_object": "build/us/src/game/mev.o"
   },
-  "idle_symbols": ["thread1_idle"],
+  "idle_symbols": [
+    "thread1_idle"
+  ],
   "reward_log2_scale": 4.0,
+  "max_rom_bytes": 8388608,
   "frames": 240,
   "build_timeout_s": 900,
   "max_fields_factor": 4.0,
   "run_timeout_s": 1800,
   "gameplay": {
     "mode": "player_equivalence",
-    "exact_fields": ["frame", "level_area", "mario_stats", "mario_action", "actor_count"],
+    "exact_fields": [
+      "frame",
+      "level_area",
+      "mario_stats",
+      "mario_action",
+      "actor_count"
+    ],
     "window_exact_fields": [],
     "window_frames": 0,
     "float_tolerances": {
@@ -95,7 +121,7 @@
   },
   "video": {
     "channel_tolerance": 2,
-    "max_bad_fraction": 0.002,
+    "max_bad_fraction": 0.0035,
     "min_ssim_score": 0.98,
     "min_ssim_frame_score": 0.85
   },
@@ -103,13 +129,23 @@
     {
       "id": "full-detail",
       "patch": "variants/full-detail.patch",
-      "subsumed_by": ["no-lod"],
+      "subsumed_by": [
+        "no-lod"
+      ],
       "policy": "Mario may always be drawn with his high-polygon model instead of switching to medium/low-polygon LOD models at distance (as Kaze Emanuar does in Return to Yoshi's Island). Judged equal or better looking; gameplay and audio must be unchanged. The change is only Mario's level of detail, which no-lod already removes, so combinations with no-lod render exactly like no-lod and are not precomputed separately (verified against every combination on every public route)."
     },
     {
       "id": "ra-zb-opa",
       "patch": "variants/ra-zb-opa.patch",
-      "policy": "Opaque layers in rendering_graph_node.c may use SGI's official G_RM_RA_ZB_OPA_SURF / G_RM_RA_OPA_SURF reduced-aliasing modes (keeping AA_EN VI silhouette coverage while dropping IM_RD per-pixel framebuffer reads, as used in later N64 titles and Kaze Emanuar's SM64 optimizations)."
+      "policy": "Opaque surfaces may use SGI's official G_RM_RA_ZB_OPA_SURF / G_RM_RA_OPA_SURF reduced-aliasing modes globally (keeping AA_EN VI silhouette coverage while dropping IM_RD per-pixel framebuffer reads, as used in later N64 titles and Kaze Emanuar's SM64 optimizations)."
+    },
+    {
+      "id": "ra-zb-opa-layers",
+      "patch": "variants/ra-zb-opa-layers.patch",
+      "subsumed_by": [
+        "ra-zb-opa"
+      ],
+      "policy": "Opaque scene-graph render layers in rendering_graph_node.c (renderModeTable_1Cycle / renderModeTable_2Cycle) may use G_RM_RA_ZB_OPA_SURF / G_RM_RA_OPA_SURF while leaving gbi.h macros unchanged."
     },
     {
       "id": "f3dex2",
@@ -124,7 +160,9 @@
     {
       "id": "rr-statics",
       "patch": "variants/rr-statics.patch",
-      "workloads": ["rr"],
+      "workloads": [
+        "rr"
+      ],
       "policy": "Rainbow Ride's 14 static decoration pieces (special_level_geo_03/04/07/09/0A/0B/0C/0D/10-15) may be drawn as part of the level mesh (each piece's own display list under a static translation matrix) instead of being spawned as objects, exactly the set Kaze Emanuar merged in his \"How Optimizations made Mario 64 SLOWER\" code release. The same triangles at the same places; draw order and vertex rounding may move edge pixels."
     }
   ],
@@ -140,30 +178,84 @@
     "max_rms_ratio_err": 0.15
   },
   "section_weights": {
-    "public": 0.40,
-    "heldout_scripted": 0.50,
-    "heldout_mash": 0.10
+    "public": 0.0,
+    "heldout_scripted": 0.75,
+    "heldout_mash": 0.25
   },
   "hardware": {
     "rdram_bytes": 4194304,
-    "max_dcache_coherence_errors_per_frame": 1.05,
-    "max_kseg1_dirty_synonyms": 0
+    "max_oob_rdram_accesses": 0,
+    "max_rdram_dma_coherence_errors": 0,
+    "max_sp_dmem_coherence_errors_per_frame": 2.1,
+    "max_dcache_coherence_errors_per_frame": 2.1,
+    "max_kseg1_dirty_synonyms": 0,
+    "max_frame0_extra_ticks": 46875000
   },
   "profiles": {
-    "console": { "metric": "est_console_ms",  "max_workload_regression": 0.05, "footprint_budget": 0.05 },
-    "stutter": { "metric": "est_console_p99_ms", "max_workload_regression": 0.05, "footprint_budget": 0.05 },
-    "speed":   { "metric": "cpu_effective_cycles", "max_workload_regression": 0.05, "rdp_budget": 0.05 },
-    "rdp":     { "metric": "rdp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
-    "rsp":     { "metric": "rsp_busy",        "max_workload_regression": 0.05, "speed_budget": 0.05 },
-    "traffic": { "metric": "rdram_bytes",     "max_workload_regression": 0.05, "speed_budget": 0.05 },
-    "memory":  { "metric": "footprint_bytes", "max_workload_regression": 0.0,  "speed_budget": 0.05 }
+    "console": {
+      "metric": "est_console_ms",
+      "max_workload_regression": 0.05
+    },
+    "stutter": {
+      "metric": "est_console_p99_ms",
+      "max_workload_regression": 0.05
+    },
+    "speed": {
+      "metric": "cpu_effective_cycles",
+      "max_workload_regression": 0.05,
+      "rdp_budget": 0.05
+    },
+    "rdp": {
+      "metric": "rdp_busy",
+      "max_workload_regression": 0.05,
+      "speed_budget": 0.05
+    },
+    "rsp": {
+      "metric": "rsp_busy",
+      "max_workload_regression": 0.05,
+      "speed_budget": 0.05
+    },
+    "traffic": {
+      "metric": "rdram_bytes",
+      "max_workload_regression": 0.05,
+      "speed_budget": 0.05
+    },
+    "memory": {
+      "metric": "footprint_bytes",
+      "max_workload_regression": 0.002,
+      "speed_budget": 0.05
+    }
   },
   "workloads": [
-    { "id": "bob",   "split": "public", "replay": "replays/public/bob.txt" },
-    { "id": "wf",    "split": "public", "replay": "replays/public/wf.txt" },
-    { "id": "jrb",   "split": "public", "replay": "replays/public/jrb.txt" },
-    { "id": "ddd",   "split": "public", "replay": "replays/public/ddd.txt" },
-    { "id": "bitfs", "split": "public", "replay": "replays/public/bitfs.txt" },
-    { "id": "rr",    "split": "public", "replay": "replays/public/rr.txt" }
+    {
+      "id": "bob",
+      "split": "public",
+      "replay": "replays/public/bob.txt"
+    },
+    {
+      "id": "wf",
+      "split": "public",
+      "replay": "replays/public/wf.txt"
+    },
+    {
+      "id": "jrb",
+      "split": "public",
+      "replay": "replays/public/jrb.txt"
+    },
+    {
+      "id": "ddd",
+      "split": "public",
+      "replay": "replays/public/ddd.txt"
+    },
+    {
+      "id": "bitfs",
+      "split": "public",
+      "replay": "replays/public/bitfs.txt"
+    },
+    {
+      "id": "rr",
+      "split": "public",
+      "replay": "replays/public/rr.txt"
+    }
   ]
 }

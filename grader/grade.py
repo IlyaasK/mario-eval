@@ -139,18 +139,46 @@ def _run_build(cmd, cwd, home, tmp, timeout):
     return proc.returncode, out or "", timed_out
 
 
-def build(src, cfg, log_path, keep_play=False):
+def _verify_rom_matches_elf(rom_path, elf_path):
+    """Verify the built .z64 ROM image is a genuine objcopy of the linked ELF
+    (differing at most in the 8-byte N64 header CRC at 0x10..0x18 and 0xFF/0x00
+    tail padding), preventing decoy-ELF or post-link n64cksum binary injection."""
+    if not elf_path or not pathlib.Path(elf_path).is_file():
+        return None
+    with tempfile.NamedTemporaryFile(prefix="mev-elfbin-", suffix=".bin", delete=True) as tf:
+        r = subprocess.run(["mips64-elf-objcopy", "-O", "binary", str(elf_path), tf.name],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            return f"ELF->ROM verification failed: mips64-elf-objcopy returned {r.returncode}"
+        elf_bin = pathlib.Path(tf.name).read_bytes()
+    rom_bytes = pathlib.Path(rom_path).read_bytes()
+    if len(elf_bin) < 0x1000 or len(rom_bytes) < len(elf_bin):
+        return f"ELF->ROM verification failed: binary size mismatch (elf_bin={len(elf_bin)}, rom={len(rom_bytes)})"
+    if rom_bytes[:0x10] != elf_bin[:0x10] or rom_bytes[0x18:len(elf_bin)] != elf_bin[0x18:]:
+        return "ELF->ROM verification failed: built .z64 payload differs from linked .elf binary"
+    tail = rom_bytes[len(elf_bin):]
+    if tail and tail.lstrip(b"\xff") and tail.lstrip(b"\x00"):
+        return "ELF->ROM verification failed: non-padding data appended after linked .elf image"
+    return None
+
+
+def build(src, cfg, log_path, keep_play=False, include_play=True):
     """Build in scratch, retaining only the benchmark ROM, idle ranges and optional PLAY ROM."""
     work = pathlib.Path(tempfile.mkdtemp(prefix="mev-build-"))
     out_rom = work / "built.z64"
     home, tmp = work / "home", work / "tmp"
     try:
+        pre_protected = {
+            f: sha256(pathlib.Path(src) / f)
+            for f in cfg.get("protected_files", [])
+            if (pathlib.Path(src) / f).is_file()
+        }
         _copy_source(src, work / "src")
         home.mkdir(exist_ok=True)
         tmp.mkdir(exist_ok=True)
-        jobs = int(os.cpu_count() or 4)
+        jobs = max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 4))
         base_cmd = cfg.get("build_cmd", ["make"])
-        play_cmd = cfg.get("play_build_cmd")
+        play_cmd = cfg.get("play_build_cmd") if include_play else None
 
         def _make_cmd(raw, j):
             return [raw[0], f"-j{j}", *raw[1:]] if raw[0] == "make" else list(raw)
@@ -189,9 +217,34 @@ def build(src, cfg, log_path, keep_play=False):
             shutil.rmtree(work, ignore_errors=True)
             return None, "build failed; see build.log"
 
-        # Verify the compiled ELF actually retains the unmodified harness symbols
-        # and that no other code touches the ISViewer MMIO port or wraps mev_*.
+        max_rom_bytes = cfg.get("max_rom_bytes")
+        if max_rom_bytes is not None and rom.stat().st_size > int(max_rom_bytes):
+            msg = f"ROM size {rom.stat().st_size} exceeds limit {int(max_rom_bytes)} bytes"
+            pathlib.Path(log_path).write_text("".join(logs) + f"\n{msg}\n")
+            shutil.rmtree(work, ignore_errors=True)
+            return None, msg
+
+        # Re-verify protected files and source integrity AFTER make so build-time
+        # generators cannot mutate harness files or synthesize forbidden MMIO/PLAY code.
+        for f, exp_h in pre_protected.items():
+            pf = work / "src" / f
+            if not pf.is_file() or sha256(pf) != exp_h:
+                msg = f"post-build integrity check failed: protected file '{f}' modified during build"
+                pathlib.Path(log_path).write_text("".join(logs) + f"\n{msg}\n")
+                shutil.rmtree(work, ignore_errors=True)
+                return None, msg
+        post_errs = audit_submission_integrity(work / "src", cfg)
+        if post_errs:
+            msg = f"post-build integrity audit failed: {post_errs[0]}"
+            pathlib.Path(log_path).write_text("".join(logs) + f"\n{msg}\n")
+            shutil.rmtree(work, ignore_errors=True)
+            return None, msg
+
+        # Verify the compiled ELF actually retains the unmodified harness symbols,
+        # no other code touches ISViewer MMIO or wraps mev_*, and .z64 matches .elf.
         elf_err = verify_elf_harness(work / "src" / cfg["elf"], cfg, src_root=work / "src") if cfg.get("elf") else None
+        if not elf_err and cfg.get("elf"):
+            elf_err = _verify_rom_matches_elf(rom, work / "src" / cfg["elf"])
         if elf_err:
             pathlib.Path(log_path).write_text("".join(logs) + f"\n--- ELF harness check ---\n{elf_err}\n")
             shutil.rmtree(work, ignore_errors=True)
@@ -218,12 +271,30 @@ def build(src, cfg, log_path, keep_play=False):
                 pathlib.Path(log_path).write_text("".join(logs))
                 shutil.rmtree(work, ignore_errors=True)
                 return None, "PLAY=1 ROM build failed; see build.log"
+            play_post_errs = audit_submission_integrity(play_src, cfg)
+            if play_post_errs:
+                msg = f"PLAY=1 post-build integrity audit failed: {play_post_errs[0]}"
+                pathlib.Path(log_path).write_text("".join(logs) + f"\n{msg}\n")
+                shutil.rmtree(work, ignore_errors=True)
+                return None, msg
             if cfg.get("play_rom"):
                 playable = play_src / cfg["play_rom"]
                 if not playable.is_file() or playable.stat().st_size < 65536:
                     pathlib.Path(log_path).write_text("".join(logs))
                     shutil.rmtree(work, ignore_errors=True)
                     return None, "PLAY=1 build did not produce its ROM; see build.log"
+                if max_rom_bytes is not None and playable.stat().st_size > int(max_rom_bytes):
+                    msg = f"PLAY=1 ROM size {playable.stat().st_size} exceeds limit {int(max_rom_bytes)} bytes"
+                    pathlib.Path(log_path).write_text("".join(logs) + f"\n{msg}\n")
+                    shutil.rmtree(work, ignore_errors=True)
+                    return None, msg
+                play_elf = play_src / cfg["play_rom"].replace(".z64", ".elf")
+                if play_elf.is_file():
+                    p_elf_err = _verify_rom_matches_elf(playable, play_elf)
+                    if p_elf_err:
+                        pathlib.Path(log_path).write_text("".join(logs) + f"\n{p_elf_err}\n")
+                        shutil.rmtree(work, ignore_errors=True)
+                        return None, p_elf_err
                 play_bytes = playable.read_bytes()
                 if play_bytes == out_rom.read_bytes() or b"@mev " in play_bytes:
                     pathlib.Path(log_path).write_text("".join(logs))
@@ -292,7 +363,7 @@ def _digest(paths):
             return str(p), "-"
 
     if len(paths) > 4:
-        workers = min(len(paths), os.cpu_count() or 4)
+        workers = min(len(paths), max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 4)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             entries = list(pool.map(_one, paths))
     else:
@@ -335,8 +406,8 @@ def measurement_artifacts(corpus, cache, items):
 
 
 _SOURCE_EXTS = {".c", ".h", ".s", ".S", ".inc", ".cc", ".cpp"}
-_BUILD_EXTS = {".mk", ".ld", ".sh"}
-_RE_ISV_ADDR = re.compile(r"0x(?:b3f[ef]|13f[ef])[0-9a-f]{4}[uUlL]{0,3}\b", re.IGNORECASE)
+_BUILD_EXTS = {".mk", ".ld", ".sh", ".py"}
+_RE_ISV_ADDR = re.compile(r"0x(?:b3ff|13ff)[0-9a-f]{4}[uUlL]{0,3}\b", re.IGNORECASE)
 _RE_MEV_MACRO = re.compile(r"^\s*#\s*(?:define|undef)\s+(?:mev_|MEV_|sMev|ISV_|SM64_MEV_H)", re.MULTILINE)
 _RE_MEV_COND = re.compile(
     r"^\s*#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\b(?:SM64_MEV_H|MEV_\w*|mev_\w*|sMev\w*|ISV_\w*)\b",
@@ -348,9 +419,9 @@ _RE_MAKE_PLAY_COND = re.compile(
     r"|\$\(\s*(?:if|or|and|filter|filter-out|subst|patsubst|eval)\b[^\n]*\bPLAY\b"
     r"|\$\([^)\n]*\$\(?PLAY\)?"
 )
-_RE_MAKE_DYN_EVAL = re.compile(r"\$\(\s*eval\b[^\n]*\$\(\s*(?:if|or|and|filter|shell)\b")
 _RE_SH_PLAY_COND = re.compile(r"\$\{?PLAY\}?\b")
-_RE_GCC_INJECT = re.compile(r"(?:=|:=|\+=|\s)(?:-include|--include|-imacros)(?:\s|=|$)")
+_RE_PY_PLAY_COND = re.compile(r"""\b(?:environ|getenv)\b[^\n]*['"]PLAY['"]""")
+_RE_GCC_INJECT = re.compile(r"(?:=|:=|\+=|\s)(?:-include|-imacros|-Wp,-include|-Wp,-imacros|-Xpreprocessor)(?:\s|=|,|$)")
 _RE_LD_WRAP = re.compile(r"(?:--wrap|-Wl,(?:[^,\s]*,)*--wrap)(?:=|,|\s|$)")
 _RE_LD_DEFSYM = re.compile(
     r"(?:--defsym|-Wl,(?:[^,\s]*,)*--defsym)(?:=|,|\s)[^\n]*(?:mev_|MEV_|sMev|thread1_idle)"
@@ -358,30 +429,97 @@ _RE_LD_DEFSYM = re.compile(
 _RE_LD_SCRIPT_SYM = re.compile(
     r"(?:PROVIDE(?:_HIDDEN)?\s*\(\s*|(?:^|[;\s]))(?:mev_|MEV_|sMev|thread1_idle)\w*\s*="
 )
-_RE_CC_MEV_DEF = re.compile(r"(?:^|\s)-D\s*(?:mev_|MEV_|sMev|ISV_)")
+_RE_CC_MEV_DEF = re.compile(r"(?:^|\s)-D\s*(?:mev_|MEV_|sMev|ISV_|SM64_MEV_H)|\bDEFINES\b[^\n]*\b(?:mev_|MEV_|sMev|ISV_|SM64_MEV_H)")
 _RE_BSLASH_NL = re.compile(r"\\\r?\n")
 _RE_ADJ_STR = re.compile(r'"\s+"')
+_RE_C_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*.*?\*/|//[^\n]*', re.DOTALL)
+
+
+def _strip_c_comments(text):
+    """Strip C /* ... */ and // ... comments while preserving string/char literals
+    and line structure."""
+    def _repl(m):
+        tok = m.group(0)
+        if tok[0] in ('"', "'"):
+            return tok
+        return "\n" * tok.count("\n") + " "
+    return _RE_C_TOKEN.sub(_repl, text)
+
+
+def _extract_play_blocks_raw(norm_text):
+    """Return list of (raw_block_text, sha256_hex) for every top-level PLAY block."""
+    clean_lines = _strip_c_comments(norm_text).splitlines()
+    lines = norm_text.splitlines()
+    blocks = []
+    i = 0
+    while i < len(lines):
+        if i < len(clean_lines) and _RE_PLAY_COND.match(clean_lines[i]):
+            depth, start, i = 1, i, i + 1
+            while i < len(lines) and depth > 0:
+                cl = clean_lines[i] if i < len(clean_lines) else lines[i]
+                if re.match(r"^\s*#\s*(?:ifdef|ifndef|if)\b", cl):
+                    depth += 1
+                elif re.match(r"^\s*#\s*endif\b", cl):
+                    depth -= 1
+                i += 1
+            norm = "\n".join(l.rstrip() for l in lines[start:i])
+            blocks.append((norm, hashlib.sha256(norm.encode("utf-8")).hexdigest()))
+        else:
+            i += 1
+    return blocks
 
 
 def _extract_play_block_hashes(norm_text):
     """Return SHA-256 digests of every top-level #ifdef/#ifndef/#if ... PLAY block."""
-    lines = norm_text.splitlines()
-    hashes = []
-    i = 0
-    while i < len(lines):
-        if _RE_PLAY_COND.match(lines[i]):
-            depth, start, i = 1, i, i + 1
-            while i < len(lines) and depth > 0:
-                if re.match(r"^\s*#\s*(?:ifdef|ifndef|if)\b", lines[i]):
-                    depth += 1
-                elif re.match(r"^\s*#\s*endif\b", lines[i]):
-                    depth -= 1
-                i += 1
-            norm = "\n".join(l.rstrip() for l in lines[start:i])
-            hashes.append(hashlib.sha256(norm.encode("utf-8")).hexdigest())
+    return [dig for _, dig in _extract_play_blocks_raw(norm_text)]
+
+
+def _split_top_level_else(block_text):
+    """Split a #ifdef/#ifndef PLAY ... #endif block on its depth-1 #else directive."""
+    lines = block_text.splitlines()
+    depth = 0
+    else_idx = None
+    for idx, line in enumerate(lines):
+        if re.match(r"^\s*#\s*(?:ifdef|ifndef|if)\b", line):
+            depth += 1
+        elif re.match(r"^\s*#\s*else\b", line) and depth == 1 and else_idx is None:
+            else_idx = idx
+        elif re.match(r"^\s*#\s*endif\b", line):
+            depth -= 1
+    if else_idx is None:
+        return None
+    return "\n".join(lines[:else_idx]), "\n".join(lines[else_idx + 1:])
+
+
+def _audit_editable_play_blocks(rel, raw_blocks):
+    """Structural parity check on editable PLAY blocks (`null` entries in
+    protected_play_blocks) so legitimate double-buffering or targeted D-cache
+    writebacks pass while benchmark-vs-PLAY=1 divergence is rejected."""
+    errs = []
+    if rel == "src/game/game_init.c" and len(raw_blocks) >= 3:
+        blk = _strip_c_comments(raw_blocks[2][0])
+        halves = _split_top_level_else(blk)
+        if halves is None:
+            errs.append(f"{rel}: display_and_vsync PLAY block missing #else benchmark branch")
         else:
-            i += 1
-    return hashes
+            play_half, bench_half = halves
+            for req in ("exec_display_list(", "osRecvMesg(", "mev_step_audio()",
+                        "osViSwapBuffer(", "mev_observe_and_end_frame("):
+                if req not in bench_half:
+                    errs.append(f"{rel}: display_and_vsync benchmark branch missing required '{req}'")
+            if ("gGlobalTimer++" in play_half) != ("gGlobalTimer++" in bench_half):
+                errs.append(f"{rel}: display_and_vsync gGlobalTimer++ mismatch between PLAY and benchmark branches")
+            wrap_re = re.compile(r"\+\+sRender(?:ed|ing)Framebuffer\s*==\s*(\d+)")
+            play_wraps = wrap_re.findall(play_half)
+            bench_wraps = wrap_re.findall(bench_half)
+            if play_wraps != bench_wraps:
+                errs.append(f"{rel}: display_and_vsync framebuffer wrap mismatch between PLAY ({play_wraps}) and benchmark ({bench_wraps})")
+    elif rel == "src/game/main.c" and len(raw_blocks) >= 7:
+        blk = _strip_c_comments(raw_blocks[6][0])
+        for req in ("exec_audio_sptask_sync", "sCurrentAudioSPTask", "MESG_START_AUD_SPTASK"):
+            if req not in blk:
+                errs.append(f"{rel}: exec_audio_sptask_sync block missing required '{req}'")
+    return errs
 
 
 def _extract_make_play_block_hashes(norm_text):
@@ -443,7 +581,8 @@ def audit_submission_integrity(src, cfg):
             is_ld = (ext == ".ld" or fname.endswith(".ld.in"))
             is_make = (fname in ("Makefile", "makefile", "GNUmakefile") or fname.startswith("Makefile.") or ext == ".mk")
             is_sh = (ext == ".sh")
-            is_build = (is_make or is_ld or is_sh)
+            is_py = (ext == ".py")
+            is_build = (is_make or is_ld or is_sh or is_py)
             is_src = (ext in _SOURCE_EXTS or fname.endswith(".inc.c"))
             if not is_build and not is_src:
                 continue
@@ -453,24 +592,34 @@ def audit_submission_integrity(src, cfg):
                 continue
 
             # Join backslash-newline continuations (C translation phase 2 & Make
-            # line folding) and adjacent C string literals so multiline/split tricks
-            # cannot evade static regex checks.
+            # line folding), strip C comments before source checks, and join adjacent
+            # C string literals so multiline/comment tricks neither evade nor false-positive.
             norm_text = _RE_BSLASH_NL.sub("", text)
-            joined_str = _RE_ADJ_STR.sub("", norm_text) if is_src else norm_text
+            clean_src = _strip_c_comments(norm_text) if is_src else norm_text
+            joined_str = _RE_ADJ_STR.sub("", clean_src) if is_src else norm_text
 
-            if _RE_ISV_ADDR.search(norm_text):
+            if _RE_ISV_ADDR.search(clean_src):
                 errors.append(f"{rel}: direct ISViewer MMIO address outside protected harness")
             if '"@mev ' in joined_str or "'@mev " in joined_str:
                 errors.append(f"{rel}: raw '@mev ' protocol string outside protected harness")
-            if is_src and _RE_MEV_MACRO.search(norm_text):
+            if is_src and _RE_MEV_MACRO.search(clean_src):
                 errors.append(f"{rel}: preprocessor #define/#undef of protected mev/ISV symbol")
-            if is_src and _RE_MEV_COND.search(norm_text):
+            if is_src and _RE_MEV_COND.search(clean_src):
                 errors.append(f"{rel}: unauthorized preprocessor conditional referencing protected mev/ISV symbol")
 
-            if is_build:
+            if is_py:
+                n_py_play = 0
+                for lineno, line in enumerate(norm_text.splitlines(), 1):
+                    if line.lstrip().startswith("#"):
+                        continue
+                    if _RE_PY_PLAY_COND.search(line):
+                        n_py_play += 1
+                if allowed_play is not None and n_py_play > int(allowed_play.get(rel, 0)):
+                    errors.append(f"{rel}: unauthorized PLAY environment conditional in Python build script")
+            elif is_build:
                 n_build_play = 0
                 # Strip C block comments before scanning linker scripts for symbol assignments.
-                scan_text = re.sub(r"/\*.*?\*/", "", norm_text, flags=re.DOTALL) if is_ld else norm_text
+                scan_text = _strip_c_comments(norm_text) if is_ld else norm_text
                 # Inspect build/linker lines while ignoring GNU Make's top-level `-include dep.d`.
                 for lineno, line in enumerate(scan_text.splitlines(), 1):
                     stripped = line.lstrip()
@@ -484,11 +633,9 @@ def audit_submission_integrity(src, cfg):
                     if _RE_LD_DEFSYM.search(line):
                         errors.append(f"{rel}:{lineno}: disallowed linker --defsym targeting harness/idle symbol")
                     if _RE_CC_MEV_DEF.search(line):
-                        errors.append(f"{rel}:{lineno}: disallowed -D override of mev/ISV symbol")
+                        errors.append(f"{rel}:{lineno}: disallowed -D/DEFINES override of mev/ISV symbol")
                     if is_ld and _RE_LD_SCRIPT_SYM.search(line):
                         errors.append(f"{rel}:{lineno}: disallowed linker-script override of harness/idle symbol")
-                    if is_make and _RE_MAKE_DYN_EVAL.search(line):
-                        errors.append(f"{rel}:{lineno}: disallowed dynamic Make $(eval ...) conditional")
                     if is_make and _RE_MAKE_PLAY_COND.search(line):
                         n_build_play += 1
                     elif is_sh and _RE_SH_PLAY_COND.search(line):
@@ -503,17 +650,41 @@ def audit_submission_integrity(src, cfg):
                         errors.append(f"{rel}: protected PLAY Makefile conditional block was modified")
 
             if is_src and allowed_play is not None:
-                n_play = len(_RE_PLAY_COND.findall(norm_text))
+                n_play = len(_RE_PLAY_COND.findall(clean_src))
                 max_allowed = int(allowed_play.get(rel, 0))
                 if n_play > max_allowed:
                     errors.append(f"{rel}: unauthorized PLAY preprocessor conditional ({n_play} > allowed {max_allowed})")
             if is_src and rel in protected_play_blocks:
-                got_hashes = _extract_play_block_hashes(norm_text)
+                raw_blocks = _extract_play_blocks_raw(norm_text)
+                got_hashes = [dig for _, dig in raw_blocks]
                 if not _play_blocks_match(got_hashes, protected_play_blocks[rel]):
                     errors.append(f"{rel}: protected PLAY/#ifndef PLAY benchmark glue block was modified")
+                else:
+                    errors.extend(_audit_editable_play_blocks(rel, raw_blocks))
             if len(errors) >= 16:
                 return errors
     return errors
+
+
+def _scan_elf_mips(elf_path, lui_imm16=0xb3ff):
+    """Return (lui_hits, trap_hits) in executable sections of elf_path via C++
+    direct binary scan (<3 ms), falling back to mips64-elf-objdump -d if needed."""
+    fast = _get_fast_video()
+    if fast is not None and hasattr(fast, "scan_elf_mips_words"):
+        out_lui = ctypes.c_int(0)
+        out_trap = ctypes.c_int(0)
+        rc = fast.scan_elf_mips_words(
+            os.fsencode(str(elf_path)), int(lui_imm16) & 0xFFFF,
+            ctypes.byref(out_lui), ctypes.byref(out_trap),
+        )
+        if rc == 0:
+            return int(out_lui.value), int(out_trap.value)
+    od = subprocess.run(["mips64-elf-objdump", "-d", str(elf_path)], capture_output=True, text=True)
+    if od.returncode != 0:
+        return None, None
+    lui_pat = re.compile(rf"\blui\b[^\n]*\b0x{lui_imm16 & 0xFFFF:04x}\b", re.IGNORECASE)
+    traps = len(re.findall(r"\t(?:teq|tne|tlt|tltu|tge|tgeu|teqi|tnei|tlti|tltiu|tgei|tgeiu)\b", od.stdout))
+    return len(lui_pat.findall(od.stdout)), traps
 
 
 def inspect_elf_metadata(elf, src_root=None, cfg=None):
@@ -567,10 +738,7 @@ def inspect_elf_metadata(elf, src_root=None, cfg=None):
                 ucode = "f3dex2"
             elif "rspf3dbootstart" in syms_lower or "rspfast3dstart" in syms_lower:
                 ucode = "f3d_old"
-    trap_insns = None
-    od = subprocess.run(["mips64-elf-objdump", "-d", str(p)], capture_output=True, text=True)
-    if od.returncode == 0:
-        trap_insns = len(re.findall(r"\t(?:teq|tne|tlt|tltu|tge|tgeu|teqi|tnei|tlti|tltiu|tgei|tgeiu)\b", od.stdout))
+    _lui, trap_insns = _scan_elf_mips(p, 0xb3ff)
     return {
         **({"compiler": compiler} if compiler else {}),
         **({"ucode": ucode} if ucode else {}),
@@ -625,20 +793,18 @@ def verify_elf_harness(elf, cfg, src_root=None):
 
     isv_imm = spec.get("isv_upper_imm")
     if isv_imm:
-        pat = re.compile(rf"\blui\b[^\n]*\b{re.escape(isv_imm)}\b", re.IGNORECASE)
-        od_elf = subprocess.run(["mips64-elf-objdump", "-d", str(elf)], capture_output=True, text=True)
-        if od_elf.returncode != 0:
-            return f"ELF harness check failed: mips64-elf-objdump returned {od_elf.returncode}"
-        elf_hits = len(pat.findall(od_elf.stdout))
+        imm_val = int(str(isv_imm), 16)
+        elf_hits, _ = _scan_elf_mips(elf, imm_val)
+        if elf_hits is None:
+            return "ELF harness check failed: unable to inspect executable sections of ELF"
         mev_obj_rel = spec.get("mev_object")
         mev_obj = (pathlib.Path(src_root) / mev_obj_rel) if (src_root and mev_obj_rel) else None
         if mev_obj is not None:
             if not mev_obj.is_file():
                 return f"ELF harness check failed: missing compiled harness object '{mev_obj_rel}'"
-            od_mev = subprocess.run(["mips64-elf-objdump", "-d", str(mev_obj)], capture_output=True, text=True)
-            if od_mev.returncode != 0:
-                return f"ELF harness check failed: mips64-elf-objdump on {mev_obj_rel} returned {od_mev.returncode}"
-            mev_hits = len(pat.findall(od_mev.stdout))
+            mev_hits, _ = _scan_elf_mips(mev_obj, imm_val)
+            if mev_hits is None:
+                return f"ELF harness check failed: unable to inspect harness object {mev_obj_rel}"
             if mev_hits == 0:
                 return f"ELF harness check failed: harness ISViewer write ({isv_imm}) missing from {mev_obj_rel}"
             if elf_hits != mev_hits:
@@ -662,7 +828,8 @@ def idle_ranges(elf, symbols):
         parts = line.split()
         if len(parts) == 4 and parts[3] in symbols and parts[2] in "tT":
             lo = int(parts[0], 16) & 0xFFFFFFFF
-            found[parts[3]] = f"{lo:x}:{lo + int(parts[1], 16):x}"
+            sz = max(8, min(int(parts[1], 16), 256))
+            found[parts[3]] = f"{lo:x}:{lo + sz:x}"
     missing = [s for s in symbols if s not in found]
     if missing:
         raise GraderError(f"idle symbols not found in {elf}: {missing}")
@@ -864,7 +1031,10 @@ def metrics(run):
         "cache_uncached_ops": int(run["result"].get("cache_uncached_ops", 0)),
         "cache_cde_unaligned_ops": int(run["result"].get("cache_cde_unaligned_ops", 0)),
         "cache_kseg1_dirty_synonyms": int(run["result"].get("cache_kseg1_dirty_synonyms", 0)),
+        "sp_dmem_coherence_errors": int(run["result"].get("sp_dmem_coherence_errors", run["result"].get("dcache_coherence_errors", 0))),
+        "rdram_dma_coherence_errors": int(run["result"].get("rdram_dma_coherence_errors", 0)),
         "dcache_coherence_errors": int(run["result"].get("dcache_coherence_errors", 0)),
+        "oob_rdram_accesses": int(run["result"].get("oob_rdram_accesses", 0)),
         "footprint_bytes": run["result"]["footprint_bytes"],
         "highest_byte": (run["result"]["highest_line"] + 1) * 16,
     }
@@ -889,7 +1059,7 @@ def _max_abs_diff(a, b):
     return abs(fa - fb)
 
 
-def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
+def compare_obs(ref, cand, frames, schema_name="sm64", cfg=None):
     if len(ref) != len(cand):
         return {
             "pass": False, "frame": 0, "field": "obs_bytes", "ref": len(ref), "cand": len(cand),
@@ -897,6 +1067,10 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
         }
     n = len(ref) // frames
     gcfg = (cfg or {}).get("gameplay", {})
+    if ref == cand:
+        if gcfg.get("mode", "bit_exact") == "player_equivalence":
+            return {"pass": True, "max_pos_drift": 0.0, "gameplay_score": 1.0, "failed_frames": 0}
+        return {"pass": True, "gameplay_score": 1.0, "failed_frames": 0}
     if gcfg.get("mode", "bit_exact") != "player_equivalence":
         first_fail = None
         failed_frames = 0
@@ -912,14 +1086,62 @@ def compare_obs(ref, cand, frames, schema_name="pips-garden", cfg=None):
             return {"pass": False, **first_fail, "gameplay_score": score, "failed_frames": failed_frames}
         return {"pass": True, "gameplay_score": 1.0, "failed_frames": 0}
 
-    ref_frames = [contract.decode(ref[i * n:(i + 1) * n], schema_name) for i in range(frames)]
-    cand_frames = [contract.decode(cand[i * n:(i + 1) * n], schema_name) for i in range(frames)]
     exact_fields = gcfg.get("exact_fields", ["frame", "level_area"])
     win_fields = gcfg.get("window_exact_fields", ["mario_stats", "mario_action"])
     win = int(gcfg.get("window_frames", 1))
     float_tols = gcfg.get("float_tolerances", {})
     actor_tol = gcfg.get("actor_tolerance")
     actor_radius = float(gcfg.get("actor_radius", float("inf")))
+
+    fast = _get_fast_video()
+    if (fast is not None and hasattr(fast, "compare_obs_sm64_fast")
+            and not (cfg or {}).get("_disable_fast_obs")
+            and schema_name == "sm64" and n == 4224
+            and set(exact_fields) == {"frame", "level_area", "mario_stats", "mario_action", "actor_count"}
+            and not win_fields
+            and set(float_tols) <= {"mario_pos", "mario_vel", "mario_floor_height", "cam_pos", "cam_focus"}):
+        out_pass = ctypes.c_int(0)
+        out_failed = ctypes.c_int(0)
+        out_first = ctypes.c_int(-1)
+        out_score = ctypes.c_double(0.0)
+        out_drift = ctypes.c_double(0.0)
+        rc = fast.compare_obs_sm64_fast(
+            ref, cand, int(frames),
+            float(float_tols.get("mario_pos", 0.0)),
+            float(float_tols.get("mario_vel", 0.0)),
+            float(float_tols.get("mario_floor_height", 0.0)),
+            float(float_tols.get("cam_pos", 0.0)),
+            float(float_tols.get("cam_focus", 0.0)),
+            float(actor_tol) if actor_tol is not None else -1.0,
+            float(actor_radius),
+            ctypes.byref(out_pass), ctypes.byref(out_failed),
+            ctypes.byref(out_first), ctypes.byref(out_score), ctypes.byref(out_drift),
+        )
+        if rc == 0:
+            if out_pass.value == 1:
+                return {
+                    "pass": True,
+                    "max_pos_drift": float(out_drift.value),
+                    "gameplay_score": 1.0,
+                    "failed_frames": 0,
+                }
+            ff = max(0, min(frames - 1, int(out_first.value)))
+            one = compare_obs(
+                ref[ff * n:(ff + 1) * n], cand[ff * n:(ff + 1) * n],
+                1, schema_name, {**cfg, "_disable_fast_obs": True} if cfg else {"_disable_fast_obs": True},
+            )
+            detail = {k: v for k, v in one.items() if k not in ("pass", "gameplay_score", "failed_frames", "max_pos_drift")}
+            detail["frame"] = ff
+            return {
+                "pass": False,
+                **detail,
+                "gameplay_score": float(out_score.value),
+                "failed_frames": int(out_failed.value),
+                "max_pos_drift": float(out_drift.value),
+            }
+
+    ref_frames = [contract.decode(ref[i * n:(i + 1) * n], schema_name) for i in range(frames)]
+    cand_frames = [contract.decode(cand[i * n:(i + 1) * n], schema_name) for i in range(frames)]
     worst_drift = 0.0
     first_fail = None
     failed_frames = 0
@@ -1171,6 +1393,33 @@ def _get_fast_video():
                     ctypes.POINTER(ctypes.c_double),
                 ]
                 lib.compare_video_v3.restype = ctypes.c_int
+            if hasattr(lib, "compare_obs_sm64_fast"):
+                lib.compare_obs_sm64_fast.argtypes = [
+                    ctypes.c_char_p,
+                    ctypes.c_char_p,
+                    ctypes.c_int,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.c_double,
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_double),
+                ]
+                lib.compare_obs_sm64_fast.restype = ctypes.c_int
+            if hasattr(lib, "scan_elf_mips_words"):
+                lib.scan_elf_mips_words.argtypes = [
+                    ctypes.c_char_p,
+                    ctypes.c_uint32,
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_int),
+                ]
+                lib.scan_elf_mips_words.restype = ctypes.c_int
             _FAST_VIDEO_LIB = lib
     return _FAST_VIDEO_LIB
 
@@ -1390,7 +1639,7 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         orig_fracs[i] = frac
         if frac > 0.0:
             any_nonzero = True
-    if not any_nonzero:
+    if not any_nonzero and n_refs == 1:
         ms, ws, wf, tau, wd = _compute_video_ssim_py(cand_raw, orig_raw, n_frames, w, h, bpp)
         return _finalize_video({
             "pass": True, "worst_bad_fraction": 0.0, "mean_bad_fraction": 0.0, "worst_frame": -1,
@@ -1425,7 +1674,7 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
                 seen[key] = vf
             frac_mat[r][i] = vf
 
-    best_key = (n_frames + 1, 2.0, n_refs)
+    best_key = (n_frames + 1, 2.0, 1e18, 1, n_refs)
     best_r = 0
     best_res = None
     for r in range(n_refs):
@@ -1433,10 +1682,13 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
         r_sum = 0.0
         r_wframe = -1
         r_failed = 0
+        r_exact = 0
         r_variant = 0
         for i in range(n_frames):
             f = frac_mat[r][i]
             r_sum += f
+            if exact_mat[r][i]:
+                r_exact += 1
             if f > limit:
                 r_failed += 1
             if r > 0 and not exact_mat[0][i] and (exact_mat[r][i] or (orig_fracs[i] > limit and f <= limit)):
@@ -1444,7 +1696,7 @@ def compare_video(ref_dir, variants, cand_path, ref_rows, cand_rows, cfg, max_th
             if f > r_worst:
                 r_worst = f
                 r_wframe = i
-        key = (r_failed, r_worst, r)
+        key = (r_failed, r_worst, round(r_sum, 12), -r_exact, r)
         if key < best_key:
             best_key = key
             best_r = r
@@ -1481,7 +1733,7 @@ def _sanitize_json(obj):
 
 
 @functools.lru_cache(maxsize=8)
-def _mel_filterbank(sample_rate, n_fft=1024, n_mel=40, fmin=80.0, fmax_cap=8000.0):
+def _mel_filterbank(sample_rate, n_fft=1024, n_mel=40, fmin=80.0, fmax_cap=15000.0):
     hz_to_mel = lambda f: 2595.0 * np.log10(1.0 + f / 700.0)
     mel_to_hz = lambda m: 700.0 * (10.0 ** (m / 2595.0) - 1.0)
     fmax = min(sample_rate / 2.0, fmax_cap)
@@ -1497,12 +1749,12 @@ def _mel_filterbank(sample_rate, n_fft=1024, n_mel=40, fmin=80.0, fmax_cap=8000.
 
 def _logmel_audio_check(a, b, acfg):
     """GBA Eval-style 40-band log-mel spectral similarity check with CMN,
-    per-replay 90th-percentile adaptive tau (floor 25.0), null-frame hard-0,
-    and loudness (RMS ratio) guards across every channel.
+    per-replay 90th-percentile adaptive tau (floor 12.0), null-frame hard-0,
+    and loudness (RMS ratio) guards across every channel (80 Hz..15 kHz).
 
     Tolerates 1-16 sample phase/timing shifts from legitimate RSP audio
     optimizations while catching dropped channels, missing sound effects,
-    gain hacking, desync, or audio corruption.
+    high-frequency band zeroing, gain hacking, desync, or audio corruption.
     """
     sample_rate = int(acfg.get("sample_rate", 32000))
     channels = max(1, int(acfg.get("channels", 2)))
@@ -1511,7 +1763,7 @@ def _logmel_audio_check(a, b, acfg):
     fb, win = _mel_filterbank(sample_rate, n_fft=n_fft)
     silence_rms = float(acfg.get("logmel_silence_rms", 100.0))
     null_rms = 2.0
-    delta_floor = 25.0
+    delta_floor = 12.0
     rms_err_limit = float(acfg.get("max_rms_ratio_err", 0.15))
 
     min_mean = 1.0
@@ -1712,9 +1964,14 @@ def workloads(corpus, cfg, split, heldout_dir):
     return items
 
 
-def run_all(rom, items, frames, out_dir, max_fields, timeout):
+def run_all(rom, items, frames, out_dir, max_fields, timeout, executor=None):
     for stale in ("/tmp/n64run-home", "/tmp/n64run-saves"):
         shutil.rmtree(stale, ignore_errors=True)
+    if executor is not None:
+        futures = {w["id"]: executor.submit(run_workload, rom, w["replay"], frames,
+                                            pathlib.Path(out_dir) / w["id"], max_fields(w["id"]), timeout, False)
+                   for w in items}
+        return {k: f.result() for k, f in futures.items()}
     jobs = int(os.environ.get("MEV_JOBS", os.cpu_count() or 4))
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(jobs, len(items)))) as pool:
         futures = {w["id"]: pool.submit(run_workload, rom, w["replay"], frames,
@@ -1782,14 +2039,108 @@ def variant_combinations(cfg):
     return out
 
 
-def effective_variant(atoms, workload):
+def _build_incremental_tree(tree_src, cfg, log_path):
+    """Build in-place inside an already-copied scratch tree (preserving build/
+    object files for sub-second incremental variant builds during precompute)."""
+    work = pathlib.Path(tempfile.mkdtemp(prefix="mev-incbuild-"))
+    out_rom = work / "built.z64"
+    home, tmp = work / "home", work / "tmp"
+    home.mkdir(exist_ok=True)
+    tmp.mkdir(exist_ok=True)
+    jobs = max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 4))
+    base_cmd = cfg.get("build_cmd", ["make"])
+    cmd = [base_cmd[0], f"-j{jobs}", *base_cmd[1:]] if base_cmd[0] == "make" else list(base_cmd)
+    rc, out, timed_out = _run_build(cmd, tree_src, home, tmp, cfg["build_timeout_s"])
+    pathlib.Path(log_path).write_text(out + ("\nbuild timed out\n" if timed_out else ""))
+    rom = pathlib.Path(tree_src) / cfg["rom"]
+    if timed_out or rc != 0 or not rom.exists():
+        shutil.rmtree(work, ignore_errors=True)
+        return None, ("build timed out" if timed_out else "build failed; see build.log")
+    shutil.copy2(rom, out_rom)
+    elf_path = pathlib.Path(tree_src) / cfg["elf"] if cfg.get("elf") else None
+    idle = idle_ranges(elf_path, cfg.get("idle_symbols", [])) if elf_path else []
+    (work / "built.idle.json").write_text(json.dumps(idle))
+    shutil.rmtree(home, ignore_errors=True)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return out_rom, None
+
+
+def _clone_compiled_tree_with_patches(compiled_src, patch_files):
+    """Clone a compiled source+build tree, never hardlinking build/ outputs so
+    recompiling headers (e.g. include/PR/gbi.h) can never mutate base_tree in place,
+    invalidate dependent .o files via .d depfiles, apply patches, and bump mtime."""
+    if isinstance(patch_files, (str, pathlib.Path)):
+        patch_files = [patch_files]
+    work = pathlib.Path(tempfile.mkdtemp(prefix="mev-fastvar-"))
+    dst = work / "src"
+    src_build = (pathlib.Path(compiled_src) / "build").resolve()
+
+    def _copy_fn(s, d):
+        sp = pathlib.Path(s).resolve()
+        if sp == src_build or src_build in sp.parents:
+            shutil.copy2(s, d)
+        else:
+            os.link(s, d)
+
+    shutil.copytree(compiled_src, dst, copy_function=_copy_fn)
+    touched = set()
+    for pf in patch_files:
+        for line in pathlib.Path(pf).read_text(errors="replace").splitlines():
+            m = re.match(r"^(?:\+\+\+|---)\s+[^/\s]+/(\S+)", line)
+            if m and m.group(1) != "dev/null":
+                rel = m.group(1)
+                touched.add(rel)
+                p = dst / rel
+                if p.is_file() and p.stat().st_nlink > 1:
+                    data = p.read_bytes()
+                    p.unlink()
+                    p.write_bytes(data)
+    touched_names = {pathlib.Path(t).name for t in touched}
+    touched_stems = {pathlib.Path(t).stem for t in touched}
+    bdir = dst / "build"
+    if bdir.is_dir():
+        for dp in list(bdir.rglob("*.d")):
+            try:
+                dtxt = dp.read_text(errors="ignore")
+            except OSError:
+                dtxt = ""
+            if any(t in dtxt or tn in dtxt for t, tn in zip(touched, touched_names)):
+                dp.with_suffix(".o").unlink(missing_ok=True)
+                dp.unlink(missing_ok=True)
+        for bp in list(bdir.rglob("*")):
+            if bp.is_file():
+                if bp.suffix in (".z64", ".elf", ".map", ".ld", ".bin", ".mio0") or bp.stem in touched_stems:
+                    bp.unlink(missing_ok=True)
+    future_t = time.time() + 5.0
+    for pf in patch_files:
+        proc = subprocess.run(["patch", "-s", "-p1", "--no-backup-if-mismatch", "-i", str(pf)],
+                              cwd=dst, capture_output=True, text=True)
+        if proc.returncode != 0:
+            shutil.rmtree(work, ignore_errors=True)
+            raise GraderError(f"patch {pf} does not apply: {proc.stdout}{proc.stderr}")
+    for rel in touched:
+        p = dst / rel
+        if p.is_file():
+            os.utime(p, (future_t, future_t))
+    return work
+
+
+def effective_variant(atoms, workload, route_levels=None):
     """Id of the combination that renders this workload identically to `atoms`
-    (the atoms that can change it), or None for the unmodified baseline.
-    Held-out routes may visit any course, so every atom counts for them."""
+    (the atoms that can change it), or None for the unmodified baseline."""
+    COURSE_LEVEL_MAP = {"bob": 9, "wf": 24, "jrb": 12, "ddd": 23, "bitfs": 19, "rr": 15}
+
     def affects(v):
-        return "workloads" not in v or workload["split"] != "public" or workload["id"] in v["workloads"]
-    # Drop the atoms that cannot change this workload first: subsumption only
-    # holds between atoms that are both part of the combination here.
+        if "workloads" not in v:
+            return True
+        if workload["split"] == "public":
+            return workload["id"] in v["workloads"]
+        if route_levels and workload["id"] in route_levels:
+            allowed_lvls = {COURSE_LEVEL_MAP[c] for c in v["workloads"] if c in COURSE_LEVEL_MAP}
+            if allowed_lvls and not (route_levels[workload["id"]] & allowed_lvls):
+                return False
+        return True
+
     return "+".join(v["id"] for v in essential_atoms([v for v in atoms if affects(v)])) or None
 
 
@@ -1798,107 +2149,139 @@ def precompute(args):
     cfg = json.loads((corpus / "grader.json").read_text())
     cache = pathlib.Path(args.cache)
     cache.mkdir(parents=True, exist_ok=True)
-    rom, err = build(args.source, cfg, cache / "build.log")
-    if rom is None:
-        raise GraderError(f"baseline failed to build ({err}); see build.log")
+
+    # Keep compiled baseline tree (f3d_old) and optional f3dex2 tree so all 21
+    # visual variants compile incrementally in <1s instead of 21 clean rebuilds,
+    # and skip PLAY=1 builds completely during precompute.
+    base_tree = pathlib.Path(tempfile.mkdtemp(prefix="mev-prebase-"))
+    f3dex2_tree = None
     try:
-        items = workloads(args.corpus, cfg, args.split, args.heldout)
-        generous = lambda _id: cfg["frames"] * 600 + 2400
-        results = run_all(rom, items, cfg["frames"], cache / "runs", generous, cfg["run_timeout_s"])
-        index = {
-            "rom_sha256": sha256(rom),
-            "contract": cfg.get("contract", "pips-garden"),
-            "protected": {},
-            "workloads": {},
-            "variants": [],
-        }
-        for f in cfg["protected_files"]:
-            index["protected"][f] = sha256(pathlib.Path(args.source) / f)
-        for w in items:
-            res = results[w["id"]]
-            if res.get("status") != "completed":
-                raise GraderError(f"baseline did not complete {w['id']}: {res}")
-            run_dir = cache / "runs" / w["id"]
-            video = (run_dir / "video.bin").read_bytes()
-            (run_dir / "video.bin.z").write_bytes(zlib.compress(video, 6))
-            (run_dir / "video.bin").unlink()
-            index["workloads"][w["id"]] = {
-                "split": w["split"],
-                "replay_sha256": sha256(w["replay"]),
-                "vi_fields": res["vi_fields"],
-                "metrics": metrics(load_run(run_dir)),
-            }
-    finally:
-        shutil.rmtree(rom.parent, ignore_errors=True)
-
-    # Accepted visual variants: the baseline with each distinct combination of
-    # the listed visual changes applied. Each must leave gameplay bit-exact and
-    # audio within the audio gate (a microcode swap shifts RSP task timing,
-    # which can move a few samples by a few LSBs); only its video is kept, as an
-    # extra reference for the video gate. A combination whose video is
-    # byte-identical to one already stored is recorded as an alias of it
-    # (video_alias) instead of being written again, and the gate compares
-    # against distinct frames only, so storage and grading memory both shrink.
-    video_alias = {w["id"]: {} for w in items}   # -> {variant id: stored variant id or "" (baseline)}
-    video_seen = {}                              # (workload, sha1 of the video) -> stored variant id or ""
-    for w in items:
-        raw = zlib.decompress((cache / "runs" / w["id"] / "video.bin.z").read_bytes())
-        video_seen[(w["id"], hashlib.sha1(raw).hexdigest())] = ""
-    stored_variants = set()
-
-    for variant_id, atoms in variant_combinations(cfg):
-        own = []
-        for w in items:
-            same = effective_variant(atoms, w)
-            if same == variant_id:
-                own.append(w)
-            else:
-                # Renders like a smaller combination here; alias its stored video.
-                video_alias[w["id"]][variant_id] = video_alias[w["id"]].get(same or "", same or "")
-        if not own:
-            continue
-        vwork = patched_copy(args.source, [(corpus / v["patch"]).resolve() for v in atoms])
-        vrom = None
+        _copy_source(args.source, base_tree / "src")
+        rom, err = _build_incremental_tree(base_tree / "src", cfg, cache / "build.log")
+        if rom is None:
+            raise GraderError(f"baseline failed to build ({err}); see build.log")
+        elf_err = verify_elf_harness(base_tree / "src" / cfg["elf"], cfg, src_root=base_tree / "src") if cfg.get("elf") else None
+        if elf_err:
+            shutil.rmtree(rom.parent, ignore_errors=True)
+            raise GraderError(f"baseline failed ELF harness check ({elf_err})")
         try:
-            vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant_id}.log")
-            if vrom is None:
-                raise GraderError(f"variant {variant_id} failed to build: {verr}")
-            vdir = cache / "variant-runs" / variant_id
-            vres = run_all(vrom, own, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
-            for w in own:
-                wid = w["id"]
-                if vres[wid].get("status") != "completed":
-                    raise GraderError(f"variant {variant_id} did not complete {wid}")
-                base_run, var_run = load_run(cache / "runs" / wid), load_run(vdir / wid)
-                if base_run["obs"] != var_run["obs"]:
-                    raise GraderError(f"variant {variant_id} changes gameplay on {wid}; "
-                                      "an accepted visual change must be visual only")
-                au = compare_audio(base_run["audio"], var_run["audio"], base_run["rows"], var_run["rows"], cfg)
-                if not au["pass"]:
-                    raise GraderError(f"variant {variant_id} changes audio on {wid}: {au}")
-                if base_run["audio"] != var_run["audio"] and au.get("snr_db") is not None:
-                    print(f"variant {variant_id} {wid}: audio SNR {au['snr_db']:.1f} dB ({au.get('mode', 'snr')})", file=sys.stderr)
-                video = (vdir / wid / "video.bin").read_bytes()
-                digest = hashlib.sha1(video).hexdigest()
-                if (wid, digest) in video_seen:
-                    video_alias[wid][variant_id] = video_seen[(wid, digest)]
-                else:
-                    (cache / "runs" / wid / f"video.{variant_id}.bin.z").write_bytes(zlib.compress(video, 6))
-                    video_seen[(wid, digest)] = variant_id
-                    video_alias[wid][variant_id] = variant_id
-                    stored_variants.add(variant_id)
-            shutil.rmtree(vdir, ignore_errors=True)
+            items = workloads(args.corpus, cfg, args.split, args.heldout)
+            generous = lambda _id: cfg["frames"] * 600 + 2400
+            results = run_all(rom, items, cfg["frames"], cache / "runs", generous, cfg["run_timeout_s"])
+            shutil.copy2(rom, cache / "baseline.z64")
+            if (rom.parent / "built.idle.json").is_file():
+                shutil.copy2(rom.parent / "built.idle.json", cache / "baseline.idle.json")
+            index = {
+                "rom_sha256": sha256(rom),
+                "contract": cfg.get("contract", "sm64"),
+                "protected": {},
+                "workloads": {},
+                "variants": [],
+            }
+            for f in cfg["protected_files"]:
+                index["protected"][f] = sha256(pathlib.Path(args.source) / f)
+            route_levels = {}
+            for w in items:
+                res = results[w["id"]]
+                if res.get("status") != "completed":
+                    raise GraderError(f"baseline did not complete {w['id']}: {res}")
+                run_dir = cache / "runs" / w["id"]
+                video = (run_dir / "video.bin").read_bytes()
+                (run_dir / "video.bin.z").write_bytes(zlib.compress(video, 6))
+                (run_dir / "video.bin").unlink()
+                loaded = load_run(run_dir)
+                obs_raw = loaded["obs"]
+                lvls = set()
+                for fi in range(0, len(obs_raw), 4224):
+                    if fi + 8 <= len(obs_raw):
+                        lvls.add((int.from_bytes(obs_raw[fi + 4:fi + 8], "big") >> 16) & 0xFFFF)
+                route_levels[w["id"]] = lvls
+                index["workloads"][w["id"]] = {
+                    "split": w["split"],
+                    "replay_sha256": sha256(w["replay"]),
+                    "vi_fields": res["vi_fields"],
+                    "metrics": metrics(loaded),
+                }
         finally:
-            if vrom is not None:
+            shutil.rmtree(rom.parent, ignore_errors=True)
+
+        video_alias = {w["id"]: {} for w in items}
+        video_seen = {}
+        for w in items:
+            raw = zlib.decompress((cache / "runs" / w["id"] / "video.bin.z").read_bytes())
+            video_seen[(w["id"], hashlib.sha1(raw).hexdigest())] = ""
+        stored_variants = set()
+
+        for variant_id, atoms in variant_combinations(cfg):
+            own = []
+            for w in items:
+                same = effective_variant(atoms, w, route_levels=route_levels)
+                if same == variant_id:
+                    own.append(w)
+                else:
+                    video_alias[w["id"]][variant_id] = video_alias[w["id"]].get(same or "", same or "")
+            if not own:
+                continue
+            atom_ids = [v["id"] for v in atoms]
+            if atom_ids == ["f3dex2"]:
+                f3dex2_tree = patched_copy(args.source, [(corpus / atoms[0]["patch"]).resolve()])
+                vrom, verr = _build_incremental_tree(f3dex2_tree / "src", cfg, cache / f"build-{variant_id}.log")
+                vwork = None
+            elif "f3dex2" in atom_ids and f3dex2_tree is not None:
+                rest_patches = [(corpus / v["patch"]).resolve() for v in atoms if v["id"] != "f3dex2"]
+                vwork = _clone_compiled_tree_with_patches(f3dex2_tree / "src", rest_patches)
+                vrom, verr = _build_incremental_tree(vwork / "src", cfg, cache / f"build-{variant_id}.log")
+            elif all(v["id"] != "f3dex2" for v in atoms):
+                patches = [(corpus / v["patch"]).resolve() for v in atoms]
+                vwork = _clone_compiled_tree_with_patches(base_tree / "src", patches)
+                vrom, verr = _build_incremental_tree(vwork / "src", cfg, cache / f"build-{variant_id}.log")
+            else:
+                vwork = patched_copy(args.source, [(corpus / v["patch"]).resolve() for v in atoms])
+                vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant_id}.log", include_play=False)
+            if vrom is None:
+                if vwork is not None:
+                    shutil.rmtree(vwork, ignore_errors=True)
+                raise GraderError(f"variant {variant_id} failed to build: {verr}")
+            try:
+                vdir = cache / "variant-runs" / variant_id
+                vres = run_all(vrom, own, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
+                for w in own:
+                    wid = w["id"]
+                    if vres[wid].get("status") != "completed":
+                        raise GraderError(f"variant {variant_id} did not complete {wid}")
+                    base_run, var_run = load_run(cache / "runs" / wid), load_run(vdir / wid)
+                    if base_run["obs"] != var_run["obs"]:
+                        raise GraderError(f"variant {variant_id} changes gameplay on {wid}; "
+                                          "an accepted visual change must be visual only")
+                    au = compare_audio(base_run["audio"], var_run["audio"], base_run["rows"], var_run["rows"], cfg)
+                    if not au["pass"]:
+                        raise GraderError(f"variant {variant_id} changes audio on {wid}: {au}")
+                    if base_run["audio"] != var_run["audio"] and au.get("snr_db") is not None:
+                        print(f"variant {variant_id} {wid}: audio SNR {au['snr_db']:.1f} dB ({au.get('mode', 'snr')})", file=sys.stderr)
+                    video = (vdir / wid / "video.bin").read_bytes()
+                    digest = hashlib.sha1(video).hexdigest()
+                    if (wid, digest) in video_seen:
+                        video_alias[wid][variant_id] = video_seen[(wid, digest)]
+                    else:
+                        (cache / "runs" / wid / f"video.{variant_id}.bin.z").write_bytes(zlib.compress(video, 6))
+                        video_seen[(wid, digest)] = variant_id
+                        video_alias[wid][variant_id] = variant_id
+                        stored_variants.add(variant_id)
+                shutil.rmtree(vdir, ignore_errors=True)
+            finally:
                 shutil.rmtree(vrom.parent, ignore_errors=True)
-            shutil.rmtree(vwork, ignore_errors=True)
+                if vwork is not None:
+                    shutil.rmtree(vwork, ignore_errors=True)
+    finally:
+        shutil.rmtree(base_tree, ignore_errors=True)
+        if f3dex2_tree is not None:
+            shutil.rmtree(f3dex2_tree, ignore_errors=True)
 
     index["variants"] = sorted(stored_variants)
     for w in items:
         index["workloads"][w["id"]]["variants"] = video_alias[w["id"]]
 
-    # Optional GCC -O2 (IEEE) reference calibration, so summary.json can report
-    # both speedup vs vanilla (-O0 / IDO) and speedup beyond compiler flags.
+    # Optional GCC -O2 (IEEE) reference calibration (benchmark ROM only, no PLAY=1 needed).
     o2_patch = args.o2_patch or cfg.get("o2_reference_patch")
     if o2_patch:
         pfile = pathlib.Path(o2_patch)
@@ -1908,7 +2291,7 @@ def precompute(args):
             owork = patched_copy(args.source, pfile)
             orom = None
             try:
-                orom, oerr = build(owork / "src", cfg, cache / "build-o2-ref.log")
+                orom, oerr = build(owork / "src", cfg, cache / "build-o2-ref.log", include_play=False)
                 if orom is None:
                     raise GraderError(f"o2 reference patch failed to build: {oerr}")
                 odir = cache / "o2-runs"
@@ -1933,7 +2316,9 @@ def precompute(args):
 
 
 def export_public(args):
-    """Stage a strictly public-only copy of cache/reference for the agent container."""
+    """Stage a strictly public-only copy of cache/reference for the agent container,
+    anonymizing variant IDs to opaque v01..vNN tokens and trimming o2_reference
+    to profile metrics so zero solution spoilers leak into the task image."""
     corpus = pathlib.Path(args.corpus)
     cfg = json.loads((corpus / "grader.json").read_text())
     src_cache = pathlib.Path(args.cache)
@@ -1948,18 +2333,70 @@ def export_public(args):
     if missing:
         raise GraderError(f"missing public workloads in cache: {missing}")
 
+    stored_set = set()
+    all_combo_keys = set()
+    for wid in sorted(pub_ids):
+        vmap = index["workloads"][wid].get("variants", {})
+        if isinstance(vmap, dict):
+            all_combo_keys.update(vmap.keys())
+            stored_set.update(v for v in vmap.values() if v)
+        elif isinstance(vmap, list):
+            all_combo_keys.update(vmap)
+            stored_set.update(vmap)
+    stored_sorted = sorted(stored_set)
+    stored_anon = {v: f"v{idx:02d}" for idx, v in enumerate(stored_sorted, 1)}
+    combo_anon = {}
+    next_idx = len(stored_sorted) + 1
+    for k in sorted(all_combo_keys):
+        if k in stored_anon:
+            combo_anon[k] = stored_anon[k]
+        else:
+            combo_anon[k] = f"v{next_idx:02d}"
+            next_idx += 1
+
+    pub_workloads = {}
+    for wid in sorted(pub_ids):
+        w_orig = dict(index["workloads"][wid])
+        vmap = w_orig.get("variants", {})
+        if isinstance(vmap, dict):
+            w_orig["variants"] = {
+                combo_anon[k]: (stored_anon[val] if val else "")
+                for k, val in vmap.items()
+            }
+        elif isinstance(vmap, list):
+            w_orig["variants"] = {stored_anon[v]: stored_anon[v] for v in vmap if v in stored_anon}
+        pub_workloads[wid] = w_orig
+
+        dst_run = dst_cache / "runs" / wid
+        dst_run.mkdir(parents=True, exist_ok=True)
+        src_run = src_cache / "runs" / wid
+        for item in src_run.iterdir():
+            if not item.is_file():
+                continue
+            m = re.match(r"^video\.(.+)\.bin\.z$", item.name)
+            if m:
+                orig_v = m.group(1)
+                if orig_v in stored_anon:
+                    shutil.copy2(item, dst_run / f"video.{stored_anon[orig_v]}.bin.z")
+            else:
+                shutil.copy2(item, dst_run / item.name)
+
     out_index = {
         "rom_sha256": index["rom_sha256"],
-        "contract": index.get("contract", cfg.get("contract", "pips-garden")),
+        "contract": index.get("contract", cfg.get("contract", "sm64")),
         "protected": index["protected"],
-        "workloads": {wid: index["workloads"][wid] for wid in sorted(pub_ids)},
-        "variants": index.get("variants", []),
+        "workloads": pub_workloads,
+        "variants": [stored_anon[v] for v in stored_sorted],
     }
     if "o2_reference" in index:
-        out_index["o2_reference"] = {wid: index["o2_reference"][wid]
-                                     for wid in sorted(pub_ids) if wid in index["o2_reference"]}
-    for wid in sorted(pub_ids):
-        shutil.copytree(src_cache / "runs" / wid, dst_cache / "runs" / wid)
+        keep_keys = {pcfg["metric"] for pcfg in cfg.get("profiles", {}).values()}
+        out_index["o2_reference"] = {
+            wid: {mk: mv for mk, mv in index["o2_reference"][wid].items() if mk in keep_keys}
+            for wid in sorted(pub_ids) if wid in index["o2_reference"]
+        }
+    for bname in ("baseline.z64", "baseline.idle.json"):
+        if (src_cache / bname).is_file():
+            shutil.copy2(src_cache / bname, dst_cache / bname)
     (dst_cache / "index.json").write_text(json.dumps(out_index, indent=1))
 
 
@@ -1981,10 +2418,10 @@ def failure_details(gates):
     return failures
 
 
-def play_runtime_smoke(rom, out, timeout, cfg=None):
-    """Compare idle and controller-driven execution of the same linked PLAY ROM,
-    and verify PLAY=1 hardware safety (4 MB RAM, CACHE/KSEG1 invariants, SP/DP
-    DMA D-cache coherence) and active RSP audio output."""
+def play_runtime_smoke(rom, out, timeout, cfg=None, executor=None):
+    """Compare idle and controller-driven execution of the same linked PLAY ROM
+    in parallel, and verify PLAY=1 hardware safety (4 MB RAM, 0 OOB accesses,
+    CACHE/KSEG1 invariants, SP/DP DMA D-cache coherence) and active RSP audio."""
     fields = 1200
     out.mkdir(parents=True, exist_ok=True)
     replay = out / "controller.txt"
@@ -1994,7 +2431,9 @@ def play_runtime_smoke(rom, out, timeout, cfg=None):
     ))
     hw_cfg = (cfg or {}).get("hardware", {})
     limit_ram = hw_cfg.get("rdram_bytes")
+    max_oob = int(hw_cfg.get("max_oob_rdram_accesses", 0))
     max_syn = int(hw_cfg.get("max_kseg1_dirty_synonyms", 0))
+    max_rdram_coh = hw_cfg.get("max_rdram_dma_coherence_errors")
     max_coh = None
     if "max_dcache_coherence_errors" in hw_cfg:
         max_coh = int(hw_cfg["max_dcache_coherence_errors"]) * 3
@@ -2002,36 +2441,55 @@ def play_runtime_smoke(rom, out, timeout, cfg=None):
         # 1,200 VI fields is ~600 30Hz game frames on SM64.
         max_coh = int(float(hw_cfg["max_dcache_coherence_errors_per_frame"]) * (fields // 2) + 32)
 
-    results = {}
-    for mode, extra in (("idle", []), ("controller", ["--replay", str(replay)])):
+    def _run_scenario(mode, extra):
         path = pathlib.Path(tempfile.mkdtemp(prefix=f"{mode}-", dir=out))
-        # Let n64run create its output directory; nall rewrites existing paths.
         capture = path / "capture"
         cmd = ["n64run", "--rom", str(rom), "--out", str(capture), "--play-fields", str(fields), *extra]
         with (path / "stderr.txt").open("w") as errors:
             try:
                 run = subprocess.run(cmd, stderr=errors, timeout=timeout)
             except subprocess.TimeoutExpired:
-                return {"pass": False, "status": "host_timeout", "scenario": mode}
+                return mode, None, {"status": "host_timeout"}, True
         report = capture / "result.json"
         result = json.loads(report.read_text()) if report.is_file() else {"status": "runner_error"}
-        results[mode] = result
-        if run.returncode or result["status"] != "completed" or result.get("vi_fields") != fields:
+        return mode, run.returncode, result, False
+
+    scenarios = [("idle", []), ("controller", ["--replay", str(replay)])]
+    if executor is not None:
+        futs = [executor.submit(_run_scenario, m, ex) for m, ex in scenarios]
+        raw_runs = [f.result() for f in futs]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            raw_runs = list(pool.map(lambda p: _run_scenario(p[0], p[1]), scenarios))
+
+    results = {mode: result for mode, _rc, result, _to in raw_runs}
+    for mode, rc, result, timed_out in raw_runs:
+        if timed_out:
+            return {"pass": False, "status": "host_timeout", "scenario": mode, "scenarios": results}
+        if rc or result["status"] != "completed" or result.get("vi_fields") != fields:
             return {"pass": False, "status": result["status"], "scenario": mode,
-                    "returncode": run.returncode, "scenarios": results}
+                    "returncode": rc, "scenarios": results}
+        if int(result.get("cpu_fault_exceptions", 0)) > 0 or int(result.get("cpu_trap_exceptions", 0)) > 0:
+            return {"pass": False, "status": "play_cpu_exception", "scenario": mode, "scenarios": results}
         highest_byte = (int(result.get("highest_line", -1)) + 1) * 16
-        if limit_ram is not None and highest_byte > limit_ram:
+        oob = int(result.get("oob_rdram_accesses", 0))
+        if (limit_ram is not None and highest_byte > limit_ram) or oob > max_oob:
             return {"pass": False, "status": "play_rdram_overflow", "scenario": mode,
-                    "highest_byte": highest_byte, "limit_bytes": limit_ram, "scenarios": results}
+                    "highest_byte": highest_byte, "oob_rdram_accesses": oob,
+                    "limit_bytes": limit_ram, "scenarios": results}
         if int(result.get("cache_uncached_ops", 0)) > 0 or int(result.get("cache_cde_unaligned_ops", 0)) > 0:
             return {"pass": False, "status": "play_cache_hazard", "scenario": mode, "scenarios": results}
         if int(result.get("cache_kseg1_dirty_synonyms", 0)) > max_syn:
             return {"pass": False, "status": "play_kseg1_dirty_synonym", "scenario": mode, "scenarios": results}
+        if max_rdram_coh is not None and int(result.get("rdram_dma_coherence_errors", 0)) > int(max_rdram_coh):
+            return {"pass": False, "status": "play_dma_coherence_hazard", "scenario": mode,
+                    "rdram_dma_coherence_errors": result.get("rdram_dma_coherence_errors"),
+                    "max_rdram_dma_coherence_errors": int(max_rdram_coh), "scenarios": results}
         if max_coh is not None and int(result.get("dcache_coherence_errors", 0)) > max_coh:
             return {"pass": False, "status": "play_dma_coherence_hazard", "scenario": mode,
                     "dcache_coherence_errors": result.get("dcache_coherence_errors"),
                     "max_dcache_coherence_errors": max_coh, "scenarios": results}
-        if cfg and cfg.get("contract") == "sm64" and "play_rsp_aud_cycles" in result and int(result["play_rsp_aud_cycles"]) == 0:
+        if cfg and cfg.get("contract", "sm64") == "sm64" and "play_rsp_aud_cycles" in result and int(result["play_rsp_aud_cycles"]) == 0:
             return {"pass": False, "status": "play_audio_silent", "scenario": mode, "scenarios": results}
     different = results["idle"]["play_final_video_hash"] != results["controller"]["play_final_video_hash"]
     return {"pass": different, "status": "completed" if different else "no_controller_response",
@@ -2136,17 +2594,21 @@ def _section_weighted_mean(items, val_by_id, section_weights):
 def _hardware_score(hw):
     if hw.get("pass"):
         return 1.0
-    ram_ok = 1.0 if hw.get("highest_byte", 0) <= hw.get("limit_bytes", 1) else 0.0
+    ram_ok = 1.0 if (hw.get("highest_byte", 0) <= hw.get("limit_bytes", 1)
+                     and int(hw.get("oob_rdram_accesses", 0)) <= int(hw.get("max_oob_rdram_accesses", 0))
+                     and hw.get("rsp_aud_active", True)
+                     and hw.get("frame0_ticks_ok", True)) else 0.0
     bad_ops = (int(hw.get("cache_uncached_ops", 0))
                + int(hw.get("cache_cde_unaligned_ops", 0))
                + max(0, int(hw.get("cache_kseg1_dirty_synonyms", 0)) - int(hw.get("max_kseg1_dirty_synonyms", 0))))
     cache_ok = 1.0 / (1.0 + float(bad_ops))
     max_coh = hw.get("max_dcache_coherence_errors")
     coh = int(hw.get("dcache_coherence_errors", 0))
-    if max_coh is None or coh <= max_coh:
+    rdram_coh_excess = max(0, int(hw.get("rdram_dma_coherence_errors", 0)) - int(hw.get("max_rdram_dma_coherence_errors", 0)))
+    if (max_coh is None or coh <= max_coh) and rdram_coh_excess == 0:
         coh_ok = 1.0
     else:
-        excess = float(coh - max_coh) / max(1.0, float(max_coh))
+        excess = float(max(0, coh - (max_coh or 0)) + rdram_coh_excess) / max(1.0, float(max_coh or 1))
         coh_ok = 1.0 / (1.0 + excess * excess)
     return round(ram_ok * cache_ok * coh_ok, 6)
 
@@ -2297,7 +2759,9 @@ def classify_failure_attribution(summary, cfg):
         hw_wls = [v for v in hw_gate.get("workloads", {}).values() if not v.get("pass")]
         if hw_wls:
             categories.append("hardware_safety_violation")
-            if any(v.get("highest_byte", 0) > v.get("limit_bytes", 0x400000) for v in hw_wls):
+            if any(v.get("highest_byte", 0) > v.get("limit_bytes", 0x400000)
+                   or int(v.get("oob_rdram_accesses", 0)) > int(v.get("max_oob_rdram_accesses", 0))
+                   for v in hw_wls):
                 subcategories.append("rdram_4mb_overflow")
             if any(v.get("cache_uncached_ops", 0) > 0 for v in hw_wls):
                 subcategories.append("kseg1_uncached_cache_op")
@@ -2306,8 +2770,10 @@ def classify_failure_attribution(summary, cfg):
             if any(v.get("cache_kseg1_dirty_synonyms", 0) > v.get("max_kseg1_dirty_synonyms", 0) for v in hw_wls):
                 subcategories.append("kseg1_dirty_synonym")
             if any(
-                v.get("max_dcache_coherence_errors") is not None
-                and v.get("dcache_coherence_errors", 0) > v["max_dcache_coherence_errors"]
+                (v.get("max_dcache_coherence_errors") is not None
+                 and v.get("dcache_coherence_errors", 0) > v["max_dcache_coherence_errors"])
+                or (v.get("max_rdram_dma_coherence_errors") is not None
+                    and v.get("rdram_dma_coherence_errors", 0) > v["max_rdram_dma_coherence_errors"])
                 for v in hw_wls
             ):
                 subcategories.append("dma_dcache_coherence")
@@ -2469,7 +2935,7 @@ def grade(args):
         raise GraderError("PLAY runtime smoke is not supported for this target")
     cache = pathlib.Path(args.cache)
     index = json.loads((cache / "index.json").read_text())
-    schema_name = cfg.get("contract", index.get("contract", "pips-garden"))
+    schema_name = cfg.get("contract", index.get("contract", "sm64"))
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     summary = {
@@ -2499,7 +2965,7 @@ def grade(args):
                 "audio": 0.0,
                 "hardware": 0.0,
                 "overall": 0.0,
-                "effective_speedups": {p: 0.0 for p in cfg["profiles"]},
+                "effective_speedups": {p: 1.0 for p in cfg["profiles"]},
                 "effective_cost_saved": {p: 0.0 for p in cfg["profiles"]},
             })
         attr = classify_failure_attribution(summary, cfg)
@@ -2572,15 +3038,27 @@ def grade(args):
             summary["toolchain"] = build_meta
         summary["rom_sha256"] = sha256(rom)
         summary["rom_bytes"] = rom.stat().st_size
-        if args.play_smoke:
-            result = play_runtime_smoke(rom.parent / "play.z64", out / "play-smoke", cfg["run_timeout_s"], cfg=cfg)
-            summary["gates"]["play_runtime"] = result
-            if not result["pass"]:
-                return finish("invalid", f"PLAY=1 runtime smoke failed: {result['status']}")
-
-        # 3. run
+        max_rom = cfg.get("max_rom_bytes")
+        if max_rom is not None and summary["rom_bytes"] > int(max_rom):
+            summary["gates"]["build"] = {"pass": False, "reason": f"ROM size {summary['rom_bytes']} exceeds limit {int(max_rom)} bytes"}
+            return finish("invalid", summary["gates"]["build"]["reason"])
         budget = lambda wid: int(index["workloads"][wid]["vi_fields"] * cfg["max_fields_factor"]) + 600
-        results = run_all(rom, items, cfg["frames"], out / "runs", budget, cfg["run_timeout_s"])
+        jobs = int(os.environ.get("MEV_JOBS", os.cpu_count() or 4))
+        total_tasks = len(items) + (2 if args.play_smoke else 0)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(jobs, total_tasks))) as run_pool:
+            play_fut = (
+                run_pool.submit(
+                    play_runtime_smoke, rom.parent / "play.z64", out / "play-smoke",
+                    cfg["run_timeout_s"], cfg=cfg, executor=run_pool,
+                )
+                if args.play_smoke else None
+            )
+            results = run_all(rom, items, cfg["frames"], out / "runs", budget, cfg["run_timeout_s"], executor=run_pool)
+            play_result = play_fut.result() if play_fut is not None else None
+        if play_result is not None:
+            summary["gates"]["play_runtime"] = play_result
+            if not play_result["pass"]:
+                return finish("invalid", f"PLAY=1 runtime smoke failed: {play_result['status']}")
     finally:
         if not isolated:
             shutil.rmtree(rom.parent, ignore_errors=True)
@@ -2589,8 +3067,14 @@ def grade(args):
     completed = []
     for w in items:
         wid, res = w["id"], results[w["id"]]
-        execution[wid] = {"pass": res.get("status") == "completed", **res}
-        if execution[wid]["pass"]:
+        ex_ok = (
+            res.get("status") == "completed"
+            and int(res.get("frames", 0)) == int(cfg["frames"])
+            and int(res.get("cpu_fault_exceptions", 0)) == 0
+            and int(res.get("cpu_trap_exceptions", 0)) == 0
+        )
+        execution[wid] = {"pass": ex_ok, **res}
+        if ex_ok:
             completed.append(w)
 
     ncpus = int(os.environ.get("MEV_JOBS", os.cpu_count() or 4))
@@ -2607,23 +3091,56 @@ def grade(args):
                            cand["video_path"], ref["rows"], cand["rows"], cfg, max_threads=vid_threads)
         au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
         m = metrics(cand)
-        max_coh = cfg["hardware"].get("max_dcache_coherence_errors")
-        if max_coh is None and "max_dcache_coherence_errors_per_frame" in cfg["hardware"]:
-            max_coh = int(cfg["hardware"]["max_dcache_coherence_errors_per_frame"] * cfg["frames"])
+        hw_cfg = cfg["hardware"]
+        max_coh = hw_cfg.get("max_dcache_coherence_errors")
+        if max_coh is None and "max_dcache_coherence_errors_per_frame" in hw_cfg:
+            max_coh = int(hw_cfg["max_dcache_coherence_errors_per_frame"] * cfg["frames"])
+        max_sp_coh = hw_cfg.get("max_sp_dmem_coherence_errors")
+        if max_sp_coh is None and "max_sp_dmem_coherence_errors_per_frame" in hw_cfg:
+            max_sp_coh = int(hw_cfg["max_sp_dmem_coherence_errors_per_frame"] * cfg["frames"])
+        max_rdram_coh = hw_cfg.get("max_rdram_dma_coherence_errors")
+        max_oob = int(hw_cfg.get("max_oob_rdram_accesses", 0))
         coh_ok = True if max_coh is None else (m.get("dcache_coherence_errors", 0) <= max_coh)
-        max_syn = int(cfg["hardware"].get("max_kseg1_dirty_synonyms", 0))
+        sp_coh_ok = True if max_sp_coh is None else (m.get("sp_dmem_coherence_errors", 0) <= max_sp_coh)
+        rdram_coh_ok = True if max_rdram_coh is None else (m.get("rdram_dma_coherence_errors", 0) <= int(max_rdram_coh))
+        max_syn = int(hw_cfg.get("max_kseg1_dirty_synonyms", 0))
         syn_ok = (m.get("cache_kseg1_dirty_synonyms", 0) <= max_syn)
-        hw = {"pass": (m["highest_byte"] <= cfg["hardware"]["rdram_bytes"]
+        oob_ok = (m.get("oob_rdram_accesses", 0) <= max_oob)
+        rsp_aud_delta = (
+            int(cand["rows"][-1].get("rsp_aud_cycles", 0)) - int(cand["rows"][0].get("rsp_aud_cycles", 0))
+            if len(cand["rows"]) >= 2 else 0
+        )
+        rsp_aud_ok = True if schema_name != "sm64" else (rsp_aud_delta > 0)
+        f0_extra = int(cand["rows"][0].get("count_ticks", 0)) - int(ref["rows"][0].get("count_ticks", 0))
+        max_f0_extra = hw_cfg.get("max_frame0_extra_ticks")
+        f0_ok = True if max_f0_extra is None else (f0_extra <= int(max_f0_extra))
+        hw = {"pass": (m["highest_byte"] <= hw_cfg["rdram_bytes"]
+                       and oob_ok
                        and m.get("cache_uncached_ops", 0) == 0
                        and m.get("cache_cde_unaligned_ops", 0) == 0
                        and syn_ok
-                       and coh_ok),
-              "highest_byte": m["highest_byte"], "limit_bytes": cfg["hardware"]["rdram_bytes"],
+                       and coh_ok
+                       and sp_coh_ok
+                       and rdram_coh_ok
+                       and rsp_aud_ok
+                       and f0_ok),
+              "highest_byte": m["highest_byte"], "limit_bytes": hw_cfg["rdram_bytes"],
+              "oob_rdram_accesses": m.get("oob_rdram_accesses", 0),
+              "max_oob_rdram_accesses": max_oob,
               "cache_uncached_ops": m.get("cache_uncached_ops", 0),
               "cache_cde_unaligned_ops": m.get("cache_cde_unaligned_ops", 0),
               "cache_kseg1_dirty_synonyms": m.get("cache_kseg1_dirty_synonyms", 0),
               "max_kseg1_dirty_synonyms": max_syn,
+              "sp_dmem_coherence_errors": m.get("sp_dmem_coherence_errors", 0),
+              "rdram_dma_coherence_errors": m.get("rdram_dma_coherence_errors", 0),
               "dcache_coherence_errors": m.get("dcache_coherence_errors", 0),
+              "rsp_aud_cycles_delta": rsp_aud_delta,
+              "rsp_aud_active": rsp_aud_ok,
+              "frame0_extra_ticks": f0_extra,
+              "frame0_ticks_ok": f0_ok,
+              **({"max_frame0_extra_ticks": int(max_f0_extra)} if max_f0_extra is not None else {}),
+              **({"max_sp_dmem_coherence_errors": max_sp_coh} if max_sp_coh is not None else {}),
+              **({"max_rdram_dma_coherence_errors": int(max_rdram_coh)} if max_rdram_coh is not None else {}),
               **({"max_dcache_coherence_errors": max_coh} if max_coh is not None else {})}
         hw["hardware_score"] = _hardware_score(hw)
         # Recompute baseline metrics directly from ref's frames.jsonl so candidate
@@ -2633,7 +3150,8 @@ def grade(args):
             "metrics": m,
             "ratios": {k: (m[k] / base[k] if base.get(k) else 1.0) for k in RATIO_KEYS},
         }
-        (out / "runs" / wid / "video.bin").unlink()
+        for bin_name in ("video.bin", "obs.bin", "audio.bin"):
+            (out / "runs" / wid / bin_name).unlink(missing_ok=True)
         return wid, gp, vd, au, hw, wl_entry
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=gate_workers) as pool:
@@ -2695,20 +3213,41 @@ def grade(args):
     fid_hw = round(_section_weighted_mean(items, hw_scores, section_weights), 6)
     fid_overall = round(fid_exec * fid_gp * fid_vid * fid_aud * fid_hw, 6)
 
+    passed_gate_ids = {
+        w["id"] for w in items
+        if execution.get(w["id"], {}).get("pass")
+        and gameplay.get(w["id"], {}).get("pass")
+        and video.get(w["id"], {}).get("pass")
+        and audio.get(w["id"], {}).get("pass")
+        and hardware.get(w["id"], {}).get("pass")
+    }
     effective_speedups = {}
     effective_cost_saved = {}
-    if completed:
-        gate_factor = fid_overall ** 8
-        for profile, pcfg in cfg["profiles"].items():
-            mkey = pcfg["metric"]
-            r_by_id = {w["id"]: summary["workloads"][w["id"]]["ratios"][mkey] for w in completed}
-            raw_geo, _ = _section_weighted_geomean(completed, r_by_id, section_weights)
-            raw_sp = (1.0 / raw_geo) if raw_geo > 0 else 0.0
-            effective_speedups[profile] = round(raw_sp * gate_factor, 6)
-            effective_cost_saved[profile] = round(max(0.0, 1.0 - raw_geo) * gate_factor, 6)
-    else:
-        effective_speedups = {p: 0.0 for p in cfg["profiles"]}
-        effective_cost_saved = {p: 0.0 for p in cfg["profiles"]}
+    for profile, pcfg in cfg["profiles"].items():
+        mkey = pcfg["metric"]
+        max_reg = float(pcfg.get("max_workload_regression", 0.05))
+        eff_r_by_id = {}
+        for w in items:
+            wid = w["id"]
+            if wid not in passed_gate_ids or wid not in summary["workloads"]:
+                eff_r_by_id[wid] = 1.0
+                continue
+            rats = summary["workloads"][wid]["ratios"]
+            rw = float(rats.get(mkey, 1.0))
+            if rw > 1.0 + max_reg + 1e-12:
+                eff_r_by_id[wid] = 1.0
+            elif "speed_budget" in pcfg and float(rats.get("cpu_effective_cycles", 1.0)) > 1.0 + float(pcfg["speed_budget"]) + 1e-12:
+                eff_r_by_id[wid] = 1.0
+            elif "rdp_budget" in pcfg and float(rats.get("rdp_busy", 1.0)) > 1.0 + float(pcfg["rdp_budget"]) + 1e-12:
+                eff_r_by_id[wid] = 1.0
+            elif "footprint_budget" in pcfg and float(rats.get("footprint_bytes", 1.0)) > 1.0 + float(pcfg["footprint_budget"]) + 1e-12:
+                eff_r_by_id[wid] = 1.0
+            else:
+                eff_r_by_id[wid] = rw
+        eff_geo, _ = _section_weighted_geomean(items, eff_r_by_id, section_weights)
+        eff_sp = (1.0 / eff_geo) if eff_geo > 0 else 1.0
+        effective_speedups[profile] = round(eff_sp, 6)
+        effective_cost_saved[profile] = round(1.0 - eff_geo, 6)
 
     pub_items = [w for w in items if w["split"] == "public"]
     ho_items = [w for w in items if w["split"] != "public"]

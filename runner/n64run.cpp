@@ -217,6 +217,9 @@ struct Runner : ares::Platform {
       if(!text.empty()) fprintf(stderr, "[rom] %s\n", text.c_str());
       return;
     }
+    if(!opt.playFields && opt.frames && frame >= opt.frames) {
+      return;
+    }
     std::istringstream in(text.substr(5));
     u64 n; u32 obsV, obsLen, fbP, fbW, fbH, fbBpp, auP, auLen;
     in >> std::dec >> n >> std::hex >> obsV >> std::dec >> obsLen >> std::hex >> fbP
@@ -252,7 +255,10 @@ struct Runner : ares::Platform {
       << ",\"cache_kseg1_dirty_synonyms\":" << cp.cacheKseg1DirtySynonyms
       << ",\"rsp_cycles\":" << rp.cycles << ",\"rsp_halted_cycles\":" << rp.haltedCycles
       << ",\"rsp_gfx_cycles\":" << rp.gfxCycles << ",\"rsp_aud_cycles\":" << rp.audCycles
+      << ",\"sp_dmem_coherence_errors\":" << rp.dcacheCoherenceErrors
+      << ",\"rdram_dma_coherence_errors\":" << dp.dcacheCoherenceErrors
       << ",\"dcache_coherence_errors\":" << (rp.dcacheCoherenceErrors + dp.dcacheCoherenceErrors)
+      << ",\"oob_rdram_accesses\":" << N64::rdram.footprint.oobAccesses
       << ",\"cpu_idle_cycles\":" << N64::cpu.sampler.idleClocks / 2
       << ",\"rdp_cycles\":" << dp.cycles
       << ",\"rdp_fill_cycles\":" << dp.fillCycles
@@ -307,9 +313,12 @@ struct Runner : ares::Platform {
     }
     r << ",\"footprint_bytes\":" << fp.lines() * 16
       << ",\"highest_line\":" << fp.highestLine()
+      << ",\"oob_rdram_accesses\":" << fp.oobAccesses
       << ",\"cache_uncached_ops\":" << N64::cpu.profile.cacheUncachedOps
       << ",\"cache_cde_unaligned_ops\":" << N64::cpu.profile.cacheCdeUnalignedOps
       << ",\"cache_kseg1_dirty_synonyms\":" << N64::cpu.profile.cacheKseg1DirtySynonyms
+      << ",\"sp_dmem_coherence_errors\":" << N64::rsp.profile.dcacheCoherenceErrors
+      << ",\"rdram_dma_coherence_errors\":" << N64::rdp.profile.dcacheCoherenceErrors
       << ",\"dcache_coherence_errors\":" << (N64::rsp.profile.dcacheCoherenceErrors + N64::rdp.profile.dcacheCoherenceErrors)
       << ",\"cpu_fault_exceptions\":" << N64::cpu.profile.faultExceptions
       << ",\"cpu_trap_exceptions\":" << N64::cpu.profile.trapExceptions;
@@ -421,13 +430,13 @@ auto nall::main(Arguments arguments) -> void {
     std::ifstream rom(opt.rom, std::ios::binary);
     u8 header[12] = {};
     rom.read((char*)header, sizeof(header));
-    N64::rdram.footprint.resetPC = header[8] << 24 | header[9] << 16 | header[10] << 8 | header[11];
+    N64::rdram.footprint.resetPC = (u32)header[8] << 24 | (u32)header[9] << 16 | (u32)header[10] << 8 | (u32)header[11];
     N64::rdram.footprint.armed = true;
   }
 
   auto start = std::chrono::steady_clock::now();
   u64 fields = 0;
-  u64 bootHangFields = std::min<u64>(opt.maxFields, 1500);
+  u64 bootHangFields = std::min<u64>(opt.maxFields, 450);
   std::string status = "completed";
   while(opt.playFields ? fields < opt.playFields : runner.frame < opt.frames) {
     runner.playField = fields;

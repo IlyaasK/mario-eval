@@ -16,12 +16,12 @@
 #   - saves the game's git history as results/<run>/game.bundle.
 #
 # Usage:
-#   AGENT_CMD='claude -p --dangerously-skip-permissions' quickstart/run-agent.sh --game sm64 --hours 24 --profile speed
+#   AGENT_CMD='claude -p --dangerously-skip-permissions' quickstart/run-agent.sh --hours 24 --profile console
 #   quickstart/run-agent.sh --hours 0.1 --commit-every 2 --grade-every 0.05   # smoke test
 #
-# Options: --hours H (default 24)  --game pips-garden|sm64 (default sm64)
-#          --name RUN  --profile console|stutter|speed|rdp|rsp|traffic|memory (default console)
-#          --commit-every MIN (30)  --grade-every H (2)  --stall-minutes MIN (15)
+# Options: --hours H (default 24)  --name RUN
+#          --profile console|stutter|speed|rdp|rsp|traffic|memory (default console)
+#          --commit-every MIN (30)  --grade-every H (2)  --stall-minutes MIN (30)
 #          --heldout DIR (held-out replays; host reference must include them)
 # AGENT_CMD may also be set in quickstart/.env.
 set -euo pipefail
@@ -33,11 +33,14 @@ cd "$(dirname "$0")/.."
 REPO="$PWD"
 QS="$REPO/quickstart"
 
-HOURS=24; GAME="sm64"; RUN=""; PROFILE=console; COMMIT_MIN=30; GRADE_HOURS=2; STALL_MIN=15; HELDOUT=""
+HOURS=24; GAME="sm64"; RUN=""; PROFILE=console; COMMIT_MIN=30; GRADE_HOURS=2; STALL_MIN=30; HELDOUT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --hours) HOURS="$2"; shift 2 ;;
-    --game) GAME="$2"; shift 2 ;;
+    --game)
+      [ "${2:-}" = "sm64" ] || { echo "bad --game ${2:-} (mario-eval v4 is sm64 only)" >&2; exit 2; }
+      shift 2
+      ;;
     --name) RUN="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
     --commit-every) COMMIT_MIN="$2"; shift 2 ;;
@@ -49,11 +52,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$PROFILE" in console|stutter|speed|rdp|rsp|traffic|memory) ;; *) echo "bad --profile $PROFILE (expected console|stutter|speed|rdp|rsp|traffic|memory)" >&2; exit 2 ;; esac
-case "$GAME" in
-  pips-garden) CORPUS="corpus"; CACHE="cache/reference" ;;
-  sm64)        CORPUS="sm64/corpus"; CACHE="cache/sm64-reference" ;;
-  *) echo "bad --game $GAME (expected pips-garden|sm64)" >&2; exit 2 ;;
-esac
+CORPUS="sm64/corpus"
+CACHE="cache/sm64-reference"
 if [ -z "${AGENT_CMD:-}" ] && [ -f "$QS/.env" ]; then
   AGENT_CMD="$(sed -n 's/^AGENT_CMD=//p' "$QS/.env" | tail -n 1)"
 fi
@@ -114,7 +114,8 @@ for line in reversed(p.read_text().splitlines()):
     if d.get("ts", 0) < t0 - 60:
         continue
     if not d.get("fast") and not d.get("git_dirty") and d.get("git_head") and head.startswith(d["git_head"]):
-        sys.exit(0 if d.get("status") == "valid" else 1)
+        ok = (d.get("status") == "valid") and bool(d.get("profile_valid", True))
+        sys.exit(0 if ok else 1)
 sys.exit(1)
 PY
 }
@@ -250,25 +251,13 @@ save_artifacts_fast() {
 }
 
 extract_commit_tree() {
-  local sha="$1" ref_src="$2" dst="$3"
+  local sha="$1" _unused_ref="$2" dst="$3"
   rm -rf "$dst"
   mkdir -p "$dst"
   in_task git -C /task/game archive "$sha" 2>/dev/null | tar -x -C "$dst" 2>/dev/null || return 1
-  in_task git -C /task/game ls-files -z --others --ignored --exclude-standard 2>/dev/null \
-    | python3 -c '
-import pathlib, shutil, sys
-src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-for raw in sys.stdin.buffer.read().split(b"\0"):
-    if not raw:
-        continue
-    rel = raw.decode("utf-8", "surrogateescape")
-    if rel == "build" or rel.startswith(("build/", "build_")):
-        continue
-    sp, dp = src / rel, dst / rel
-    if sp.is_file() and not dp.exists():
-        dp.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(sp, dp)
-' "$ref_src" "$dst" || true
+  if in_task test -f /opt/mario-eval/sm64-assets.tar.gz 2>/dev/null; then
+    in_task cat /opt/mario-eval/sm64-assets.tar.gz 2>/dev/null | tar -xz --skip-old-files -C "$dst" 2>/dev/null || true
+  fi
 }
 
 rebuild_trajectory_json() {
@@ -398,9 +387,16 @@ for p in sorted(run_dir.glob("checkpoint-*/grade/summary.json")) + sorted(run_di
 
 best_valid = None
 best_valid_summary = None
+def _cp_prof_valid(g_obj):
+    return (
+        isinstance(g_obj, dict)
+        and g_obj.get("status") == "valid"
+        and float((g_obj.get("speedups") or {}).get(profile) or 0.0) > 0.0
+    )
+
 for cp in checkpoints:
     cands = []
-    if cp.get("status") == "valid":
+    if _cp_prof_valid(cp):
         cands.append((cp.get("speedups", {}).get(profile, 0.0), {
             "name": cp["name"], "source": "working_tree", "git_head": cp.get("git_head"),
             "elapsed_hours": cp["elapsed_hours"],
@@ -410,7 +406,7 @@ for cp in checkpoints:
             "reward": cp.get("rewards", {}).get(profile),
         }, cp))
     lv = cp.get("last_valid")
-    if isinstance(lv, dict) and lv.get("status") == "valid":
+    if _cp_prof_valid(lv):
         cands.append((lv.get("speedups", {}).get(profile, 0.0), {
             "name": cp["name"], "source": "last_valid", "git_head": lv.get("git_head"),
             "elapsed_hours": cp["elapsed_hours"],
@@ -425,7 +421,7 @@ for cp in checkpoints:
             best_valid_summary = src_sum
 
 bisect_rec = existing.get("bisect_last_valid")
-if isinstance(bisect_rec, dict) and bisect_rec.get("status") == "valid":
+if isinstance(bisect_rec, dict) and bisect_rec.get("status") == "valid" and float(bisect_rec.get("speedup") or 0.0) > 0.0:
     bsp = bisect_rec.get("speedup") or 0.0
     if bsp and (best_valid is None or bsp > (best_valid.get("speedup") or 0.0)):
         best_valid = {
@@ -450,14 +446,18 @@ peak_valid_pub_sp = ((((best_valid_summary or {}).get("capability_ruler") or {})
 
 human_expert_progress = None
 if game == "sm64" and peak_cs:
-    kaze_p = repo_dir / "results" / "baselines" / "kaze-return-to-yoshis-island" / "summary.json"
-    if kaze_p.is_file():
-        try:
-            kaze_cs = float((json.loads(kaze_p.read_text()).get("cost_saved") or {}).get(profile) or 0.0)
-            if kaze_cs > 0.0:
-                human_expert_progress = round(float(peak_cs) / kaze_cs, 4)
-        except Exception:
-            pass
+    for kaze_p in (
+        repo_dir / "results" / "sm64-trial-calibration" / "r10-kaze-master" / "summary.json",
+        repo_dir / "results" / "sm64-calibration" / "r10-kaze-master" / "summary.json",
+    ):
+        if kaze_p.is_file():
+            try:
+                kaze_cs = float((json.loads(kaze_p.read_text()).get("cost_saved") or {}).get(profile) or 0.0)
+                if kaze_cs > 0.0:
+                    human_expert_progress = round(float(peak_cs) / kaze_cs, 4)
+                    break
+            except Exception:
+                pass
 
 final_wt_valid = (final_cp.get("status") == "valid") if final_cp else None
 final_wt_sp = float(final_cp.get("speedups", {}).get(profile) or 0.0) if (final_cp and final_wt_valid) else 0.0
@@ -677,7 +677,7 @@ run_analytics = {
 }
 
 out_obj = {
-    "version": "3.1",
+    "version": "4.1",
     "run": run_dir.name,
     "game": game,
     "primary_profile": profile,
@@ -696,6 +696,7 @@ PY
 
 grade_checkpoint() {
   local name="$1" dir="$RUN_DIR/$1"
+  local grade_t0; grade_t0=$(now)
   mkdir -p "$dir"
   commit
   local wt_dirty=""
@@ -709,9 +710,12 @@ grade_checkpoint() {
   local cur_head
   cur_head="$(in_task git -C /task/game rev-parse HEAD 2>/dev/null || true)"
   [ -n "$cur_head" ] && printf '%s\n' "$cur_head" > "$dir/git-head"
-  local args=()
+  local args=() pub_args=()
   if [ -n "$HELDOUT" ]; then args=(--heldout "$HELDOUT"); fi
-  if [ "$GAME" = "sm64" ]; then args+=(--play-smoke); fi
+  if [ "$GAME" = "sm64" ]; then
+    args+=(--play-smoke)
+    pub_args+=(--play-smoke)
+  fi
   "$REPO/scripts/grade.sh" --game "$GAME" "$dir/src" "$dir/grade" "${args[@]}" \
     > "$dir/grade.txt" 2>&1 || true
   save_artifacts_fast
@@ -727,13 +731,36 @@ grade_checkpoint() {
     fi
   fi
 
-  # If the wall-clock snapshot landed mid-experiment on a broken working tree or
-  # on a commit with a held-out regression, probe up to 3 distinct recent clean
-  # public-valid commits (newest-first, cached in .graded-commits/) so an earlier
-  # clean milestone rescues the checkpoint even if the latest commit overfit.
-  local status last_valid_commit=""
-  status=$(python3 -c "import json; print(json.load(open('$dir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
-  if [ "$status" != "valid" ]; then
+  # Zero-oracle fallback rescue: ONLY when the working tree itself failed PUBLIC
+  # verification (e.g. snapshot landed mid-edit with a broken build, PLAY=1 failure,
+  # or public gate/budget failure — NEVER merely because a public-valid tree failed
+  # private held-outs!), select at most ONE rescue commit using strictly public
+  # 6-course + PLAY=1 grading, and evaluate held-out routes ONCE on that commit.
+  local wt_pub_valid last_valid_commit=""
+  wt_pub_valid=$(python3 - "$dir/grade/summary.json" "$PROFILE" <<'PY' 2>/dev/null || echo 0
+import json, sys
+s = json.load(open(sys.argv[1]))
+prof = sys.argv[2]
+if s.get("status") == "valid":
+    p = (s.get("profiles") or {}).get(prof) or {}
+    print("1" if p.get("valid") else "0")
+    sys.exit(0)
+# If build / integrity / play_runtime failed, public_valid is False.
+for g in ("integrity", "build", "play_runtime"):
+    gv = (s.get("gates") or {}).get(g)
+    if gv and not gv.get("pass", True):
+        print("0")
+        sys.exit(0)
+diag = s.get("diagnostics") or {}
+if diag.get("public_valid") is True:
+    # Also check public profile regression cap on primary profile
+    pub_sp = float(((diag.get("unverified_public_speedups") or {}).get(prof)) or 0.0)
+    print("1" if pub_sp > 0.0 else "0")
+else:
+    print("0")
+PY
+)
+  if [ "$wt_pub_valid" != "1" ]; then
     local raw_cands=""
     if [ -f "$RUN_DIR/mev-history.jsonl" ]; then
       raw_cands=$(python3 - "$RUN_DIR/mev-history.jsonl" "$START" <<'PY' 2>/dev/null || true
@@ -746,7 +773,7 @@ for line in open(sys.argv[1]):
         if d.get("ts", t0) < t0 - 60:
             continue
         gh = d.get("git_head")
-        if d.get("status") == "valid" and gh:
+        if d.get("status") == "valid" and d.get("profile_valid", True) and gh:
             if not d.get("git_dirty"):
                 if not d.get("fast"):
                     tier_clean_full.append(gh)
@@ -782,8 +809,6 @@ PY
         fi
       done
     ' 2>/dev/null || true)"
-    # Prepend recent non-root branch commits ahead of dirty-tree parent SHAs so
-    # commits created via `edit -> mev check -> git commit` are probed newest-first.
     if [ -n "$recent_branch_shas" ]; then
       raw_cands=$(printf '%s\n%s\n' "$recent_branch_shas" "$raw_cands")
     fi
@@ -806,31 +831,40 @@ PY
       [ "${#resolved_cands[@]}" -ge 3 ] && break
     done <<< "$raw_cands"
 
-    local first_tested_sha="" cand_sha cache_dir cand_status
+    local cand_sha pub_cache cand_pub_ok
     for cand_sha in "${resolved_cands[@]}"; do
-      cache_dir="$RUN_DIR/.graded-commits/$cand_sha"
-      if [ ! -f "$cache_dir/grade/summary.json" ]; then
+      pub_cache="$RUN_DIR/.graded-commits-public/$cand_sha"
+      if [ ! -f "$pub_cache/grade/summary.json" ]; then
         if extract_commit_tree "$cand_sha" "$dir/src" "$dir/last-valid-src"; then
-          mkdir -p "$cache_dir"
-          "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$cache_dir/grade" "${args[@]}" \
-            > "$cache_dir/grade.txt" 2>&1 || true
+          mkdir -p "$pub_cache"
+          MEV_REFERENCE_DIR="$REPO/$CACHE" "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$pub_cache/grade" "${pub_args[@]}" \
+            > "$pub_cache/grade.txt" 2>&1 || true
         fi
         rm -rf "$dir/last-valid-src"
       fi
-      [ -f "$cache_dir/grade/summary.json" ] || continue
-      [ -z "$first_tested_sha" ] && first_tested_sha="$cand_sha"
-      cand_status=$(python3 -c "import json; print(json.load(open('$cache_dir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
-      if [ "$cand_status" = "valid" ]; then
+      [ -f "$pub_cache/grade/summary.json" ] || continue
+      cand_pub_ok=$(python3 -c "import json; s=json.load(open('$pub_cache/grade/summary.json')); p=(s.get('profiles') or {}).get('$PROFILE') or {}; print('1' if s.get('status')=='valid' and p.get('valid') else '0')" 2>/dev/null || echo 0)
+      if [ "$cand_pub_ok" = "1" ]; then
         last_valid_commit="$cand_sha"
         break
       fi
     done
-    [ -z "$last_valid_commit" ] && [ -n "$first_tested_sha" ] && last_valid_commit="$first_tested_sha"
-    if [ -n "$last_valid_commit" ] && [ -d "$RUN_DIR/.graded-commits/$last_valid_commit/grade" ]; then
-      rm -rf "$dir/last-valid-grade"
-      cp -rf "$RUN_DIR/.graded-commits/$last_valid_commit/grade" "$dir/last-valid-grade"
-      cp -f "$RUN_DIR/.graded-commits/$last_valid_commit/grade.txt" "$dir/last-valid-grade.txt" 2>/dev/null || true
-      printf '%s\n' "$last_valid_commit" > "$dir/last-valid-commit"
+    if [ -n "$last_valid_commit" ]; then
+      local full_cache="$RUN_DIR/.graded-commits/$last_valid_commit"
+      if [ ! -f "$full_cache/grade/summary.json" ]; then
+        if extract_commit_tree "$last_valid_commit" "$dir/src" "$dir/last-valid-src"; then
+          mkdir -p "$full_cache"
+          "$REPO/scripts/grade.sh" --game "$GAME" "$dir/last-valid-src" "$full_cache/grade" "${args[@]}" \
+            > "$full_cache/grade.txt" 2>&1 || true
+        fi
+        rm -rf "$dir/last-valid-src"
+      fi
+      if [ -d "$full_cache/grade" ]; then
+        rm -rf "$dir/last-valid-grade"
+        cp -rf "$full_cache/grade" "$dir/last-valid-grade"
+        cp -f "$full_cache/grade.txt" "$dir/last-valid-grade.txt" 2>/dev/null || true
+        printf '%s\n' "$last_valid_commit" > "$dir/last-valid-commit"
+      fi
     fi
   fi
   local n_commits trailing_unv
@@ -856,6 +890,21 @@ if last_gh:
 print(0)
 PY
 )"
+  # Compensate active-work timers for synchronous host checkpoint grading duration
+  # (only during the live loop, before final).
+  if [ "$name" != "final" ]; then
+    local grade_t1 grade_dt
+    grade_t1=$(now)
+    grade_dt=$(( grade_t1 - grade_t0 ))
+    if [ "$grade_dt" -gt 0 ]; then
+      printf '{"start":%d,"end":%d,"seconds":%d,"kind":"host_grade"}\n' "$grade_t0" "$grade_t1" "$grade_dt" >> "$RUN_DIR/quota-pauses.jsonl"
+      PAUSED_S=$((PAUSED_S + grade_dt))
+      DEADLINE=$((DEADLINE + grade_dt))
+      NEXT_COMMIT=$((NEXT_COMMIT + grade_dt))
+      NEXT_GRADE=$((NEXT_GRADE + grade_dt))
+      write_manifest 0 0
+    fi
+  fi
   rebuild_trajectory_json "$n_commits" "${trailing_unv:-0}"
   log "checkpoint $name: $(python3 -c "import json;s=json.load(open('$dir/grade/summary.json'));p=s.get('profiles',{}).get('$PROFILE',{});f=s.get('fidelity',{});fa=(s.get('failure_attribution') or {}).get('primary_category');print(s['status'],'cat='+str(fa) if s.get('status')!='valid' else '','reason='+repr(s['reason']) if s.get('status')!='valid' and s.get('reason') else '', 'reward=',p.get('reward'),'speedup=',p.get('speedup'),'cost_saved=',p.get('cost_saved'),'vs_o2=',p.get('vs_o2_speedup'),'fid=',f.get('overall'),'ssim=',f.get('video_ssim'))" 2>/dev/null || echo 'no summary')"
   if [ -f "$dir/last-valid-grade/summary.json" ]; then
@@ -1050,10 +1099,12 @@ start_agent() {
     fi
   fi
   log "starting agent invocation $N (remaining $(format_remaining), paused_total=${PAUSED_S}s, fresh=$fresh)"
-  # Start directly in /task/game (matching TASK.md) and drop high-volume streaming delta events.
+  # Start directly in /task/game (matching TASK.md), update .agent-heartbeat on
+  # ANY output line (including reasoning deltas), and drop high-volume delta lines from disk.
+  touch "$RUN_DIR/.agent-heartbeat"
   dc exec -T -e "MEV_DEADLINE_EPOCH=$DEADLINE" -e "MEV_FRESH_SESSION=$fresh" task setsid --wait bash -lc \
-    "cd /task/game && echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" 2>&1 \
-    | awk 'index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 && !(index($0, "\"event\":\"step_update\"") > 0 && index($0, "\"state\":\"ACTIVE\"") > 0 && index($0, "\"text_delta\":") > 0) { print; fflush() }' > "$AGENT_LOG" &
+    "cd /task/game && echo \$\$ > /tmp/mev-agent-pgid; $AGENT_CMD $(printf '%q' "$prompt")" < /dev/null 2>&1 \
+    | awk -v hb="$RUN_DIR/.agent-heartbeat" 'NR == 1 || NR % 16 == 0 { printf "" > hb; close(hb) } index($0, "\"type\":\"tool_execution_update\"") == 0 && index($0, "\"type\":\"tool_stream_update\"") == 0 && index($0, "\"type\":\"message_update\"") == 0 && !(index($0, "\"event\":\"step_update\"") > 0 && index($0, "\"state\":\"ACTIVE\"") > 0 && index($0, "\"text_delta\":") > 0) { print; fflush() }' > "$AGENT_LOG" &
   AGENT_PID=$!
 }
 
@@ -1218,7 +1269,9 @@ PY
     fi
     [ "$(now)" -lt "$DEADLINE" ] && start_agent
   elif [ "$STALL_S" -gt 0 ]; then
-    m=$(stat -c %Y "$AGENT_LOG" 2>/dev/null || echo "$AGENT_STARTED")
+    m_log=$(stat -c %Y "$AGENT_LOG" 2>/dev/null || echo "$AGENT_STARTED")
+    m_hb=$(stat -c %Y "$RUN_DIR/.agent-heartbeat" 2>/dev/null || echo "$AGENT_STARTED")
+    m=$(( m_hb > m_log ? m_hb : m_log ))
     if [ $(( $(now) - m )) -gt "$STALL_S" ]; then log "agent stalled; restarting"; stop_agent; RAPID_FAILS=0; FATAL_FAILS=0; start_agent; fi
   fi
   if [ "$(now)" -ge "$NEXT_COMMIT" ]; then commit; NEXT_COMMIT=$(( $(now) + COMMIT_S )); fi
@@ -1226,20 +1279,36 @@ PY
 done
 
 bisect_last_valid() {
-  # Zero-feedback post-run rescue over agent commits when final (and last_valid)
-  # failed held-out gates. Resilient to non-monotonic commit histories:
-  #   1. Checks ungraded local branch tips (refs/heads/*);
-  #   2. Tests distinct public-valid commits from mev-history.jsonl (cleanest/fastest first);
-  #   3. Coarse-probes backwards from HEAD (hi-1, hi-2, hi-4, hi-8...) to locate any
-  #      valid island even after earlier broken commits, then binary-searches its upper edge.
+  # Zero-oracle post-run rescue over agent commits ONLY when BOTH final working
+  # tree and final/last-valid-commit failed PUBLIC verification (e.g. >3 broken
+  # commits at the very end of the run). Search uses strictly public 6-course +
+  # PLAY=1 grading (NEVER --heldout!), and evaluates --heldout ONCE on the single
+  # public-selected commit.
   [ -n "$HELDOUT" ] || return 0
-  local f_st lv_st
-  f_st=$(python3 -c "import json; print(json.load(open('$RUN_DIR/final/grade/summary.json')).get('status',''))" 2>/dev/null || true)
-  lv_st=$(python3 -c "import json; print(json.load(open('$RUN_DIR/final/last-valid-grade/summary.json')).get('status',''))" 2>/dev/null || true)
-  [ "$f_st" = "valid" ] || [ "$lv_st" = "valid" ] && return 0
+  local already_have_pub_valid
+  already_have_pub_valid=$(python3 - "$RUN_DIR/final" "$PROFILE" <<'PY' 2>/dev/null || echo 0
+import json, pathlib, sys
+fdir, prof = pathlib.Path(sys.argv[1]), sys.argv[2]
+for rel in ("grade/summary.json", "last-valid-grade/summary.json"):
+    p = fdir / rel
+    if not p.is_file():
+        continue
+    s = json.loads(p.read_text())
+    if s.get("status") == "valid" and ((s.get("profiles") or {}).get(prof) or {}).get("valid"):
+        print("1"); sys.exit(0)
+    if all((s.get("gates") or {}).get(g, {}).get("pass", True) for g in ("integrity", "build", "play_runtime")):
+        if (s.get("diagnostics") or {}).get("public_valid") is True:
+            print("1"); sys.exit(0)
+print("0")
+PY
+)
+  [ "$already_have_pub_valid" = "1" ] && return 0
 
-  local args=(--heldout "$HELDOUT")
-  [ "$GAME" = "sm64" ] && args+=(--play-smoke)
+  local pub_args=() full_args=(--heldout "$HELDOUT")
+  if [ "$GAME" = "sm64" ]; then
+    pub_args+=(--play-smoke)
+    full_args+=(--play-smoke)
+  fi
   local cur_head known_bad=""
   cur_head="$(in_task git -C /task/game rev-parse HEAD 2>/dev/null || true)"
   [ -f "$RUN_DIR/final/last-valid-commit" ] && known_bad=$(cat "$RUN_DIR/final/last-valid-commit" 2>/dev/null || true)
@@ -1260,24 +1329,19 @@ bisect_last_valid() {
     TESTED_SHAS["$sha"]=1
     local bdir="$RUN_DIR/bisect-tmp"
     extract_commit_tree "$sha" "$RUN_DIR/final/src" "$bdir/src" || { rm -rf "$bdir"; return 1; }
-    "$REPO/scripts/grade.sh" --game "$GAME" "$bdir/src" "$bdir/grade" "${args[@]}" \
+    MEV_REFERENCE_DIR="$REPO/$CACHE" "$REPO/scripts/grade.sh" --game "$GAME" "$bdir/src" "$bdir/grade" "${pub_args[@]}" \
       > "$bdir/grade.txt" 2>&1 || true
-    local st sp
+    local st p_ok sp
     st=$(python3 -c "import json; print(json.load(open('$bdir/grade/summary.json')).get('status',''))" 2>/dev/null || true)
+    p_ok=$(python3 -c "import json; print('1' if ((json.load(open('$bdir/grade/summary.json')).get('profiles') or {}).get('$PROFILE') or {}).get('valid') else '0')" 2>/dev/null || echo 0)
     sp=$(python3 -c "import json; print(json.load(open('$bdir/grade/summary.json')).get('profiles',{}).get('$PROFILE',{}).get('speedup',0) or 0)" 2>/dev/null || echo 0)
-    log "bisect $label (${sha:0:7}): $st speedup=${sp:-0}"
-    if [ "$st" = "valid" ]; then
+    log "bisect-public $label (${sha:0:7}): $st prof_valid=$p_ok pub_speedup=${sp:-0}"
+    if [ "$st" = "valid" ] && [ "$p_ok" = "1" ]; then
       if awk -v a="${sp:-0}" -v b="${best_sp:-0}" 'BEGIN { exit !(a > b) }'; then
         best_sha="$sha"
         best_idx="$c_idx"
         best_sp="${sp:-0}"
         best_ts=$(in_task git -C /task/game show -s --format=%ct "$sha" 2>/dev/null || date +%s)
-        rm -rf "$RUN_DIR/bisect-best"
-        mkdir -p "$RUN_DIR/bisect-best"
-        mv "$bdir/grade" "$RUN_DIR/bisect-best/grade"
-        mv "$bdir/grade.txt" "$RUN_DIR/bisect-best/grade.txt"
-        printf '%s\n' "$sha" > "$RUN_DIR/bisect-best/commit"
-        printf '%s\n' "$best_ts" > "$RUN_DIR/bisect-best/commit-epoch"
       fi
       rm -rf "$bdir"
       return 0
@@ -1418,6 +1482,17 @@ PY
   fi
 
   local commits_net=$(( total > 0 ? total - 1 : 0 ))
+  if [ -n "$best_sha" ]; then
+    rm -rf "$RUN_DIR/bisect-best" "$RUN_DIR/bisect-tmp"
+    if extract_commit_tree "$best_sha" "$RUN_DIR/final/src" "$RUN_DIR/bisect-tmp/src"; then
+      mkdir -p "$RUN_DIR/bisect-best"
+      "$REPO/scripts/grade.sh" --game "$GAME" "$RUN_DIR/bisect-tmp/src" "$RUN_DIR/bisect-best/grade" "${full_args[@]}" \
+        > "$RUN_DIR/bisect-best/grade.txt" 2>&1 || true
+      printf '%s\n' "$best_sha" > "$RUN_DIR/bisect-best/commit"
+      printf '%s\n' "$best_ts" > "$RUN_DIR/bisect-best/commit-epoch"
+      rm -rf "$RUN_DIR/bisect-tmp"
+    fi
+  fi
   if [ -n "$best_sha" ] && [ -f "$RUN_DIR/bisect-best/grade/summary.json" ]; then
     python3 - "$RUN_DIR" "$START" "$PROFILE" "$best_sha" "$best_ts" "$best_idx" "$commits_net" "$PAUSED_S" <<'PY' || true
 import json, os, pathlib, sys

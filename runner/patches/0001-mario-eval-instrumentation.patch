@@ -10,7 +10,7 @@ index 41964d4..d618b76 100644
    Thread::clock = 0;
    countClock = 0;
    jitClockTarget = 0;
-@@ -156,6 +157,27 @@ auto CPU::instruction() -> bool {
+@@ -156,6 +157,28 @@ auto CPU::instruction() -> bool {
  
    auto access = devirtualize<Read, Word>(ipu.pc);
    if(!access) return true;
@@ -22,6 +22,7 @@ index 41964d4..d618b76 100644
 +    s64 now = sampler.base + Thread::clock;
 +    s64 elapsed = now - sampler.lastClock;
 +    sampler.lastClock = now;
++    sampler.prevElapsed = elapsed;
 +    if(sampler.lastPC) {
 +      if(sampler.lastIdle) sampler.idleClocks += elapsed;
 +      if(sampler.enabled) {
@@ -38,7 +39,7 @@ index 41964d4..d618b76 100644
  
    if(Accuracy::CPU::Recompiler && recompiler.enabled && access.cache) {
      if(vaddrAlignedError<Word>(access.vaddr, false)) return true;
-@@ -169,6 +191,7 @@ auto CPU::instruction() -> bool {
+@@ -169,6 +192,7 @@ auto CPU::instruction() -> bool {
          s64 capBudget = min<s64>(Accuracy::CPU::JitInterleaving, min(timerDelta, queueDelta));
          jitClockTarget = Thread::clock + capBudget;
        }
@@ -46,30 +47,31 @@ index 41964d4..d618b76 100644
        block->execute(*this);
        return Thread::clock >= jitClockTarget;
      }
-@@ -176,6 +199,22 @@ auto CPU::instruction() -> bool {
+@@ -176,6 +200,23 @@ auto CPU::instruction() -> bool {
  
    auto data = fetch(access);
    if (!data) return true;
 +  if(unlikely(sampler.idleRanges)) {
-+    //mario-eval: credit idle time only for a genuine halt loop inside a
-+    //configured range: an instruction that branches to its own address, plus
-+    //its delay slot when that is a nop. Nothing else is ever idle, so renaming
-+    //or enlarging the idle function, or moving real work into it, cannot buy
-+    //free CPU time.
++    //mario-eval: credit idle time only for a genuine unconditional halt loop
++    //inside a configured range: an unconditional branch to its own address
++    //followed immediately by a nop (0x00000000) delay slot. Both instructions
++    //are credited only once the nop delay slot is confirmed, so conditional
++    //branches, jal, or non-nop delay-slot work can never buy free CPU time.
 +    u32 pc = (u32)ipu.pc;
 +    bool inRange = false;
 +    for(u32 n = 0; n < sampler.idleRanges; n++) {
 +      if(pc >= sampler.idleLo[n] && pc < sampler.idleHi[n]) { inRange = true; break; }
 +    }
 +    bool self = isSelfBranch(pc, *data);
-+    bool delaySlot = sampler.lastSelfBranch && pc == sampler.prevPC + 4 && *data == 0;
-+    sampler.lastIdle = inRange && (self || delaySlot);
++    bool delaySlot = sampler.lastSelfBranch && inRange && pc == sampler.prevPC + 4 && *data == 0;
++    if(delaySlot) sampler.idleClocks += sampler.prevElapsed;
++    sampler.lastIdle = delaySlot;
 +    sampler.lastSelfBranch = inRange && self;
 +  }
    pipeline.begin();
    instructionPrologue(ipu.pc, *data);
    decoderEXECUTE(*data);
-@@ -192,6 +231,29 @@ auto CPU::icacheFillLine(u64 vaddr, u32 paddr) -> void {
+@@ -192,6 +233,34 @@ auto CPU::icacheFillLine(u64 vaddr, u32 paddr) -> void {
    icache.line(vaddr).fill(paddr, *this);
  }
  
@@ -80,18 +82,23 @@ index 41964d4..d618b76 100644
 +  icache.line(vaddr).fill(paddr, *this);
 +}
 +
-+//mario-eval: does this instruction branch to its own address? Only such a loop
-+//can spin without ever leaving (a branch always has a delay slot, so the halt
-+//loop is this instruction plus at most one more), which is what makes it a
-+//safe, symbol-independent definition of "the CPU is waiting".
++//mario-eval: does this instruction unconditionally branch to its own address
++//without link side effects? Only `j pc`, `beq/beql $r, $r, -1`, or
++//`bgez $zero, -1` qualify (excludes `jal` and conditional branches).
 +auto CPU::isSelfBranch(u32 pc, u32 instruction) -> bool {
 +  u32 opcode = instruction >> 26;
-+  if(opcode == 2 || opcode == 3) {  //j, jal
++  if(opcode == 2) {  //j target (unconditional, no link)
 +    u32 target = ((pc + 4) & 0xf0000000u) | ((instruction & 0x03ffffffu) << 2);
 +    return target == pc;
 +  }
-+  if(opcode == 1 || (opcode >= 4 && opcode <= 7) || (opcode >= 0x14 && opcode <= 0x17)) {
-+    return (instruction & 0xffffu) == 0xffffu;  //branch offset -1: target == pc
++  if((instruction & 0xffffu) != 0xffffu) return false;  //must be offset -1 (target == pc)
++  u32 rs = (instruction >> 21) & 31u;
++  u32 rt = (instruction >> 16) & 31u;
++  if(opcode == 4 || opcode == 0x14) {  //beq / beql $r, $r, -1
++    return rs == rt;
++  }
++  if(opcode == 1) {  //REGIMM: bgez $zero, -1 (rt == 1)
++    return rs == 0 && rt == 1;
 +  }
 +  return false;
 +}
@@ -130,7 +137,7 @@ index b51000d..ae53ed3 100644
          line.fill(paddr, cpu);
        } else {
          self.profile.icacheHits++;
-@@ -1297,11 +1303,49 @@ struct CPU : Thread {
+@@ -1297,11 +1303,50 @@ struct CPU : Thread {
        s64 cpuCyclesExc;
        s64 icacheHits, icacheMisses, icacheWritebacks;
        s64 dcacheHits, dcacheMisses, dcacheWritebacks;
@@ -162,6 +169,7 @@ index b51000d..ae53ed3 100644
 +    s64 accumulated = 0;
 +    s64 base = 0;
 +    s64 lastClock = 0;
++    s64 prevElapsed = 0;
 +    u32 lastPC = 0;
 +    u32 prevPC = 0;
 +    bool lastIdle = false;
@@ -219,9 +227,12 @@ diff --git i/ares/n64/cpu/interpreter-ipu.cpp w/ares/n64/cpu/interpreter-ipu.cpp
 index 938ccbd..a0d7ebd 100644
 --- i/ares/n64/cpu/interpreter-ipu.cpp
 +++ w/ares/n64/cpu/interpreter-ipu.cpp
-@@ -121,6 +121,12 @@ auto CPU::CACHE(u8 operation, cr64& rs, s16 imm) -> void {
+@@ -121,6 +121,15 @@ auto CPU::CACHE(u8 operation, cr64& rs, s16 imm) -> void {
    auto access = devirtualize<Read, Word>(rs.u64 + imm);
    if (!access) return;
++  if(!rdram.footprint.armed && ((access.cache && access.paddr >= 0x0040'0000u) || (access.paddr >= 0x0040'0000u && access.paddr <= 0x03ef'ffffu))) {
++    rdram.footprint.oobAccesses++;
++  }
 +  if(operation == 0x0d && (access.vaddr & 0x0f)) {
 +    profile.cacheCdeUnalignedOps++;
 +  }
@@ -236,7 +247,7 @@ diff --git i/ares/n64/cpu/memory.cpp w/ares/n64/cpu/memory.cpp
 index f362ef6..827c915 100644
 --- i/ares/n64/cpu/memory.cpp
 +++ w/ares/n64/cpu/memory.cpp
-@@ -154,12 +154,39 @@ static auto reverseEndianPaddr(u32 paddr) -> u32 {
+@@ -154,12 +154,42 @@ static auto reverseEndianPaddr(u32 paddr) -> u32 {
    return paddr;
  }
  
@@ -271,22 +282,31 @@ index f362ef6..827c915 100644
    if(!access) return nothing;
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Word>(paddr);
++  if(!rdram.footprint.armed && ((access.cache && paddr >= 0x0040'0000u) || (paddr >= 0x0040'0000u && paddr <= 0x03ef'ffffu))) {
++    rdram.footprint.oobAccesses++;
++  }
    if(access.cache) return icache.fetch(access.vaddr, paddr, cpu);
 +  if(paddr <= 0x03ef'ffff) uncachedRdramRead(paddr);
    return busRead<Word>(paddr);
  }
  
-@@ -170,6 +197,7 @@ auto CPU::read(PhysAccess access) -> maybe<u64> {
+@@ -170,6 +200,10 @@ auto CPU::read(PhysAccess access) -> maybe<u64> {
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
++  if(!rdram.footprint.armed && ((access.cache && paddr >= 0x0040'0000u) || (paddr >= 0x0040'0000u && paddr <= 0x03ef'ffffu))) {
++    rdram.footprint.oobAccesses++;
++  }
    if(access.cache) return dcache.read<Size>(access.vaddr, paddr);
 +  if(paddr <= 0x03ef'ffff) uncachedRdramRead(paddr);
    return busRead<Size>(paddr);
  }
  
-@@ -190,6 +218,7 @@ auto CPU::write(PhysAccess access, u64 data) -> bool {
+@@ -190,6 +224,10 @@ auto CPU::write(PhysAccess access, u64 data) -> bool {
    u32 paddr = access.paddr;
    if(context.littleEndian()) paddr = reverseEndianPaddr<Size>(paddr);
++  if(!rdram.footprint.armed && ((access.cache && paddr >= 0x0040'0000u) || (paddr >= 0x0040'0000u && paddr <= 0x03ef'ffffu))) {
++    rdram.footprint.oobAccesses++;
++  }
    if(access.cache) return dcache.write<Size>(access.vaddr, paddr, data), true;
 +  if(paddr <= 0x03ef'ffff) uncachedRdramWrite(paddr);
    return busWrite<Size>(paddr, data), true;
@@ -317,7 +337,7 @@ index b71c407..f1acd90 100644
  
  namespace ares::Nintendo64 {
  
-@@ -60,7 +61,322 @@ auto RDP::power(bool reset) -> void {
+@@ -60,7 +61,357 @@ auto RDP::power(bool reset) -> void {
    fillRectangle_ = {};
    io.bist = {};
    io.test = {};
@@ -335,7 +355,11 @@ index b71c407..f1acd90 100644
 +  // at 62.5 MHz). Keeping color and Z buffers in distinct 1 MB banks avoids
 +  // per-span bank thrashing; crossing 2 KB page boundaries still pays a miss.
 +  auto markRdram = [&](u32 addr, u32 bytes, RBusDevice dev, bool write) {
-+    if(!bytes || addr >= rdram.ram.size) return;
++    if(!bytes) return;
++    if(!rdram.footprint.armed && (addr >= 0x0040'0000u || addr + bytes > 0x0040'0000u)) {
++      rdram.footprint.oobAccesses++;
++    }
++    if(addr >= rdram.ram.size) return;
 +    u32 avail = rdram.ram.size - addr;
 +    if(bytes > avail) bytes = avail;
 +    if(write) rdram.profile.metrics[(u32)dev].writes += bytes;
@@ -347,7 +371,6 @@ index b71c407..f1acd90 100644
 +        auto& line = cpu.dcache.line(la);
 +        if(line.hit(la) && line.dirty) {
 +          dcacheCoherenceErrors++;
-+          break;
 +        }
 +      }
 +    }
@@ -396,8 +419,19 @@ index b71c407..f1acd90 100644
 +    s32 hiScissor = state.scissorXHi << 1;
 +    bool fillOrCopy = state.cycleType >= 2;
 +    u32 bpp = (state.colorSize == 3) ? 4 : (state.colorSize == 2 ? 2 : 1);
-+    bool doEarlyZ = (!fillOrCopy) && hasZ && state.zCompare && state.colorWidth <= 640;
-+    bool clearingZ = fillOrCopy && state.colorAddr == state.zAddr && state.colorWidth <= 640;
++    bool validZ = state.zSourcePrim || hasZ;
++    bool opaqueWrite = (state.alphaCompare == 0) && !state.cvgXAlpha && !state.forceBlend;
++    bool doEarlyZ = (!fillOrCopy) && validZ && state.zCompare && state.colorWidth <= 640;
++    bool clearingZ = fillOrCopy && state.colorWidth <= 640 &&
++                     (state.colorAddr == state.zAddr ||
++                      (lastZAddr != 0 && state.colorAddr == lastZAddr) ||
++                      (shadowZAddr != 0 && state.colorAddr == shadowZAddr));
++    if(!fillOrCopy && (state.zCompare || state.zUpdate) && state.zAddr != 0) {
++      if(shadowZAddr != 0 && shadowZAddr != state.zAddr) {
++        std::fill(shadowZ.begin(), shadowZ.end(), 0x7fffu);
++      }
++      shadowZAddr = state.zAddr;
++    }
 +    u16 rawFill = (u16)((state.fillColor >> 16) & 0xffffu);
 +    u16 zClearVal = (rawFill >= 0xfffcu) ? 0x7fffu : (u16)(rawFill >> 1);
 +
@@ -432,6 +466,7 @@ index b71c407..f1acd90 100644
 +      u32 cBytes = px * bpp;
 +      if(fillOrCopy) {
 +        if(clearingZ && (u32)y < 480) {
++          shadowZAddr = state.colorAddr;
 +          u16* zRowPtr = shadowZ.data() + (u32)y * state.colorWidth;
 +          for(s32 x = startX; x <= endX; x++) zRowPtr[x] = zClearVal;
 +        }
@@ -451,15 +486,27 @@ index b71c407..f1acd90 100644
 +          bool decal = (state.zMode == 3);
 +          for(s32 x = startX; x <= endX; x++) {
 +            s64 zPx = zRow + (s64)(x - xMajor) * (s64)dzdx;
-+            u16 z15 = (u16)std::clamp<s64>(zPx >> 16, 0, 0x7fff);
++            u16 z15 = state.zSourcePrim ? state.primDepth : (u16)std::clamp<s64>(zPx >> 16, 0, 0x7fff);
 +            u16 oldZ = zRowPtr[x];
 +            bool ok = decal ? (z15 <= (u32)oldZ + 64u) : (z15 < oldZ || (z15 == 0 && oldZ == 0));
 +            if(ok) {
 +              passed++;
-+              if(state.zUpdate) zRowPtr[x] = z15;
++              if(state.zUpdate && opaqueWrite) zRowPtr[x] = z15;
 +            }
 +          }
 +          zRejectedPixels += (px - passed);
++        } else if(state.zUpdate && opaqueWrite && validZ && state.colorWidth <= 640 && (u32)y < 480) {
++          u16* zRowPtr = shadowZ.data() + (u32)y * state.colorWidth;
++          if(!state.zSourcePrim && hasZ) {
++            s64 zRow = (s64)zInit + (s64)(y - yhInt) * (s64)dzde;
++            s32 xMajor = sext27((s64)xh + (s64)((y << 2) - yhBase) * dxhdy) >> 15;
++            for(s32 x = startX; x <= endX; x++) {
++              s64 zPx = zRow + (s64)(x - xMajor) * (s64)dzdx;
++              zRowPtr[x] = (u16)std::clamp<s64>(zPx >> 16, 0, 0x7fff);
++            }
++          } else {
++            for(s32 x = startX; x <= endX; x++) zRowPtr[x] = state.primDepth;
++          }
 +        }
 +        u32 rejected = px - passed;
 +        u64 sc = 4 + (u64)px * (state.cycleType == 1 ? 2 : 1);
@@ -548,12 +595,20 @@ index b71c407..f1acd90 100644
 +    state.keepOdd    = (words[1] & (1u << 24)) != 0;
 +  } break;
 +
++  case 0x2e: {
++    state.primDepth  = (u16)((words[1] >> 16) & 0x7fffu);
++  } break;
++
 +  case 0x2f: {
-+    state.cycleType = (words[0] >> 20) & 3;
-+    state.zMode     = (words[1] >> 10) & 3;
-+    state.imageRead = (words[1] & (1u << 6)) != 0;
-+    state.zUpdate   = (words[1] & (1u << 5)) != 0;
-+    state.zCompare  = (words[1] & (1u << 4)) != 0;
++    state.cycleType    = (words[0] >> 20) & 3;
++    state.forceBlend   = (words[1] & (1u << 14)) != 0;
++    state.cvgXAlpha    = (words[1] & (1u << 12)) != 0;
++    state.zMode        = (words[1] >> 10) & 3;
++    state.imageRead    = (words[1] & (1u << 6)) != 0;
++    state.zUpdate      = (words[1] & (1u << 5)) != 0;
++    state.zCompare     = (words[1] & (1u << 4)) != 0;
++    state.zSourcePrim  = (words[1] & (1u << 2)) != 0;
++    state.alphaCompare = words[1] & 3u;
 +  } break;
 +
 +  case 0x30: { // LoadTLUT
@@ -644,7 +699,7 @@ diff --git i/ares/n64/rdp/rdp.hpp w/ares/n64/rdp/rdp.hpp
 index d0b5773..c2fd8c8 100644
 --- i/ares/n64/rdp/rdp.hpp
 +++ w/ares/n64/rdp/rdp.hpp
-@@ -354,6 +354,55 @@ struct RDP : Thread, Memory::RCP<RDP> {
+@@ -354,6 +354,61 @@ struct RDP : Thread, Memory::RCP<RDP> {
  
    } io{*this};
  
@@ -672,6 +727,7 @@ index d0b5773..c2fd8c8 100644
 +    u64 dcacheCoherenceErrors = 0; // DP DMA reads overlapping dirty CPU D-cache lines
 +    u32 lastColorAddr = 0;   // Last color buffer RDRAM address (distinct from zAddr)
 +    u32 lastZAddr = 0;       // Last Z-buffer RDRAM address
++    u32 shadowZAddr = 0;     // RDRAM address currently represented by shadowZ
 +    u32 openRow[4] = {~0u, ~0u, ~0u, ~0u};
 +    std::vector<u16> shadowZ = std::vector<u16>(640 * 480, 0x7fffu);
 +
@@ -681,15 +737,20 @@ index d0b5773..c2fd8c8 100644
 +      u32 colorAddr = 0;
 +      u32 zAddr = 0;
 +      u32 fillColor = 0xffff'ffffu;
++      u16 primDepth = 0x7fffu;
 +      u32 texSize = 2;
 +      u32 texWidth = 1;
 +      u32 texAddr = 0;
 +      s32 scissorXLo = 0, scissorYLo = 0, scissorXHi = 1280, scissorYHi = 960;
 +      u32 cycleType = 0;
 +      u32 zMode = 0;
++      u32 alphaCompare = 0;
 +      bool imageRead = false;
 +      bool zCompare = false;
 +      bool zUpdate = false;
++      bool zSourcePrim = false;
++      bool cvgXAlpha = false;
++      bool forceBlend = false;
 +      bool interlace = false;
 +      bool keepOdd = false;
 +    } state;
@@ -744,7 +805,7 @@ index c718ec2..9eec090 100644
        }
        value[0] = Memory::Writable::read<Word>(address | 0x00);
        value[1] = Memory::Writable::read<Word>(address | 0x04);
-@@ -253,6 +258,41 @@ struct RDRAM : Memory::RCP<RDRAM> {
+@@ -253,6 +258,48 @@ struct RDRAM : Memory::RCP<RDRAM> {
      }
    } profile;
  
@@ -758,10 +819,17 @@ index c718ec2..9eec090 100644
 +    std::vector<u8> bits = std::vector<u8>((8_MiB >> LineShift) / 8, 0);
 +    u32 resetPC = 0;
 +    bool armed = false;
++    u64 oobAccesses = 0;
 +
-+    auto reset() -> void { std::fill(bits.begin(), bits.end(), 0); }
++    auto reset() -> void {
++      std::fill(bits.begin(), bits.end(), 0);
++      oobAccesses = 0;
++    }
 +
 +    auto mark(u32 address, u32 size) -> void {
++      if(!armed && size > 0 && (address >= 0x0040'0000u || address + size > 0x0040'0000u)) {
++        oobAccesses++;
++      }
 +      u32 first = address >> LineShift;
 +      u32 last = (address + size - 1) >> LineShift;
 +      for(u32 line = first; line <= last && line < bits.size() * 8; line++) {
@@ -822,8 +890,8 @@ index b743688..eab8e49 100644
    //with the recompiler, it only steps for taken branch stalls
    step(pipeline.clocks);
    profile.cycles += pipeline.clocks;
-+  if(profile.activeTaskType == 1) profile.gfxCycles += pipeline.clocks;
-+  else if(profile.activeTaskType == 2) profile.audCycles += pipeline.clocks;
++  if(profile.activeTaskType == 2) profile.audCycles += pipeline.clocks;
++  else profile.gfxCycles += pipeline.clocks;
    pipeline.clocksTotal += pipeline.clocks;
  }
  
@@ -831,8 +899,8 @@ index b743688..eab8e49 100644
    if constexpr(Recompiled) {
      step(clocks);
      profile.cycles += clocks;
-+    if(profile.activeTaskType == 1) profile.gfxCycles += clocks;
-+    else if(profile.activeTaskType == 2) profile.audCycles += clocks;
++    if(profile.activeTaskType == 2) profile.audCycles += clocks;
++    else profile.gfxCycles += clocks;
      pipeline.clocksTotal += clocks;
  
      assert(ipu.r[0].u32 == 0);

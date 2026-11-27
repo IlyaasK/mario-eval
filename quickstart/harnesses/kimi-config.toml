@@ -1,0 +1,27 @@
+default_model = "kimi_nim"
+default_permission_mode = "auto"
+
+[thinking]
+enabled = true
+
+[tools]
+disabled = ["WebSearch", "FetchURL", "AskUserQuestion"]
+
+[workspace]
+require_trust = false
+
+[loop_control]
+max_steps_per_turn = 0
+
+[providers.nim]
+type = "openai"
+base_url = "http://relay:8765/v1"
+api_key = "local-only"
+
+[models.kimi_nim]
+provider = "nim"
+protocol = "openai"
+model = "moonshotai/kimi-k3.1-pro"
+max_context_size = 262144
+max_output_size = 32768
+capabilities = ["thinking", "always_thinking", "tool_use"]

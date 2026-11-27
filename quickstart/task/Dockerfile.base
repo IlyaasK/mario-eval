@@ -1,0 +1,53 @@
+# Heavy base layer for mario-eval-task (rebuilt ONLY when sm64/decomp harness or
+# cache/sm64-reference changes; skipped in 0.0s on normal eval/grader/CLI/doc edits).
+FROM mario-eval
+ARG GAME_DIR=sm64/decomp
+ARG GAME_TITLE="Super Mario 64 US baseline"
+
+RUN (id -u ubuntu >/dev/null 2>&1 && usermod -l agent -d /home/agent -m ubuntu && groupmod -n agent ubuntu \
+        || useradd -m -u 1000 -s /bin/bash agent) \
+    && mkdir -p /usr/share/mario-eval/empty-hooks \
+    && chmod 0555 /usr/share/mario-eval/empty-hooks \
+    && git config --system core.hooksPath /usr/share/mario-eval/empty-hooks \
+    && git config --system user.name "agent" \
+    && git config --system user.email "agent@mario-eval" \
+    && mkdir -p /home/agent/.claude /home/agent/.codex /home/agent/.gemini \
+                /home/agent/.config /home/agent/.cache /home/agent/.local/bin \
+    && chown -R 1000:1000 /home/agent \
+    && mkdir -p /task /task/spec /task/work \
+    && chown root:root /task /task/spec \
+    && chmod 0755 /task \
+    && echo console > /task/PROFILE \
+    && : > /task/.mev-history.jsonl \
+    && printf '# Optimization Log\n' > /task/OPTIMIZATION_LOG.md \
+    && chown -R 1000:1000 /task/work /task/PROFILE /task/.mev-history.jsonl /task/OPTIMIZATION_LOG.md \
+    && chmod 0644 /task/PROFILE /task/.mev-history.jsonl /task/OPTIMIZATION_LOG.md
+
+COPY --chown=1000:1000 ${GAME_DIR} /task/game
+RUN <<'SH'
+set -eu
+cd /task/game
+python3 - <<'PY'
+import json, pathlib, tarfile
+root = pathlib.Path.cwd()
+manifest = pathlib.Path(".assets-local.txt")
+assets = json.loads(pathlib.Path("assets.json").read_text())
+names = set(manifest.read_text().splitlines()[2:])
+expected = {name for name, spec in assets.items() if not name.startswith("@") and "us" in spec[-1]}
+assert expected <= names, "incomplete US asset extraction"
+with tarfile.open("/opt/mario-eval/sm64-assets.tar.gz", "w:gz", dereference=True) as archive:
+    for name in [manifest.name, *sorted(expected)]:
+        path = pathlib.Path(name)
+        assert not path.is_absolute() and ".." not in path.parts, name
+        assert path.is_file() and path.resolve().is_relative_to(root), name
+        assert path.suffix.lower() not in (".z64", ".n64", ".v64"), name
+        archive.add(path, arcname=name, recursive=False)
+PY
+chmod 0444 /opt/mario-eval/sm64-assets.tar.gz
+rm -rf .git build build_* *.z64
+find . -exec touch -t 202601010000 {} +
+printf 'build/\nbuild_*/\n*.z64\n' >> .gitignore
+su -s /bin/sh agent -c "git init -q -b main && git -c user.name=baseline -c user.email=baseline@mario-eval add -A && git -c user.name=baseline -c user.email=baseline@mario-eval commit -qm '${GAME_TITLE}' && test -z \"\$(git fsck --full --no-reflogs --unreachable 2>&1)\""
+SH
+
+COPY cache/public-stage /opt/mario-eval/reference

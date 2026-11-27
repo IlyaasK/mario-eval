@@ -1,0 +1,27 @@
+{
+  "permission": {
+    "*": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "codesearch": "deny",
+    "question": "deny"
+  },
+  "agent": {
+    "explore": {
+      "permission": {
+        "webfetch": "deny",
+        "websearch": "deny",
+        "codesearch": "deny",
+        "question": "deny"
+      }
+    },
+    "general": {
+      "permission": {
+        "webfetch": "deny",
+        "websearch": "deny",
+        "codesearch": "deny",
+        "question": "deny"
+      }
+    }
+  }
+}

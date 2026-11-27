@@ -12,3 +12,5 @@
 ^aicode\.googleapis\.com$
 ^jetski-webchannel\.googleapis\.com$
 ^openrouter\.ai$
+^opencode\.ai$
+^models\.opencode\.ai$

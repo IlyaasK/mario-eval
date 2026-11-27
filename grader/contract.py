@@ -1,19 +1,11 @@
-"""Layouts of mev_obs_t per workload target, for naming divergent fields.
+"""Layout of Super Mario 64's mev_obs_t observation record (4224 bytes).
 
-The grader compares observation records byte-for-byte; this module turns a
-byte offset into a human-readable field name for diagnostics.
+Turns byte offsets in obs.bin into human-readable field names and decoded
+values for gameplay gate diagnostics.
 """
 import struct
 
 SCHEMAS = {
-    "pips-garden": [
-        ("frame", "I", 1), ("scene", "I", 1), ("rng", "I", 1),
-        ("gems", "i", 1), ("score", "i", 1), ("hits", "i", 1),
-        ("player_pos", "f", 3), ("player_vel", "f", 3), ("player_yaw", "f", 1),
-        ("player_state", "I", 1), ("cam_pos", "f", 3), ("cam_target", "f", 3),
-        ("enemy_pos", "f", 16 * 3), ("enemy_state", "I", 16),
-        ("gem_mask", "I", 64 // 32), ("particles", "I", 1), ("voices", "I", 1),
-    ],
     "sm64": [
         ("frame", "I", 1), ("level_area", "I", 1), ("rng", "I", 1), ("timer", "I", 1),
         ("mario_action", "I", 1), ("mario_prev_action", "I", 1),
@@ -27,17 +19,16 @@ SCHEMAS = {
     ],
 }
 
-# Backwards-compatible aliases for Pip's Garden.
-FIELDS = SCHEMAS["pips-garden"]
+FIELDS = SCHEMAS["sm64"]
 SIZE = sum(4 * n for _, _, n in FIELDS)
 
 
-def size_of(schema_name="pips-garden"):
+def size_of(schema_name="sm64"):
     fields = SCHEMAS[schema_name]
     return sum(4 * n for _, _, n in fields)
 
 
-def decode(raw, schema_name="pips-garden"):
+def decode(raw, schema_name="sm64"):
     fields = SCHEMAS[schema_name]
     out, offset = {}, 0
     for name, fmt, n in fields:
@@ -47,7 +38,7 @@ def decode(raw, schema_name="pips-garden"):
     return out
 
 
-def field_at(offset, schema_name="pips-garden"):
+def field_at(offset, schema_name="sm64"):
     fields = SCHEMAS.get(schema_name, [])
     start = 0
     for name, _, n in fields:
@@ -58,7 +49,7 @@ def field_at(offset, schema_name="pips-garden"):
     return f"word_{offset // 4}"
 
 
-def first_difference(ref, cand, schema_name="pips-garden"):
+def first_difference(ref, cand, schema_name="sm64"):
     """Return (field, ref_value, cand_value) for the first differing word."""
     fields = SCHEMAS.get(schema_name, [])
     for offset in range(0, min(len(ref), len(cand)), 4):

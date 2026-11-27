@@ -7,12 +7,11 @@ Pages follow Mechanize's gbaeval.com: About (speedup-over-time chart, featured r
 (ranked cards with per-unit bars), one page per agent run under model/<slug>/, Watch (replay player),
 Blog, and Calibration.
 
-Reads the calibration summaries (results/calibration/*/summary.json, results/sm64-calibration/ and
-results/sm64-trial-calibration/ for references graded on the agents' routes), agent and trial runs
-(results/agents/<slug>/summary.json + trajectory.json + meta.json with title, model, kind,
-provider, graded, commit, harness, repo_url, notes), the replay clips in site/assets/clips/
-(site/make_clips.py), Pip's Garden public reference frames (cache/reference/runs/*/video.bin.z when
-present, never any Nintendo SM64 assets), and the hand-written posts in site/posts/.
+Reads the SM64 calibration summaries (results/sm64-calibration/ and results/sm64-trial-calibration/
+for references graded on the agents' routes), agent and trial runs (results/agents/<slug>/summary.json
++ trajectory.json + meta.json with title, model, kind, provider, graded, commit, harness, repo_url,
+notes), the replay clips in site/assets/clips/ (site/make_clips.py), and the hand-written posts in
+site/posts/. Never distributes any Nintendo SM64 code, ROMs, or assets.
 """
 import html
 from collections import Counter
@@ -20,49 +19,17 @@ import json
 import math
 import re
 import shutil
-import struct
 import sys
-import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
-CAL = ROOT / "results" / "calibration"
 SM64_CAL = ROOT / "results" / "sm64-calibration"
 SM64_TRIAL_CAL = ROOT / "results" / "sm64-trial-calibration"
 AGENTS_DIR = ROOT / "results" / "agents"
-PIPS_REF_RUNS = ROOT / "cache" / "reference" / "runs"
 CLIPS_SRC = SITE / "assets" / "clips"
 BASE = "/mario-eval"
 REPO = "https://github.com/IlyaasK/mario-eval"
-
-PATCHES = [
-    ("r0-unchanged", "Unchanged rebuild", "The baseline must score exactly 0 on every profile."),
-    ("r1-o2-ieee", "<code>-O2 -fno-fast-math</code>", "Compiler optimization that keeps IEEE float semantics."),
-    ("r2-engine", "View-projection once per frame, terrain heights precomputed",
-     "Algorithmic changes at <code>-O0</code> with bit-identical results."),
-    ("r3-cde", "Create Dirty Exclusive on the audio block",
-     "The VR4300 <code>CACHE 0x0d</code> trick on a 2 KB buffer."),
-    ("r4-memory", "Delete an unused 256 KiB buffer", "A pure RAM footprint saving."),
-    ("r5-reassoc", "<code>(P&middot;V)&middot;M</code> instead of <code>P&middot;(V&middot;M)</code>",
-     "Same math, different rounding: sub-pixel vertex shifts must pass the video gate."),
-    ("r6-sine-table", "Sine table and closed-form triangle wave in the synth",
-     "Approximate audio within tolerance; 16 KB LUT spills the 8 KB direct-mapped D-cache."),
-    ("r7-full-detail", "Always draw Pip at full detail",
-     "Accepted visual variant (Kaze's Mario LOD change): passes video against the accepted variant."),
-    ("r8-full-detail-shifted", "Always draw Pip at full detail, deleting the distance check",
-     "Same accepted visual variant with shifted code/data cache alignment."),
-    ("r9-rdp-batch", "1-cycle RDP combiner + material-batched TMEM uploads",
-     "Cuts RDP combiner fill cycles and RSP/DP TMEM command overhead without changing pixels."),
-    ("i0-o2-fastmath", "<code>-O2</code> with libdragon's default <code>-ffast-math</code>",
-     "Faster, but changes floating-point results that feed gameplay."),
-    ("i1-mute", "Skip audio synthesis", "Shortcut: remove work the player would notice."),
-    ("i2-no-particles", "Skip drawing particles", "Shortcut: remove visible geometry."),
-    ("i3-physics", "Two physics substeps instead of four", "Shortcut: change the simulation."),
-    ("i4-tamper", "Edit the harness", "Integrity check."),
-    ("i5-low-detail", "Always draw Pip at the lowest detail",
-     "Unaccepted visual degradation: fewer parts, worse looking."),
-]
 
 SM64_PATCHES = [
     ("r0-unchanged", "Unchanged 1996 IDO rebuild",
@@ -98,13 +65,6 @@ SM64_PATCHES = [
 
 EXPERT_REF = "r10-kaze-master"
 PROFILES = ["console", "stutter", "speed", "rdp", "rsp", "traffic", "memory"]
-
-PUBLIC_PIPS_ROUTES = [
-    ("meadow", 35, "Meadow", "Terrain heightfield, crystals &amp; shadow decals"),
-    ("fortress", 15, "Fortress", "Dense wall/floor collision &amp; patrolling hazards"),
-    ("concert", 150, "Concert", "Multi-channel audio synthesis &amp; jump arcs"),
-    ("storm", 150, "Storm", "Heavy rain alpha particles &amp; dash trails"),
-]
 
 SM64_COURSES = ["bob", "wf", "jrb", "ddd", "bitfs", "rr"]
 SM64_COURSE_NAMES = {
@@ -228,54 +188,6 @@ def write(out, rel, text):
     path = out / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-
-
-def _png_chunk(tag, data):
-    crc = zlib.crc32(tag + data) & 0xFFFFFFFF
-    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
-
-
-def encode_rgb_png(rgb_bytes, width, height):
-    stride = width * 3
-    raw = bytearray()
-    for y in range(height):
-        raw.append(0)
-        raw.extend(rgb_bytes[y * stride:(y + 1) * stride])
-    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    idat = zlib.compress(bytes(raw), 9)
-    return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", idat) + _png_chunk(b"IEND", b"")
-
-
-def export_pips_frames(out):
-    exported = []
-    if not PIPS_REF_RUNS.exists():
-        return exported
-    out_dir = out / "assets" / "frames"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    w, h = 320, 240
-    frame_bytes = w * h * 2
-    for route_id, frame_idx, label, caption in PUBLIC_PIPS_ROUTES:
-        vpath = PIPS_REF_RUNS / route_id / "video.bin.z"
-        if not vpath.exists():
-            continue
-        blob = zlib.decompress(vpath.read_bytes())
-        total_frames = len(blob) // frame_bytes
-        if total_frames == 0:
-            continue
-        idx = min(frame_idx, total_frames - 1)
-        fbuf = blob[idx * frame_bytes:(idx + 1) * frame_bytes]
-        rgb = bytearray(w * h * 3)
-        for p in range(w * h):
-            px = (fbuf[2 * p] << 8) | fbuf[2 * p + 1]
-            r5 = (px >> 11) & 31
-            g5 = (px >> 6) & 31
-            b5 = (px >> 1) & 31
-            rgb[3 * p] = (r5 << 3) | (r5 >> 2)
-            rgb[3 * p + 1] = (g5 << 3) | (g5 >> 2)
-            rgb[3 * p + 2] = (b5 << 3) | (b5 >> 2)
-        (out_dir / f"{route_id}.png").write_bytes(encode_rgb_png(rgb, w, h))
-        exported.append((route_id, label, caption))
-    return exported
 
 
 def load_cal(cal_dir, spec):
@@ -568,7 +480,8 @@ def telemetry_inspector_html(sm64_rows, agent_runs):
             candidates.append((label, badge, cls, by_slug[slug]))
     for ar in agent_runs:
         if ar["summary"].get("status") == "valid" and all(c in ar["summary"].get("workloads", {}) for c in SM64_COURSES):
-            candidates.append((ar["model"], "trial (25-route valid)" if ar.get("kind") == "trial" else "agent", "trial-card", ar["summary"]))
+            n_rt = len(ar["summary"].get("workloads", {}))
+            candidates.append((ar["model"], f"trial ({n_rt}-route valid)" if ar.get("kind") == "trial" else "agent", "trial-card", ar["summary"]))
 
     if len(candidates) < 2:
         return ""
@@ -652,27 +565,6 @@ def posts():
         meta = json.loads(re.match(r"<!--(.*?)-->", text, re.S).group(1))
         items.append((f.stem, meta, text.split("-->", 1)[1]))
     return sorted(items, key=lambda x: x[1]["date"], reverse=True)
-
-
-def pips_gallery_html(exported_frames, rows):
-    if not exported_frames:
-        return ""
-    base = next((s for slug, *_r, s in rows if slug == "r0-unchanged"), None)
-    cards = []
-    for route_id, label, caption in exported_frames:
-        fps_txt = ""
-        if base and route_id in base.get("workloads", {}):
-            m = base["workloads"][route_id]["metrics"]
-            fps = m.get("est_fps", 1000.0 / m["frame_ms"])
-            fps_txt = f"{fps:.1f} fps"
-        cards.append(
-            f'<div class="frame-card">'
-            f'<img src="{BASE}/assets/frames/{route_id}.png" width="320" height="240" alt="Pip\'s Garden {esc(label)} route frame" loading="lazy">'
-            f'<div class="cap"><b>{esc(label)}</b><span>{esc(fps_txt)}</span></div>'
-            f'<div class="cap desc"><span>{caption}</span></div>'
-            f'</div>'
-        )
-    return '<div class="frame-grid">' + "".join(cards) + "</div>"
 
 
 def export_clips(out):
@@ -765,6 +657,8 @@ def route_label(wid):
 def build_board(trial_rows, agent_runs):
     """Every agent run and reference rung graded on the agents' replay set, best first."""
     cohorts = Counter(r["summary"]["workload_set"] for r in agent_runs if r["summary"].get("workload_set"))
+    if not cohorts:
+        cohorts = Counter(s["workload_set"] for _slug, _t, _p, s in trial_rows if s.get("status") == "valid" and s.get("workload_set"))
     if not cohorts:
         return None
     cohort = cohorts.most_common(1)[0][0]
@@ -972,10 +866,93 @@ def cost_saved_svg(agents, refs):
     return "".join(out)
 
 
+def fps_svg(agents, refs, base_fps):
+    """Best valid uncapped console FPS over wall-clock hours, starting at 1996 baseline FPS with a 60 Hz console line."""
+    W, H, L, R, T, B = 760, 340, 52, 176, 14, 46
+    pw, ph = W - L - R, H - T - B
+    b_fps = float(base_fps or 34.0)
+    vals = [b_fps, 60.0] + [float(e.get("fps") or (b_fps * e["speedup"])) for e in refs] + [
+        b_fps * sp for e in agents for _, sp, _ in e["points"]
+    ]
+    lo = math.floor(min(vals) / 5.0) * 5.0
+    hi = math.ceil((max(vals) + 2.5) / 10.0) * 10.0
+    step = 5.0 if hi - lo <= 35.0 else 10.0
+
+    def x(hr):
+        return L + min(max(hr, 0.0), 24.0) / 24.0 * pw
+
+    def y(v):
+        return T + (1.0 - (v - lo) / max(hi - lo, 1.0)) * ph
+
+    out = [f'<svg viewBox="0 0 {W} {H}" class="speed-chart" role="img" aria-label="Uncapped N64 FPS over wall-clock hours">']
+    t = lo
+    while t <= hi + 1e-9:
+        out.append(f'<line class="grid" x1="{L}" x2="{L + pw}" y1="{y(t):.1f}" y2="{y(t):.1f}"/>'
+                   f'<text class="ax" x="{L - 8}" y="{y(t) + 3:.1f}" text-anchor="end">{t:.0f} fps</text>')
+        t += step
+    # Highlight the N64's 60 Hz full-refresh threshold
+    if lo <= 60.0 <= hi:
+        out.append(f'<line x1="{L}" x2="{L + pw}" y1="{y(60.0):.1f}" y2="{y(60.0):.1f}" '
+                   f'stroke="#38bdf8" stroke-width="1.3" stroke-dasharray="3 3" opacity=".75">'
+                   f'<title>60 FPS (N64 60 Hz NTSC refresh rate, 16.67 ms/frame)</title></line>')
+    for hr in (0, 6, 12, 18, 24):
+        out.append(f'<text class="ax" x="{x(hr):.1f}" y="{T + ph + 18}" text-anchor="middle">{"0M" if hr == 0 else f"{hr}H"}</text>')
+    out.append(f'<text class="ax" x="{L + pw / 2:.1f}" y="{H - 6}" text-anchor="middle">WALL-CLOCK (UNCAPPED N64 CONSOLE FPS)</text>')
+    labels = []
+    if lo <= 60.0 <= hi:
+        labels.append((y(60.0), "#38bdf8", "N64 60Hz (60 fps)", "n64-60hz"))
+    for e in refs:
+        v = float(e.get("fps") or (b_fps * e["speedup"]))
+        col = REF_COLORS[e["kind"]]
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">'
+                   f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
+                   f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.1f} FPS ({e["speedup"]:.2f}&times;)</title></line></g>')
+        labels.append((y(v), col, f'{e["short"]} {v:.0f} fps', e["slug"]))
+    for e in agents:
+        col, samples = e["color"], sorted(e["points"])
+        scale = (float(e["fps"]) / e["speedup"]) if (e.get("fps") and e.get("speedup")) else b_fps
+        best, steps = 0.0, []
+        for hr, sp, _ in samples:
+            fv = scale * sp
+            best = max(best, fv)
+            steps.append((hr, best))
+        h0, v0 = steps[0]
+        out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
+        out.append(f'<line x1="{x(0):.1f}" y1="{y(b_fps):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
+                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
+        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
+        for hr, sp, name in samples:
+            fv = scale * sp
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                       f'data-hr="{hr:.1f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                       f'<title>{esc(e["name"])} at {hr:.1f}h: {fv:.1f} FPS ({sp:.2f}&times;, {esc(name)})</title></circle>')
+        out.append("</g>")
+        labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.0f} fps', e["slug"]))
+    labels.sort()
+    last = -1e9
+    for ly, col, txt, slug in labels:
+        ly = max(ly, last + 14)
+        last = ly
+        out.append(f'<g class="series" data-series="{esc(slug)}">'
+                   f'<rect x="{L + pw + 8}" y="{ly - 6:.1f}" width="3" height="11" fill="{col}"/>'
+                   f'<text class="lbl" x="{L + pw + 16}" y="{ly + 3.5:.1f}">{esc(txt)}</text></g>')
+    out.append(f'<line class="xhair" x1="{L}" x2="{L}" y1="{T}" y2="{T + ph}" hidden/>')
+    out.append(f'<circle class="hdot" cx="{L}" cy="{T}" r="5.5" fill="#fff" stroke="#fff" stroke-width="2" hidden style="pointer-events:none"/>')
+    out.append("</svg>")
+    return "".join(out)
+
+
 def speedup_chart(board, only=None, title=""):
     agents = [e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["points"] and only in (None, e["slug"])]
     refs = [e for e in board["entries"] if e["kind"] not in AGENT_KINDS and e["valid"]]
-    views = [("vanilla", "vs 1996", speedup_svg(agents, refs, 1.0))]
+    base_entry = next((e for e in board["entries"] if e["kind"] == "baseline"), None)
+    base_fps = base_entry["fps"] if base_entry and base_entry.get("fps") else 34.0
+    views = [
+        ("fps", "Uncapped FPS", fps_svg(agents, refs, base_fps)),
+        ("vanilla", "Speedup (×)", speedup_svg(agents, refs, 1.0)),
+    ]
     if board["gcc"]:
         views.append(("o2", "vs GCC -O2", speedup_svg(agents, refs, board["gcc"])))
     views.append(("saved", "Cost saved %", cost_saved_svg(agents, refs)))
@@ -1045,9 +1022,9 @@ FA_LABELS = {
 }
 
 
-def fa_badges_html(fa, max_tags=4):
+def fa_badges_html(fa, max_tags=4, total_routes=26):
     if not fa or not isinstance(fa, dict):
-        return '<span class="fa-tag clean">clean (25/25 @ 24h)</span>'
+        return f'<span class="fa-tag clean">clean ({total_routes}/{total_routes} @ 24h)</span>'
     cats = list(fa.get("categories") or [])
     subs = list(fa.get("subcategories") or [])
     # Prioritize architectural root-cause categories first
@@ -1116,7 +1093,7 @@ def agent_diag_strip_html(e, kaze_saved=None):
     ret = a.get("retention_ratio")
     pk_hr = a.get("active_hours_at_peak")
     f_pass = a.get("final_routes_passed")
-    f_tot = a.get("final_routes_total") or 25
+    f_tot = a.get("final_routes_total") or len((e.get("summary") or {}).get("workloads", {})) or 26
     if a.get("final_working_tree_valid"):
         ret_val = f'<span class="dv ok">{100.0 * (ret or 1.0):.0f}% retained</span>'
         ret_sub = f'24h tree valid ({f_tot}/{f_tot} routes)'
@@ -1131,7 +1108,7 @@ def agent_diag_strip_html(e, kaze_saved=None):
   <div class="diag-cell"><span class="dk">Bounded cost saved</span><span class="dv ok">{cs_pct:.1f}%</span><span class="ds">{esc(kaze_rel)}</span></div>
   <div class="diag-cell"><span class="dk">Generalization</span>{gen_val}<span class="ds">{gen_sub}</span></div>
   <div class="diag-cell"><span class="dk">24h tree retention</span>{ret_val}<span class="ds">{ret_sub}</span></div>
-  <div class="diag-cell"><span class="dk">Late-run failure modes</span>{fa_badges_html(fa)}</div>
+  <div class="diag-cell"><span class="dk">Late-run failure modes</span>{fa_badges_html(fa, total_routes=f_tot)}</div>
 </div>"""
 
 
@@ -1140,6 +1117,7 @@ def diagnostic_ruler_table_html(board):
     if not agents:
         return ""
     kaze_saved = board.get("kaze_saved")
+    b_routes = board.get("routes") or 26
     rows = []
     for e in agents:
         a = e["analytics"]
@@ -1151,11 +1129,11 @@ def diagnostic_ruler_table_html(board):
         max_pub = a.get("max_unverified_public_speedup")
         ov_s = (f'<span class="neg">+{overfit:.2f}&times;</span> <span class="muted">({max_pub:.2f}&times; pub)</span>'
                 if overfit >= 0.05 and max_pub else '<span class="pos">0.00&times;</span>')
+        ft = a.get("final_routes_total") or b_routes
         if a.get("final_working_tree_valid"):
-            ret_s = '<span class="pos">100%</span> <span class="muted">(25/25)</span>'
+            ret_s = f'<span class="pos">100%</span> <span class="muted">({ft}/{ft})</span>'
         else:
             fp = a.get("final_routes_passed")
-            ft = a.get("final_routes_total") or 25
             pk = a.get("active_hours_at_peak")
             pk_s = f'@{pk:.1f}h' if pk is not None else ""
             rt_s = f'{fp}/{ft}' if fp is not None else "build/boot fail"
@@ -1170,11 +1148,11 @@ def diagnostic_ruler_table_html(board):
             f'<td class="num">{ov_s}</td>'
             f'<td>{ret_s}</td>'
             f'<td class="num">{vc}/{tc}</td>'
-            f'<td>{fa_badges_html(a.get("post_peak_failure_attribution") or a.get("final_failure_attribution"))}</td></tr>'
+            f'<td>{fa_badges_html(a.get("post_peak_failure_attribution") or a.get("final_failure_attribution"), total_routes=ft)}</td></tr>'
         )
     return f"""<div class="panel">
 <div class="panel-head"><div class="panel-title">Diagnostic ruler &amp; automated failure attribution &middot; zero-transcript signal</div></div>
-<p class="small muted">Every metric below is emitted numerically by the v3.1 grader and supervisor without reading agent transcripts:
+<p class="small muted">Every metric below is emitted numerically by the v4.1 grader and supervisor without reading agent transcripts:
 <b>cost saved</b> bounds frame-time reduction in [0%, 100%), <b>public drift</b> measures unverified public-course speedup gained while failing private held-outs,
 <b>24h retention</b> checks whether the final working tree stayed valid vs needing checkpoint rescue, and <b>failure attribution</b> classifies exact post-peak hardware/gate regressions.</p>
 <div class="table-wrap"><table><thead><tr>
@@ -1473,23 +1451,25 @@ def build_index(out, board, sm64_rows, post_items, clips):
     lead = next((e for e in board["entries"] if e["kind"] in AGENT_KINDS and e["valid"]), None)
     base_fps = next(e["fps"] for e in board["entries"] if e["kind"] == "baseline")
     top = (f'<p class="top-cand">Top candidate: <a href="{lead["href"]}">{esc(lead["name"])}</a> '
-           f'<b>{lead["speedup"]:.3f}&times;</b></p>') if lead else ""
+           f'<b>{lead["fps"]:.0f} FPS</b> <b>({lead["speedup"]:.3f}&times;)</b></p>') if (lead and lead.get("fps")) else (
+           f'<p class="top-cand">Top candidate: <a href="{lead["href"]}">{esc(lead["name"])}</a> '
+           f'<b>{lead["speedup"]:.3f}&times;</b></p>' if lead else "")
     featured = player_html(clips, full=False) if clips else ""
     hw_vis = hw_speedup_visual_html(sm64_rows, board)
     body = f"""
 <section class="hero">
   <div class="hero-text">
     <h1>Models try to make Super Mario 64 run faster on a real Nintendo 64.</h1>
-    <p>We give AI coding agents the C source of Super Mario 64 and 24 hours to make it run as fast as possible on
-    an original 4&nbsp;MB console, without changing the game. Every frame is costed on an instrumented N64 emulator
+    <p>We give AI coding agents the C source of Super Mario 64, N64 hardware specs, and 24 hours to make it run as fast as
+    possible on an original 4&nbsp;MB console, without changing the game. Every frame is costed on an instrumented N64 emulator
     and checked against the 1996 game.</p>
-    <p>The 1996 build runs at about {base_fps:.0f} uncapped frames per second on our routes. There is no ceiling:
-    the score is how much less console time each frame takes.</p>
+    <p>The 1996 build runs at about {base_fps:.0f} uncapped frames per second on our routes (well shy of the N64's 60&nbsp;Hz refresh ceiling).
+    There is no score cap: agents push console FPS and speedup as high as the 4&nbsp;MB hardware allows.</p>
     {top}
     <div class="hero-btns"><a class="px-btn primary" href="{BASE}/leaderboard/">Leaderboard</a>
     <a class="px-btn" href="{BASE}/watch/">Watch</a><a class="px-btn" href="{BASE}/blog/">Blog</a></div>
   </div>
-  <div class="hero-chart">{speedup_chart(board, title="Best valid speedup over 24h (hover checkpoints)")}</div>
+  <div class="hero-chart">{speedup_chart(board, title="Best valid N64 FPS & speedup over 24h (hover checkpoints)")}</div>
 </section>
 <div class="col">
 {featured}
@@ -1509,13 +1489,15 @@ private routes it never sees (other courses and seeded button mashing). A frame 
 console's four units, which run in parallel: <code>max(CPU, RSP, RDP, RDRAM bus)</code>. See
 <a href="{BASE}/blog/what-the-emulator-measures/">What the emulator measures</a> and
 <a href="{BASE}/blog/calibrating-the-grader/">Calibrating the grader</a>.</p>
-<div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup &amp; bounded cost saved</span><span class="w">score</span>
-<p>Section-weighted geometric mean over routes (40% public courses, 50% private scripted routes, 10% private button-mash routes)
-of the 1996 build's frame time divided by the candidate's (unbounded speedup), paired with bounded <b>cycle cost saved</b>
-<code>1 &minus; T<sub>cand</sub> / T<sub>1996</sub> &isin; [0%, 100%)</code> (0% = 1996 IDO, 25.5% = GCC -O2, 39.9% = Kaze human ref, 100% = 0 ms bound).</p></div>
+<div class="score-sec"><span class="k" style="color:var(--pcb)">Speedup, FPS &amp; RL reward</span><span class="w">score</span>
+<p>In Mario Eval v4, the 6 public dev courses carry <b>0% weight</b> in the final score — 100% of the score comes from
+unseen private held-out trajectories (75% scripted multi-course/multi-act routes, 25% seeded random-input routes across 18 SM64 worlds).
+We report unbounded <b>speedup</b> (<code>1 / geomean(T<sub>cand</sub> / T<sub>1996</sub>)</code>) and <b>uncapped console FPS</b> alongside
+log-scaled RL reward (<code>log<sub>2</sub>(speedup) / 4</code>) and bounded <b>cycle cost saved</b>
+<code>1 &minus; T<sub>cand</sub> / T<sub>1996</sub> &isin; [0%, 100%)</code>.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--spark)">Diagnostic sub-rulers</span><span class="w">telemetry</span>
-<p>Every run automatically reports <b>held-out generalization</b>, <b>public-only overfit drift</b>, <b>24h working-tree retention</b>
-(<code>final / peak</code>), and <b>numerical failure attribution</b> (VR4300 CPU ISA traps, cache/DMA UB, <code>PLAY=1</code> divergence, actor desync, video/audio regressions) without reading transcripts.</p></div>
+<p>Every run automatically reports <b>per-route effective speedup</b>, <b>held-out generalization</b>, <b>public-only overfit drift</b>,
+<b>24h working-tree retention</b> (<code>final / peak</code>), and <b>numerical failure attribution</b> (VR4300 CPU ISA traps, 4 MB RDRAM OOB, cache/DMA UB, <code>PLAY=1</code> divergence, actor desync, video/audio regressions) without reading transcripts.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--amber)">Gameplay</span><span class="w">gate</span>
 <p>Mario's position, speed, action and stats, the camera, and every actor within 2000 units match the 1996 game on every frame.</p></div>
 <div class="score-sec"><span class="k" style="color:var(--cyan)">Video</span><span class="w">gate</span>
@@ -1650,17 +1632,18 @@ single unit. Every rung, including the rejected shortcuts, is on the <a href="{B
 <div class="chart-box">{sm64_bottleneck_svg(sm64_rows)}</div>
 {telemetry_inspector_html(sm64_rows, agent_runs)}
 <h2 class="px-h">Run it yourself</h2>
-<pre><code># 1. Prepare the game and private controller inputs (set PRIVATE_SEED)
+<pre><code># 1. Prepare Super Mario 64 and private held-out trajectories (keep PRIVATE_SEED secret)
+./scripts/build-images.sh --no-task
 ./sm64/setup.sh "/path/to/Super Mario 64 (USA).z64"
-python3 sm64/corpus/make_replays.py --heldout /private/replays --mash-seed "$PRIVATE_SEED"
-./scripts/build-images.sh --game sm64 --no-task
-./scripts/precompute.sh --game sm64 --heldout /private/replays
-./scripts/build-images.sh --game sm64
-./quickstart/smoke-test.sh --game sm64
+python3 sm64/corpus/make_replays.py --heldout /private/replays --heldout-seed "$PRIVATE_SEED"
+./scripts/precompute.sh --heldout /private/replays --cache /private/reference
+./scripts/precompute.sh
+./scripts/build-images.sh
+./quickstart/smoke-test.sh
 
 # 2. Launch a 24-hour timed run
 docker compose --project-directory quickstart up -d
-AGENT_CMD='your-agent-command' ./quickstart/run-agent.sh --game sm64 \\
+MEV_REFERENCE_DIR=/private/reference AGENT_CMD='your-agent-command' ./quickstart/run-agent.sh \\
   --hours 24 --profile console --heldout /private/replays</code></pre>
 </div>"""
     write(out, "leaderboard/index.html", page("Leaderboard | Mario Eval", body, active="leaderboard/"))
@@ -1688,16 +1671,16 @@ def build_model(out, e, board):
             cs = 1.0 - 1.0 / sp
         diag = c.get("diagnostics") or {}
         unv_pub = (diag.get("unverified_public_speedups") or {}).get("console")
+        wt = diag.get("workloads_total") or len(wls) or 26
         if ok:
-            routes_txt = "25/25"
+            routes_txt = f"{wt}/{wt}"
             pub_txt = f'{unv_pub:.2f}&times;' if unv_pub else "&mdash;"
             fa_html = '<span class="fa-tag clean">valid</span>'
         else:
             wp = diag.get("workloads_passed")
-            wt = diag.get("workloads_total")
-            routes_txt = f"{wp}/{wt}" if (wp is not None and wt) else "0/25"
+            routes_txt = f"{wp}/{wt}" if wp is not None else f"0/{wt}"
             pub_txt = f'{unv_pub:.2f}&times;' if unv_pub else "&mdash;"
-            fa_html = fa_badges_html(c.get("failure_attribution"))
+            fa_html = fa_badges_html(c.get("failure_attribution"), total_routes=wt)
         cp_rows.append(
             f'<tr class="{"" if ok else "invalid"}"><td>{esc(c.get("name", ""))}</td><td class="num">{c["elapsed_hours"]:.1f}h</td>'
             f'<td><span class="tag {"valid" if ok else "invalid"}">{esc(c.get("status"))}</span></td>'
@@ -1800,7 +1783,7 @@ def render_sections(rows, patch_dir, anchor_prefix=""):
                                      f"= {esc(x['cand'])} (original {esc(x['ref'])})</li>")
                     elif "worst_bad_fraction" in x:
                         items.append(f"<li><b>{g}</b> on {esc(wid)}: {100 * x['worst_bad_fraction']:.2f}% of pixels "
-                                     f"fail on frame {x['worst_frame']} (limit 0.20%)</li>")
+                                     f"fail on frame {x['worst_frame']} (limit 0.35%)</li>")
                     elif "logmel_score" in x:
                         snr_part = f"SNR {x['snr_db']:.1f} dB, " if x.get("snr_db") is not None else ""
                         items.append(f"<li><b>{g}</b> on {esc(wid)}: {snr_part}log-mel {x['logmel_score']:.3f} "
@@ -1816,28 +1799,21 @@ def render_sections(rows, patch_dir, anchor_prefix=""):
     return "".join(sections)
 
 
-def build_calibration(out, rows, sm64_rows, exported_frames):
+def build_calibration(out, sm64_rows):
     sm64_part = ""
     if sm64_rows:
         sm64_part = (
-            '<h2 class="px-h">Super Mario 64 &middot; 6 public courses</h2>'
+            '<h2 class="px-h">Super Mario 64 &middot; 6 public dev courses</h2>'
             + cal_table(sm64_rows, anchor_prefix="sm64-")
             + '<h3>Baseline (1996 IDO)</h3>'
             + baseline_table(sm64_rows)
             + render_sections(sm64_rows, "sm64/calibration", anchor_prefix="sm64-")
-            + "<hr>"
         )
     body = f"""<div class="col wide"><h1 class="px-h">Calibration</h1>
-<p class="muted">Each patch is applied to a clean game and graded like a submission: known speedups must pass and score,
-known shortcuts must be rejected. The tables cover the six public SM64 courses and eight routes of Pip's Garden, an
-open-source N64 game that ships in the repo so the harness runs without a ROM.</p>
-{sm64_part}
-<h2 class="px-h">Pip's Garden &middot; 8 routes</h2>
-{pips_gallery_html(exported_frames, rows)}
-{cal_table(rows)}
-<h3>Pip's Garden baseline</h3>
-{baseline_table(rows)}
-{render_sections(rows, "calibration")}</div>"""
+<p class="muted">Each patch is applied to a clean Super Mario 64 decompilation tree and graded like a submission: known hardware
+speedups must pass and score monotonically, while known shortcuts (<code>-ffast-math</code>, muted audio, low-poly Mario,
+halved physics steps, harness tampering) must be rejected.</p>
+{sm64_part}</div>"""
     write(out, "calibration/index.html", page("Calibration | Mario Eval", body, active="calibration/"))
 
 
@@ -1857,26 +1833,23 @@ def main():
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
     shutil.copy(SITE / "style.css", out / "style.css")
-    exported_frames = export_pips_frames(out)
     clips = export_clips(out)
-    rows = load_cal(CAL, PATCHES)
     sm64_rows = load_cal(SM64_CAL, SM64_PATCHES)
     trial_rows = load_cal(SM64_TRIAL_CAL, SM64_PATCHES)
     agent_runs = load_agent_runs()
     post_items = posts()
-    board = build_board(trial_rows, agent_runs)
+    board = build_board(trial_rows or sm64_rows, agent_runs)
     if board is None:
-        sys.exit("no agent runs with a workload_set under results/agents/")
+        sys.exit("no agent or reference runs with a workload_set under results/")
     build_index(out, board, sm64_rows, post_items, clips)
     build_leaderboard(out, board, sm64_rows, agent_runs)
     for e in board["entries"]:
         if e["kind"] in AGENT_KINDS and e["valid"]:
             build_model(out, e, board)
     build_watch(out, clips)
-    build_calibration(out, rows, sm64_rows, exported_frames)
+    build_calibration(out, sm64_rows)
     build_blog(out, post_items)
-    print(f"wrote {out}: {len(rows)} pips entries, {len(sm64_rows)} sm64 entries, "
-          f"{len(agent_runs)} agent runs, {len(exported_frames)} png frames, {len(clips)} clips, {len(post_items)} posts")
+    print(f"wrote {out}: {len(sm64_rows)} sm64 entries, {len(agent_runs)} agent runs, {len(clips)} clips, {len(post_items)} posts")
 
 
 if __name__ == "__main__":

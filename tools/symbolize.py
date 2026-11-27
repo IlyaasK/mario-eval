@@ -51,7 +51,7 @@ def load_symbols(path, data_only=False):
             sym_type, name = parts[2], parts[3]
             if _RE_LINKER_MARKER.search(name):
                 continue
-            if data_only and sym_type in "dDbBrRgGsS":
+            if data_only and sym_type in "dDbBrRgGsSC":
                 out.append((int(parts[0], 16) & 0xFFFFFFFF, int(parts[1], 16), name))
             elif not data_only and sym_type in "tTwW":
                 out.append((int(parts[0], 16) & 0xFFFFFFFF, int(parts[1], 16), name))
@@ -60,7 +60,7 @@ def load_symbols(path, data_only=False):
             sym_type, name = parts[1], parts[2]
             if _RE_LINKER_MARKER.search(name):
                 continue
-            if data_only and sym_type in "dDbBrRgGsS":
+            if data_only and sym_type in "dDbBrRgGsSC":
                 out.append((int(parts[0], 16) & 0xFFFFFFFF, 0, name))
             elif not data_only and sym_type in "tTwW":
                 out.append((int(parts[0], 16) & 0xFFFFFFFF, 0, name))

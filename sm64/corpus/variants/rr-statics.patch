@@ -14,7 +14,7 @@ diff -r a/Makefile b/Makefile
  # Assemble assembly code
  $(BUILD_DIR)/%.o: %.s
  	$(call print,Assembling:,$<,$@)
-diff -r a/Makefile.orig b/Makefile.orig
+diff -r a/levels/rr/areas/1/collision.inc.c b/levels/rr/areas/1/collision.inc.c
 --- a/levels/rr/areas/1/collision.inc.c
 +++ b/levels/rr/areas/1/collision.inc.c
 @@ -5418,29 +5418,16 @@
@@ -84,8 +84,8 @@ diff -r a/levels/rr/leveldata.c b/levels/rr/leveldata.c
  #include "levels/rr/areas/1/trajectory.inc.c"
 +
 +#include "levels/rr/baked_statics.inc.c"
-Only in b: tools
---- a/tools/bake_rr_statics.py
+diff -rN a/tools/bake_rr_statics.py b/tools/bake_rr_statics.py
+--- /dev/null
 +++ b/tools/bake_rr_statics.py
 @@ -0,0 +1,73 @@
 +#!/usr/bin/env python3

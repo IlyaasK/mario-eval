@@ -1,0 +1,9 @@
+N64brew Wiki Hardware Documentation Snapshot
+Source: https://n64brew.dev/
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+License URL: https://creativecommons.org/licenses/by-sa/4.0/
+
+Each file in this directory is a verbatim MediaWiki source snapshot from the
+N64brew community hardware reference wiki, prefixed with its canonical page URL
+and license attribution header for offline reference inside the evaluation
+environment.
