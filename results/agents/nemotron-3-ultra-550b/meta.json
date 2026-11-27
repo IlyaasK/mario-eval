@@ -1,0 +1,12 @@
+{
+  "title": "Nemotron 3 Ultra 550B (max)",
+  "model": "Nemotron 3 Ultra 550B",
+  "kind": "live",
+  "provider": "NVIDIA \u00b7 NIM API",
+  "harness": "omp 19.2.1",
+  "graded": "2026-11-27 (live)",
+  "commit": "7445072",
+  "hours": 24,
+  "repo_url": "",
+  "notes": "Live 24-hour autonomous v4.1 run on oh-my-pi 19.2.1 (--thinking max) via NVIDIA NIM. Verified at 1.235x across all 26 routes at 2.0h (19.0% console frame time saved, 1.000 fidelity) via IDO -O2 compilation across engine/audio hotspots, F3DEX2 microcode migration, and unrolled mtxf_mul / mtxf_scale_vec3f."
+}

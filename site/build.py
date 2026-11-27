@@ -481,7 +481,9 @@ def telemetry_inspector_html(sm64_rows, agent_runs):
     for ar in agent_runs:
         if ar["summary"].get("status") == "valid" and all(c in ar["summary"].get("workloads", {}) for c in SM64_COURSES):
             n_rt = len(ar["summary"].get("workloads", {}))
-            candidates.append((ar["model"], f"trial ({n_rt}-route valid)" if ar.get("kind") == "trial" else "agent", "trial-card", ar["summary"]))
+            b_lbl = f"live ({n_rt}-route valid)" if ar.get("kind") == "live" else (
+                f"trial ({n_rt}-route valid)" if ar.get("kind") == "trial" else "agent")
+            candidates.append((ar["model"], b_lbl, "trial-card", ar["summary"]))
 
     if len(candidates) < 2:
         return ""
@@ -586,7 +588,7 @@ def export_clips(out):
     return kept
 
 
-AGENT_KINDS = ("agent", "trial")
+AGENT_KINDS = ("agent", "trial", "live")
 REF_SPECS = [
     (EXPERT_REF, "Kaze master reference", "Kaze master", "human",
      "Kaze Emanuar's and ultrasm64's published Super Mario 64 optimizations, reconstructed on the vanilla decompilation."),
@@ -594,11 +596,11 @@ REF_SPECS = [
      "The unmodified game rebuilt with GCC -O2 -fno-fast-math instead of 1996 IDO; no code changes."),
 ]
 KIND_TAG = {
-    "agent": ("agent", "valid"), "trial": ("trial run", "trial"), "human": ("human ref", "valid"),
-    "compiler": ("compiler", "ref"), "baseline": ("baseline", "ref"),
+    "agent": ("agent", "valid"), "trial": ("trial run", "trial"), "live": ("live · in progress", "trial"),
+    "human": ("human ref", "valid"), "compiler": ("compiler", "ref"), "baseline": ("baseline", "ref"),
 }
 REF_COLORS = {"human": "#2ed573", "compiler": "#ffb000", "baseline": "#8a849f"}
-AGENT_COLORS = ["#7b68ee", "#38bdf8", "#ff5a63", "#e85d04", "#d946ef", "#facc15"]
+AGENT_COLORS = ["#7b68ee", "#38bdf8", "#ff5a63", "#e85d04", "#d946ef", "#facc15", "#14b8a6", "#a3e635"]
 # Per-unit speedups shown as bars: the console bottleneck and the four units it is the max of.
 BAR_UNITS = [("est_console_ms", "Console"), ("cpu_effective_cycles", "CPU"), ("rsp_busy", "RSP"),
              ("rdp_busy", "RDP"), ("rdram_bytes", "RDRAM bus")]
@@ -1022,9 +1024,10 @@ FA_LABELS = {
 }
 
 
-def fa_badges_html(fa, max_tags=4, total_routes=26):
+def fa_badges_html(fa, max_tags=4, total_routes=26, is_live=False):
     if not fa or not isinstance(fa, dict):
-        return f'<span class="fa-tag clean">clean ({total_routes}/{total_routes} @ 24h)</span>'
+        sfx = "" if is_live else " @ 24h"
+        return f'<span class="fa-tag clean">clean ({total_routes}/{total_routes}{sfx})</span>'
     cats = list(fa.get("categories") or [])
     subs = list(fa.get("subcategories") or [])
     # Prioritize architectural root-cause categories first
@@ -1094,7 +1097,13 @@ def agent_diag_strip_html(e, kaze_saved=None):
     pk_hr = a.get("active_hours_at_peak")
     f_pass = a.get("final_routes_passed")
     f_tot = a.get("final_routes_total") or len((e.get("summary") or {}).get("workloads", {})) or 26
-    if a.get("final_working_tree_valid"):
+    is_live = a.get("final_working_tree_valid") is None or e.get("kind") == "live"
+    if is_live:
+        vc = a.get("host_checkpoints_valid", 0)
+        tc = a.get("host_checkpoints_total", 0)
+        ret_val = f'<span class="dv ok">{e.get("end_h", 0.0):.0f}h / 24h live</span>'
+        ret_sub = f'{vc}/{tc} host checkpoints valid'
+    elif a.get("final_working_tree_valid"):
         ret_val = f'<span class="dv ok">{100.0 * (ret or 1.0):.0f}% retained</span>'
         ret_sub = f'24h tree valid ({f_tot}/{f_tot} routes)'
     else:
@@ -1108,7 +1117,7 @@ def agent_diag_strip_html(e, kaze_saved=None):
   <div class="diag-cell"><span class="dk">Bounded cost saved</span><span class="dv ok">{cs_pct:.1f}%</span><span class="ds">{esc(kaze_rel)}</span></div>
   <div class="diag-cell"><span class="dk">Generalization</span>{gen_val}<span class="ds">{gen_sub}</span></div>
   <div class="diag-cell"><span class="dk">24h tree retention</span>{ret_val}<span class="ds">{ret_sub}</span></div>
-  <div class="diag-cell"><span class="dk">Late-run failure modes</span>{fa_badges_html(fa, total_routes=f_tot)}</div>
+  <div class="diag-cell"><span class="dk">Late-run failure modes</span>{fa_badges_html(fa, total_routes=f_tot, is_live=is_live)}</div>
 </div>"""
 
 
@@ -1130,7 +1139,10 @@ def diagnostic_ruler_table_html(board):
         ov_s = (f'<span class="neg">+{overfit:.2f}&times;</span> <span class="muted">({max_pub:.2f}&times; pub)</span>'
                 if overfit >= 0.05 and max_pub else '<span class="pos">0.00&times;</span>')
         ft = a.get("final_routes_total") or b_routes
-        if a.get("final_working_tree_valid"):
+        is_live = a.get("final_working_tree_valid") is None or e.get("kind") == "live"
+        if is_live:
+            ret_s = f'<span class="pos">live</span> <span class="muted">({e.get("end_h", 0.0):.0f}h / 24h)</span>'
+        elif a.get("final_working_tree_valid"):
             ret_s = f'<span class="pos">100%</span> <span class="muted">({ft}/{ft})</span>'
         else:
             fp = a.get("final_routes_passed")
@@ -1148,7 +1160,7 @@ def diagnostic_ruler_table_html(board):
             f'<td class="num">{ov_s}</td>'
             f'<td>{ret_s}</td>'
             f'<td class="num">{vc}/{tc}</td>'
-            f'<td>{fa_badges_html(a.get("post_peak_failure_attribution") or a.get("final_failure_attribution"), total_routes=ft)}</td></tr>'
+            f'<td>{fa_badges_html(a.get("post_peak_failure_attribution") or a.get("final_failure_attribution"), total_routes=ft, is_live=is_live)}</td></tr>'
         )
     return f"""<div class="panel">
 <div class="panel-head"><div class="panel-title">Diagnostic ruler &amp; automated failure attribution &middot; zero-transcript signal</div></div>
@@ -1310,7 +1322,8 @@ def hw_speedup_visual_html(sm64_rows, board):
         (EXPERT_REF, "Kaze Human Ref (R10)", "best", cal_by_slug.get(EXPERT_REF)),
     ]
     if lead and lead.get("summary"):
-        specs.append((lead["slug"], f'{lead["name"]} (24h)', "agent", lead["summary"]))
+        l_tag = f'({lead["end_h"]:.0f}h live)' if lead.get("kind") == "live" else "(24h)"
+        specs.append((lead["slug"], f'{lead["name"]} {l_tag}', "agent", lead["summary"]))
     specs = [x for x in specs if x[3] is not None]
     if len(specs) < 2:
         return ""
@@ -1656,7 +1669,10 @@ def build_model(out, e, board):
     valid_cps = sum(1 for c in e["checkpoints"] if c.get("status") == "valid")
     a = e.get("analytics") or {}
     cs_pct = 100.0 * float(a.get("peak_valid_cost_saved") or e.get("cost_saved") or 0.0)
-    ret_lbl = "100% (valid)" if a.get("final_working_tree_valid") else "0% (rescued)"
+    if a.get("final_working_tree_valid") is None or e.get("kind") == "live":
+        ret_lbl = f'live ({e["end_h"]:.0f}h / 24h)'
+    else:
+        ret_lbl = "100% (valid)" if a.get("final_working_tree_valid") else "0% (rescued)"
     meta = " &middot; ".join(x for x in [esc(e["org"]), f'Graded: {esc(e["date"])}' if e["date"] else "",
                                          f'commit: {esc(e["commit"])}' if e["commit"] else "",
                                          f'harness: {esc(e["harness"])}' if e["harness"] else ""] if x)
