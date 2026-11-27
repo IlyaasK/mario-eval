@@ -1892,7 +1892,7 @@ def compare_audio(ref, cand, ref_rows, cand_rows, cfg):
         fa, fb = a[i * per:(i + 1) * per], b[i * per:(i + 1) * per]
         rms = math.sqrt((fa * fa).mean())
         if rms <= acfg["silence_rms"]:
-            if np.abs(fb).max() > acfg["silence_max_abs"]:
+            if np.abs(fb - fa).max() > acfg["silence_max_abs"]:
                 sil_bad_frames += 1
                 if first_sil_fail is None:
                     first_sil_fail = i
