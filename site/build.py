@@ -656,6 +656,58 @@ def route_label(wid):
     return f"private &middot; {esc(code.upper())}"
 
 
+def dense_step_points(traj, cps):
+    """Build a continuous gbaeval-style step series anchored at (0h, 1.0x) and calibrated
+    within each verified 26-route host checkpoint interval using verified container mev_checks.
+    Never extrapolates unverified public drift above the latest valid host checkpoint."""
+    valid_cps = sorted(
+        [(float(c["elapsed_hours"]), float(c["speedups"]["console"]), c.get("name", "checkpoint"), c)
+         for c in cps if c.get("status") == "valid" and (c.get("speedups") or {}).get("console")],
+        key=lambda x: x[0],
+    )
+    if not valid_cps:
+        return []
+
+    raw_checks = [
+        c for c in (traj.get("mev_checks") or [])
+        if c.get("status") == "valid" and c.get("profile_valid")
+        and float((c.get("speedups") or {}).get("console") or 0.0) > 1.0005
+    ]
+    full_checks = [c for c in raw_checks if not c.get("fast")]
+
+    out = []
+    prev_h = 0.0
+    best_so_far = 1.0
+    for h_cp, sp_cp, name_cp, cp_obj in valid_cps:
+        iv_checks = [c for c in full_checks if prev_h < float(c.get("elapsed_hours", 0.0)) < h_cp - 0.02]
+        if not iv_checks:
+            iv_checks = [c for c in raw_checks if prev_h < float(c.get("elapsed_hours", 0.0)) < h_cp - 0.02]
+        iv_checks.sort(key=lambda c: float(c.get("elapsed_hours", 0.0)))
+
+        if iv_checks and sp_cp > best_so_far + 1e-6:
+            host_pub = float(
+                ((((cp_obj.get("capability_ruler") or {}).get("splits") or {}).get("public") or {}).get("raw_console_speedup")
+                 or sp_cp)
+            )
+            max_pub = max([host_pub] + [float(c["speedups"]["console"]) for c in iv_checks])
+            denom = max(max_pub - 1.0, 1e-6)
+            for c in iv_checks:
+                hr = float(c["elapsed_hours"])
+                p_sp = float(c["speedups"]["console"])
+                est = 1.0 + (p_sp - 1.0) * ((sp_cp - 1.0) / denom)
+                est = min(sp_cp, max(best_so_far, est))
+                if est > best_so_far + 0.0025:
+                    best_so_far = est
+                    gh = (c.get("git_head") or "")[:7]
+                    lbl = f"commit {gh}" if gh else "verified check"
+                    out.append((hr, round(est, 6), lbl, False))
+
+        best_so_far = max(best_so_far, sp_cp)
+        out.append((h_cp, sp_cp, name_cp, True))
+        prev_h = h_cp
+    return out
+
+
 def build_board(trial_rows, agent_runs):
     """Every agent run and reference rung graded on the agents' replay set, best first."""
     cohorts = Counter(r["summary"]["workload_set"] for r in agent_runs if r["summary"].get("workload_set"))
@@ -674,8 +726,7 @@ def build_board(trial_rows, agent_runs):
         valid = s["status"] == "valid" and p.get("valid", False)
         traj = r["trajectory"] or {}
         cps = [c for c in traj.get("host_checkpoints", []) if c.get("workload_set") in (cohort, None)]
-        points = [(c["elapsed_hours"], c["speedups"]["console"], c.get("name", ""))
-                  for c in cps if c.get("status") == "valid" and c.get("speedups", {}).get("console")]
+        points = dense_step_points(traj, cps)
         sp_val = float(p["speedup"]) if valid else 0.0
         cs_val = float(p.get("cost_saved", 1.0 - 1.0 / sp_val)) if (valid and sp_val > 0) else 0.0
         entries.append({
@@ -729,7 +780,7 @@ def speedup_svg(agents, refs, div):
     """Best valid console speedup over wall-clock hours, divided by `div`, with reference lines."""
     W, H, L, R, T, B = 760, 340, 50, 176, 14, 46
     pw, ph = W - L - R, H - T - B
-    vals = [1.0 / div] + [e["speedup"] / div for e in refs] + [sp / div for e in agents for _, sp, _ in e["points"]]
+    vals = [1.0 / div] + [e["speedup"] / div for e in refs] + [pt[1] / div for e in agents for pt in e["points"]]
     lo, hi = min(vals), max(vals)
     step = 0.1 if hi - lo <= 0.6 else (0.2 if hi - lo <= 1.4 else 0.5)
     lo = math.floor(round(lo / step, 6)) * step
@@ -757,24 +808,26 @@ def speedup_svg(agents, refs, div):
                    f'<line x1="{L}" x2="{L + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}" stroke="{col}" stroke-width="1.4" '
                    f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.3f}&times;</title></line></g>')
         labels.append((y(v), col, f'{e["short"]} {v:.2f}×', e["slug"]))
+    base_v = 1.0 / div
     for e in agents:
-        col, samples = e["color"], sorted(e["points"])
-        best, steps = 0.0, []
-        for hr, sp, _ in samples:
+        col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
+        best, steps = base_v, []
+        for pt in samples:
+            hr, sp = pt[0], pt[1]
             best = max(best, sp / div)
             steps.append((hr, best))
-        h0, v0 = steps[0]
-        # Before the first host grade on this replay set nothing is known: dotted lead-in.
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        out.append(f'<line x1="{x(0):.1f}" y1="{y(1.0 / div):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
-                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
-        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d = f"M{x(0.0):.1f},{y(base_v):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
         d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
-        for hr, sp, name in samples:
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
-                       f'data-hr="{hr:.1f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.1f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        for pt in samples:
+            hr, sp, name = pt[0], pt[1], pt[2]
+            is_cp = pt[3] if len(pt) > 3 else True
+            rad = "3.7" if is_cp else "2.2"
+            sw = "1.5" if is_cp else "1.0"
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
+                       f'data-hr="{hr:.2f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                       f'<title>{esc(e["name"])} at {hr:.2f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.2f}×', e["slug"]))
     labels.sort()
@@ -806,7 +859,7 @@ def cost_saved_svg(agents, refs):
     pw, ph = W - L - R, H - T - B
     lo, hi, step = 0.0, 50.0, 10.0
     max_v = max([0.0] + [100.0 * e.get("cost_saved", 0.0) for e in refs]
-                + [100.0 * (1.0 - 1.0 / sp) for e in agents for _, sp, _ in e["points"] if sp > 0])
+                + [100.0 * (1.0 - 1.0 / pt[1]) for e in agents for pt in e["points"] if pt[1] > 0])
     if max_v > 47.0:
         hi = min(100.0, math.ceil((max_v + 5.0) / 10.0) * 10.0)
 
@@ -834,24 +887,26 @@ def cost_saved_svg(agents, refs):
                    f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.1f}% frame time saved</title></line></g>')
         labels.append((y(v), col, f'{e["short"]} {v:.1f}%', e["slug"]))
     for e in agents:
-        col, samples = e["color"], sorted(e["points"])
+        col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
         best, steps = 0.0, []
-        for hr, sp, _ in samples:
+        for pt in samples:
+            hr, sp = pt[0], pt[1]
             sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
             best = max(best, sv)
             steps.append((hr, best))
-        h0, v0 = steps[0]
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        out.append(f'<line x1="{x(0):.1f}" y1="{y(0.0):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
-                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
-        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d = f"M{x(0.0):.1f},{y(0.0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
         d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
-        for hr, sp, name in samples:
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        for pt in samples:
+            hr, sp, name = pt[0], pt[1], pt[2]
+            is_cp = pt[3] if len(pt) > 3 else True
+            rad = "3.7" if is_cp else "2.2"
+            sw = "1.5" if is_cp else "1.0"
             sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
-                       f'data-hr="{hr:.1f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.1f}h: {sv:.1f}% saved ({esc(name)})</title></circle>')
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
+                       f'data-hr="{hr:.2f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                       f'<title>{esc(e["name"])} at {hr:.2f}h: {sv:.1f}% saved ({esc(name)})</title></circle>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.1f}%', e["slug"]))
     labels.sort()
@@ -874,7 +929,7 @@ def fps_svg(agents, refs, base_fps):
     pw, ph = W - L - R, H - T - B
     b_fps = float(base_fps or 34.0)
     vals = [b_fps, 60.0] + [float(e.get("fps") or (b_fps * e["speedup"])) for e in refs] + [
-        b_fps * sp for e in agents for _, sp, _ in e["points"]
+        b_fps * pt[1] for e in agents for pt in e["points"]
     ]
     lo = math.floor(min(vals) / 5.0) * 5.0
     hi = math.ceil((max(vals) + 2.5) / 10.0) * 10.0
@@ -911,25 +966,27 @@ def fps_svg(agents, refs, base_fps):
                    f'stroke-dasharray="5 4" opacity=".8"><title>{esc(e["name"])}: {v:.1f} FPS ({e["speedup"]:.2f}&times;)</title></line></g>')
         labels.append((y(v), col, f'{e["short"]} {v:.0f} fps', e["slug"]))
     for e in agents:
-        col, samples = e["color"], sorted(e["points"])
+        col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
         scale = (float(e["fps"]) / e["speedup"]) if (e.get("fps") and e.get("speedup")) else b_fps
-        best, steps = 0.0, []
-        for hr, sp, _ in samples:
+        best, steps = b_fps, []
+        for pt in samples:
+            hr, sp = pt[0], pt[1]
             fv = scale * sp
             best = max(best, fv)
             steps.append((hr, best))
-        h0, v0 = steps[0]
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        out.append(f'<line x1="{x(0):.1f}" y1="{y(b_fps):.1f}" x2="{x(h0):.1f}" y2="{y(v0):.1f}" stroke="{col}" '
-                   f'stroke-width="1.5" stroke-dasharray="2 4" opacity=".55"/>')
-        d = f"M{x(h0):.1f},{y(v0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps[1:])
+        d = f"M{x(0.0):.1f},{y(b_fps):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
         d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5"/>')
-        for hr, sp, name in samples:
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        for pt in samples:
+            hr, sp, name = pt[0], pt[1], pt[2]
+            is_cp = pt[3] if len(pt) > 3 else True
+            rad = "3.7" if is_cp else "2.2"
+            sw = "1.5" if is_cp else "1.0"
             fv = scale * sp
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="3.8" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
-                       f'data-hr="{hr:.1f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.1f}h: {fv:.1f} FPS ({sp:.2f}&times;, {esc(name)})</title></circle>')
+            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
+                       f'data-hr="{hr:.2f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                       f'<title>{esc(e["name"])} at {hr:.2f}h: {fv:.1f} FPS ({sp:.2f}&times;, {esc(name)})</title></circle>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.0f} fps', e["slug"]))
     labels.sort()
