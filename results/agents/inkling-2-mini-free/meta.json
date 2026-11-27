@@ -5,8 +5,8 @@
   "provider": "Thinking Machines \u00b7 Tinker Free",
   "harness": "omp 19.2.1",
   "graded": "2026-11-27 (live)",
-  "commit": "d1d24fc",
+  "commit": "72e336f",
   "hours": 24,
   "repo_url": "",
-  "notes": "Live 24-hour autonomous v4.1 run on oh-my-pi 19.2.1 (--thinking max, 64K context free tier) via Thinking Machines Tinker API. Verified at 1.288x across all 26 routes at 2.0h (22.3% console frame time saved, 1.000x vs GCC -O2) after migrating the 1996 IDO build cleanly to mips64-elf-gcc -O2 -fno-fast-math."
+  "notes": "Live 24-hour autonomous v4.1 run on oh-my-pi 19.2.1 (--thinking max, 64K context free tier) via Thinking Machines Tinker API. 2/2 valid checkpoints through 4.0h, climbing from 1.288x (2h) to 1.322x across all 26 routes at 4.0h (24.3% console frame time saved, 1.026x vs GCC -O2)."
 }

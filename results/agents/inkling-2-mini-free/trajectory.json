@@ -3,47 +3,47 @@
  "run": "v4.1-inkling-2-mini-free-omp-24h",
  "game": "sm64",
  "primary_profile": "console",
- "paused_seconds": 240,
+ "paused_seconds": 482,
  "best_valid_checkpoint": {
-  "name": "checkpoint-1",
+  "name": "checkpoint-2",
   "source": "working_tree",
-  "git_head": "d1d24fc75624b4a531f687bf7fda217937b371b2",
-  "elapsed_hours": 2.0025,
-  "speedup": 1.287808,
-  "cost_saved": 0.223487,
-  "vs_o2_speedup": 1.0,
-  "reward": 0.0912295
+  "git_head": "72e336f8bbe484b2aac52df2b3a83713243f1f76",
+  "elapsed_hours": 4.0047,
+  "speedup": 1.321676,
+  "cost_saved": 0.243385,
+  "vs_o2_speedup": 1.026299,
+  "reward": 0.10059225
  },
  "run_analytics": {
-  "commits_count": 1,
+  "commits_count": 2,
   "trailing_unverified_commits": 0,
   "agent_trace_summary": {
-   "invocations": 5,
-   "quota_pauses": 1,
-   "mev_profile_mentions": 871,
-   "mev_stress_mentions": 199,
-   "optimization_log_mentions": 271
+   "invocations": 15,
+   "quota_pauses": 2,
+   "mev_profile_mentions": 1731,
+   "mev_stress_mentions": 420,
+   "optimization_log_mentions": 857
   },
-  "public_mev_checks_total": 9,
-  "public_mev_checks_full": 1,
-  "unique_commits_checked": 2,
-  "unique_roms_checked": 3,
-  "public_mev_checks_valid_rate": 0.3333,
+  "public_mev_checks_total": 22,
+  "public_mev_checks_full": 5,
+  "unique_commits_checked": 3,
+  "unique_roms_checked": 6,
+  "public_mev_checks_valid_rate": 0.5,
   "max_public_check_speedup": 1.265442,
   "build_reproducibility_gap": 0.0,
-  "host_checkpoints_total": 1,
-  "host_checkpoints_valid": 1,
+  "host_checkpoints_total": 2,
+  "host_checkpoints_valid": 2,
   "host_checkpoints_valid_rate": 1.0,
   "checkpoint_failure_counts": {},
-  "peak_valid_speedup": 1.287808,
-  "peak_valid_vs_o2_speedup": 1.0,
-  "peak_valid_cost_saved": 0.223487,
-  "peak_valid_public_speedup": 1.265442,
-  "human_expert_progress": 0.5914,
-  "generalization_ratio": 1.017675,
+  "peak_valid_speedup": 1.321676,
+  "peak_valid_vs_o2_speedup": 1.026299,
+  "peak_valid_cost_saved": 0.243385,
+  "peak_valid_public_speedup": 1.301931,
+  "human_expert_progress": 0.644,
+  "generalization_ratio": 1.015166,
   "active_hours_to_first_valid": 2.0025,
-  "active_hours_to_beat_o2": null,
-  "active_hours_at_peak": 2.0025,
+  "active_hours_to_beat_o2": 4.0047,
+  "active_hours_at_peak": 4.0047,
   "final_working_tree_valid": null,
   "final_working_tree_speedup": null,
   "retention_ratio": null,
@@ -720,6 +720,965 @@
     "public_only_pass": false
    },
    "elapsed_hours": 1.5513
+  },
+  {
+   "ts": 1795810015.1,
+   "git_head": "d1d24fc",
+   "git_dirty": true,
+   "rom_sha256": "5335f4010793",
+   "fast": false,
+   "status": "invalid",
+   "profile_valid": false,
+   "reason": "failed gates: ['audio']",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 0.0,
+    "hardware": 1.0,
+    "overall": 0.0,
+    "effective_speedups": {
+     "console": 1.0,
+     "stutter": 1.0,
+     "speed": 1.0,
+     "rdp": 1.0,
+     "rsp": 1.0,
+     "traffic": 1.0,
+     "memory": 1.0
+    },
+    "effective_cost_saved": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "audio_regression",
+    "categories": [
+     "audio_regression"
+    ],
+    "subcategories": [
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "elapsed_hours": 2.2131
+  },
+  {
+   "ts": 1795810193.82,
+   "git_head": "d1d24fc",
+   "git_dirty": true,
+   "rom_sha256": "5335f4010793",
+   "fast": false,
+   "status": "invalid",
+   "profile_valid": false,
+   "reason": "failed gates: ['audio']",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 0.0,
+    "hardware": 1.0,
+    "overall": 0.0,
+    "effective_speedups": {
+     "console": 1.0,
+     "stutter": 1.0,
+     "speed": 1.0,
+     "rdp": 1.0,
+     "rsp": 1.0,
+     "traffic": 1.0,
+     "memory": 1.0
+    },
+    "effective_cost_saved": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "audio_regression",
+    "categories": [
+     "audio_regression"
+    ],
+    "subcategories": [
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "elapsed_hours": 2.2627
+  },
+  {
+   "ts": 1795810966.26,
+   "git_head": "d1d24fc",
+   "git_dirty": false,
+   "rom_sha256": "747c70e8ac37",
+   "fast": false,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.08491025,
+    "stutter": 0.08066325,
+    "speed": 0.095361,
+    "rdp": -0.000372,
+    "rsp": -0.0,
+    "traffic": 0.03035025,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.265442,
+    "stutter": 1.250628,
+    "speed": 1.302645,
+    "rdp": 0.998969,
+    "rsp": 1.0,
+    "traffic": 1.08779,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.209762,
+    "stutter": 0.200402,
+    "speed": 0.232331,
+    "rdp": -0.001032,
+    "rsp": -0.0,
+    "traffic": 0.080705,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.0,
+    "stutter": 1.0,
+    "speed": 1.0,
+    "rdp": 1.0,
+    "rsp": 1.0,
+    "traffic": 1.0,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.265442,
+     "stutter": 1.250628,
+     "speed": 1.302645,
+     "rdp": 0.998969,
+     "rsp": 1.0,
+     "traffic": 1.08779,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.209762,
+     "stutter": 0.200402,
+     "speed": 0.232331,
+     "rdp": -0.001032,
+     "rsp": -0.0,
+     "traffic": 0.080705,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 2.4773
+  },
+  {
+   "ts": 1795811430.18,
+   "git_head": "d1d24fc",
+   "git_dirty": true,
+   "rom_sha256": "5335f4010793",
+   "fast": true,
+   "status": "invalid",
+   "profile_valid": false,
+   "reason": "failed gates: ['audio']",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 0.0,
+    "hardware": 1.0,
+    "overall": 0.0,
+    "effective_speedups": {
+     "console": 1.0,
+     "stutter": 1.0,
+     "speed": 1.0,
+     "rdp": 1.0,
+     "rsp": 1.0,
+     "traffic": 1.0,
+     "memory": 1.0
+    },
+    "effective_cost_saved": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "audio_regression",
+    "categories": [
+     "audio_regression"
+    ],
+    "subcategories": [
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "elapsed_hours": 2.6062
+  },
+  {
+   "ts": 1795811641.38,
+   "git_head": "d1d24fc",
+   "git_dirty": true,
+   "rom_sha256": "5335f4010793",
+   "fast": true,
+   "status": "invalid",
+   "profile_valid": false,
+   "reason": "failed gates: ['audio']",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 0.0,
+    "hardware": 1.0,
+    "overall": 0.0,
+    "effective_speedups": {
+     "console": 1.0,
+     "stutter": 1.0,
+     "speed": 1.0,
+     "rdp": 1.0,
+     "rsp": 1.0,
+     "traffic": 1.0,
+     "memory": 1.0
+    },
+    "effective_cost_saved": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "audio_regression",
+    "categories": [
+     "audio_regression"
+    ],
+    "subcategories": [
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "elapsed_hours": 2.6648
+  },
+  {
+   "ts": 1795811754.16,
+   "git_head": "d1d24fc",
+   "git_dirty": false,
+   "rom_sha256": "747c70e8ac37",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.08491025,
+    "stutter": 0.08066325,
+    "speed": 0.095361,
+    "rdp": -0.000372,
+    "rsp": -0.0,
+    "traffic": 0.03035025,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.265442,
+    "stutter": 1.250628,
+    "speed": 1.302645,
+    "rdp": 0.998969,
+    "rsp": 1.0,
+    "traffic": 1.08779,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.209762,
+    "stutter": 0.200402,
+    "speed": 0.232331,
+    "rdp": -0.001032,
+    "rsp": -0.0,
+    "traffic": 0.080705,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.0,
+    "stutter": 1.0,
+    "speed": 1.0,
+    "rdp": 1.0,
+    "rsp": 1.0,
+    "traffic": 1.0,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.265442,
+     "stutter": 1.250628,
+     "speed": 1.302645,
+     "rdp": 0.998969,
+     "rsp": 1.0,
+     "traffic": 1.08779,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.209762,
+     "stutter": 0.200402,
+     "speed": 0.232331,
+     "rdp": -0.001032,
+     "rsp": -0.0,
+     "traffic": 0.080705,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 2.6962
+  },
+  {
+   "ts": 1795812183.34,
+   "git_head": "d1d24fc",
+   "git_dirty": false,
+   "rom_sha256": "747c70e8ac37",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.08491025,
+    "stutter": 0.08066325,
+    "speed": 0.095361,
+    "rdp": -0.000372,
+    "rsp": -0.0,
+    "traffic": 0.03035025,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.265442,
+    "stutter": 1.250628,
+    "speed": 1.302645,
+    "rdp": 0.998969,
+    "rsp": 1.0,
+    "traffic": 1.08779,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.209762,
+    "stutter": 0.200402,
+    "speed": 0.232331,
+    "rdp": -0.001032,
+    "rsp": -0.0,
+    "traffic": 0.080705,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.0,
+    "stutter": 1.0,
+    "speed": 1.0,
+    "rdp": 1.0,
+    "rsp": 1.0,
+    "traffic": 1.0,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.265442,
+     "stutter": 1.250628,
+     "speed": 1.302645,
+     "rdp": 0.998969,
+     "rsp": 1.0,
+     "traffic": 1.08779,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.209762,
+     "stutter": 0.200402,
+     "speed": 0.232331,
+     "rdp": -0.001032,
+     "rsp": -0.0,
+     "traffic": 0.080705,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 2.8154
+  },
+  {
+   "ts": 1795813075.61,
+   "git_head": "d1d24fc",
+   "git_dirty": false,
+   "rom_sha256": "747c70e8ac37",
+   "fast": false,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.08491025,
+    "stutter": 0.08066325,
+    "speed": 0.095361,
+    "rdp": -0.000372,
+    "rsp": -0.0,
+    "traffic": 0.03035025,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.265442,
+    "stutter": 1.250628,
+    "speed": 1.302645,
+    "rdp": 0.998969,
+    "rsp": 1.0,
+    "traffic": 1.08779,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.209762,
+    "stutter": 0.200402,
+    "speed": 0.232331,
+    "rdp": -0.001032,
+    "rsp": -0.0,
+    "traffic": 0.080705,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.0,
+    "stutter": 1.0,
+    "speed": 1.0,
+    "rdp": 1.0,
+    "rsp": 1.0,
+    "traffic": 1.0,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.265442,
+     "stutter": 1.250628,
+     "speed": 1.302645,
+     "rdp": 0.998969,
+     "rsp": 1.0,
+     "traffic": 1.08779,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.209762,
+     "stutter": 0.200402,
+     "speed": 0.232331,
+     "rdp": -0.001032,
+     "rsp": -0.0,
+     "traffic": 0.080705,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 3.0632
+  },
+  {
+   "ts": 1795813747.54,
+   "git_head": "d1d24fc",
+   "git_dirty": false,
+   "rom_sha256": "747c70e8ac37",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.08491025,
+    "stutter": 0.08066325,
+    "speed": 0.095361,
+    "rdp": -0.000372,
+    "rsp": -0.0,
+    "traffic": 0.03035025,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.265442,
+    "stutter": 1.250628,
+    "speed": 1.302645,
+    "rdp": 0.998969,
+    "rsp": 1.0,
+    "traffic": 1.08779,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.209762,
+    "stutter": 0.200402,
+    "speed": 0.232331,
+    "rdp": -0.001032,
+    "rsp": -0.0,
+    "traffic": 0.080705,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.0,
+    "stutter": 1.0,
+    "speed": 1.0,
+    "rdp": 1.0,
+    "rsp": 1.0,
+    "traffic": 1.0,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.265442,
+     "stutter": 1.250628,
+     "speed": 1.302645,
+     "rdp": 0.998969,
+     "rsp": 1.0,
+     "traffic": 1.08779,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.209762,
+     "stutter": 0.200402,
+     "speed": 0.232331,
+     "rdp": -0.001032,
+     "rsp": -0.0,
+     "traffic": 0.080705,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 3.2499
+  },
+  {
+   "ts": 1795814688.15,
+   "git_head": "d1d24fc",
+   "git_dirty": true,
+   "rom_sha256": "514ba7fa7a3c",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.09516325,
+    "stutter": 0.09189775,
+    "speed": 0.09990425,
+    "rdp": 0.0492085,
+    "rsp": -0.0,
+    "traffic": 0.05546375,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.301931,
+    "stutter": 1.290196,
+    "speed": 1.319157,
+    "rdp": 1.14618,
+    "rsp": 1.0,
+    "traffic": 1.166232,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.23191,
+    "stutter": 0.224924,
+    "speed": 0.24194,
+    "rdp": 0.127537,
+    "rsp": -0.0,
+    "traffic": 0.142538,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.028835,
+    "stutter": 1.031639,
+    "speed": 1.012676,
+    "rdp": 1.147363,
+    "rsp": 1.0,
+    "traffic": 1.072111,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.301931,
+     "stutter": 1.290196,
+     "speed": 1.319157,
+     "rdp": 1.14618,
+     "rsp": 1.0,
+     "traffic": 1.166232,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.23191,
+     "stutter": 0.224924,
+     "speed": 0.24194,
+     "rdp": 0.127537,
+     "rsp": -0.0,
+     "traffic": 0.142538,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 3.5112
+  },
+  {
+   "ts": 1795814769.11,
+   "git_head": "72e336f",
+   "git_dirty": true,
+   "rom_sha256": "de02519b1f0e",
+   "fast": true,
+   "status": "invalid",
+   "profile_valid": false,
+   "reason": "failed gates: ['audio']",
+   "rewards": {
+    "console": -1.0,
+    "stutter": -1.0,
+    "speed": -1.0,
+    "rdp": -1.0,
+    "rsp": -1.0,
+    "traffic": -1.0,
+    "memory": -1.0
+   },
+   "speedups": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "cost_saved": {
+    "console": 0.0,
+    "stutter": 0.0,
+    "speed": 0.0,
+    "rdp": 0.0,
+    "rsp": 0.0,
+    "traffic": 0.0,
+    "memory": 0.0
+   },
+   "vs_o2_speedups": {},
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 0.0,
+    "hardware": 1.0,
+    "overall": 0.0,
+    "effective_speedups": {
+     "console": 1.0,
+     "stutter": 1.0,
+     "speed": 1.0,
+     "rdp": 1.0,
+     "rsp": 1.0,
+     "traffic": 1.0,
+     "memory": 1.0
+    },
+    "effective_cost_saved": {
+     "console": 0.0,
+     "stutter": 0.0,
+     "speed": 0.0,
+     "rdp": 0.0,
+     "rsp": 0.0,
+     "traffic": 0.0,
+     "memory": 0.0
+    }
+   },
+   "failure_attribution": {
+    "primary_category": "audio_regression",
+    "categories": [
+     "audio_regression"
+    ],
+    "subcategories": [
+     "audio:spectral_or_snr_degradation"
+    ],
+    "public_only_pass": false
+   },
+   "elapsed_hours": 3.5336
+  },
+  {
+   "ts": 1795814887.73,
+   "git_head": "72e336f",
+   "git_dirty": false,
+   "rom_sha256": "514ba7fa7a3c",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.09516325,
+    "stutter": 0.09189775,
+    "speed": 0.09990425,
+    "rdp": 0.0492085,
+    "rsp": -0.0,
+    "traffic": 0.05546375,
+    "memory": 0.0078045
+   },
+   "speedups": {
+    "console": 1.301931,
+    "stutter": 1.290196,
+    "speed": 1.319157,
+    "rdp": 1.14618,
+    "rsp": 1.0,
+    "traffic": 1.166232,
+    "memory": 1.021875
+   },
+   "cost_saved": {
+    "console": 0.23191,
+    "stutter": 0.224924,
+    "speed": 0.24194,
+    "rdp": 0.127537,
+    "rsp": -0.0,
+    "traffic": 0.142538,
+    "memory": 0.021407
+   },
+   "vs_o2_speedups": {
+    "console": 1.028835,
+    "stutter": 1.031639,
+    "speed": 1.012676,
+    "rdp": 1.147363,
+    "rsp": 1.0,
+    "traffic": 1.072111,
+    "memory": 1.0
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.301931,
+     "stutter": 1.290196,
+     "speed": 1.319157,
+     "rdp": 1.14618,
+     "rsp": 1.0,
+     "traffic": 1.166232,
+     "memory": 1.021875
+    },
+    "effective_cost_saved": {
+     "console": 0.23191,
+     "stutter": 0.224924,
+     "speed": 0.24194,
+     "rdp": 0.127537,
+     "rsp": -0.0,
+     "traffic": 0.142538,
+     "memory": 0.021407
+    }
+   },
+   "elapsed_hours": 3.5666
+  },
+  {
+   "ts": 1795815100.71,
+   "git_head": "72e336f",
+   "git_dirty": true,
+   "rom_sha256": "b62b981e3c37",
+   "fast": true,
+   "status": "valid",
+   "profile_valid": true,
+   "reason": null,
+   "rewards": {
+    "console": 0.0744425,
+    "stutter": 0.07839475,
+    "speed": 0.074662,
+    "rdp": 0.04925825,
+    "rsp": 0.196127,
+    "traffic": 0.04988875,
+    "memory": 0.01017425
+   },
+   "speedups": {
+    "console": 1.229243,
+    "stutter": 1.242787,
+    "speed": 1.229991,
+    "rdp": 1.146338,
+    "rsp": 1.722505,
+    "traffic": 1.148344,
+    "memory": 1.028611
+   },
+   "cost_saved": {
+    "console": 0.186491,
+    "stutter": 0.195357,
+    "speed": 0.186986,
+    "rdp": 0.127657,
+    "rsp": 0.41945,
+    "traffic": 0.129181,
+    "memory": 0.027815
+   },
+   "vs_o2_speedups": {
+    "console": 0.971394,
+    "stutter": 0.99373,
+    "speed": 0.944226,
+    "rdp": 1.147521,
+    "rsp": 1.722505,
+    "traffic": 1.055667,
+    "memory": 1.006592
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.229243,
+     "stutter": 1.242787,
+     "speed": 1.229991,
+     "rdp": 1.146338,
+     "rsp": 1.722505,
+     "traffic": 1.148344,
+     "memory": 1.028611
+    },
+    "effective_cost_saved": {
+     "console": 0.186491,
+     "stutter": 0.195357,
+     "speed": 0.186986,
+     "rdp": 0.127657,
+     "rsp": 0.41945,
+     "traffic": 0.129181,
+     "memory": 0.027815
+    }
+   },
+   "elapsed_hours": 3.6258
   }
  ],
  "host_checkpoints": [
@@ -932,6 +1891,218 @@
      "rsp": 1.0,
      "traffic": 1.092233,
      "memory": 1.021865
+    }
+   }
+  },
+  {
+   "name": "checkpoint-2",
+   "elapsed_hours": 4.0047,
+   "wall_hours": 4.0714,
+   "paused_seconds": 240,
+   "git_head": "72e336f8bbe484b2aac52df2b3a83713243f1f76",
+   "workload_set": "4e0c9b81a1463feafd389b7e831aceb2190f76a0837bb262200d278a25b3b810",
+   "version": "4.1",
+   "status": "valid",
+   "toolchain": {
+    "compiler": "gcc",
+    "ucode": "f3d_old",
+    "opt_flags": "-O2 -fno-fast-math",
+    "trap_insns": 165,
+    "elf_bytes": 8597244
+   },
+   "rewards": {
+    "console": 0.10059225,
+    "stutter": 0.10569425,
+    "speed": 0.10268225,
+    "rdp": 0.05622375,
+    "rsp": 0.0,
+    "traffic": 0.060951,
+    "memory": 0.00781525
+   },
+   "speedups": {
+    "console": 1.321676,
+    "stutter": 1.340505,
+    "speed": 1.329358,
+    "rdp": 1.168692,
+    "rsp": 1.0,
+    "traffic": 1.184111,
+    "memory": 1.021905
+   },
+   "cost_saved": {
+    "console": 0.243385,
+    "stutter": 0.254013,
+    "speed": 0.247757,
+    "rdp": 0.144343,
+    "rsp": 0.0,
+    "traffic": 0.155485,
+    "memory": 0.021435
+   },
+   "vs_o2_speedups": {
+    "console": 1.026299,
+    "stutter": 1.028468,
+    "speed": 1.013709,
+    "rdp": 1.170057,
+    "rsp": 1.0,
+    "traffic": 1.082884,
+    "memory": 1.000001
+   },
+   "sections": {
+    "public": {
+     "count": 6,
+     "weight": 0.0,
+     "speedup": 1.301931,
+     "cost_saved": 0.23191,
+     "vs_o2_speedup": 1.028835,
+     "vs_o2_cost_saved": 0.028027
+    },
+    "heldout_scripted": {
+     "count": 14,
+     "weight": 0.75,
+     "speedup": 1.325901,
+     "cost_saved": 0.245796,
+     "vs_o2_speedup": 1.032497,
+     "vs_o2_cost_saved": 0.031474
+    },
+    "heldout_mash": {
+     "count": 6,
+     "weight": 0.25,
+     "speedup": 1.309083,
+     "cost_saved": 0.236106,
+     "vs_o2_speedup": 1.007926,
+     "vs_o2_cost_saved": 0.007864
+    }
+   },
+   "fidelity": {
+    "execution": 1.0,
+    "gameplay": 1.0,
+    "video_ssim": 1.0,
+    "audio": 1.0,
+    "hardware": 1.0,
+    "overall": 1.0,
+    "effective_speedups": {
+     "console": 1.321676,
+     "stutter": 1.340505,
+     "speed": 1.329358,
+     "rdp": 1.168692,
+     "rsp": 1.0,
+     "traffic": 1.184111,
+     "memory": 1.021905
+    },
+    "effective_cost_saved": {
+     "console": 0.243385,
+     "stutter": 0.254013,
+     "speed": 0.247757,
+     "rdp": 0.144343,
+     "rsp": 0.0,
+     "traffic": 0.155485,
+     "memory": 0.021435
+    },
+    "generalization_ratio": 1.015166
+   },
+   "capability_ruler": {
+    "verified": true,
+    "toolchain": {
+     "compiler": "gcc",
+     "ucode": "f3d_old",
+     "opt_flags": "-O2 -fno-fast-math",
+     "trap_insns": 165,
+     "elf_bytes": 8597244
+    },
+    "subsystem_speedups": {
+     "console": 1.321676,
+     "stutter_p99": 1.340505,
+     "cpu": 1.329358,
+     "rsp": 1.0,
+     "rsp_gfx": 1.0,
+     "rsp_aud": 1.0,
+     "rdp_effective": 1.187536,
+     "rdp_raw": 1.168692,
+     "rdram_traffic": 1.184111,
+     "memory_footprint": 1.021905
+    },
+    "subsystem_cost_saved": {
+     "console": 0.243385,
+     "stutter_p99": 0.254013,
+     "cpu": 0.247757,
+     "rsp": 0.0,
+     "rsp_gfx": 0.0,
+     "rsp_aud": 0.0,
+     "rdp_effective": 0.15792,
+     "rdp_raw": 0.144343,
+     "rdram_traffic": 0.155485,
+     "memory_footprint": 0.021435
+    },
+    "dominant_bottleneck_share": {
+     "cpu": 0.8462,
+     "rsp": 0.0769,
+     "rdp": 0.0769,
+     "mem": 0.0
+    },
+    "raw_vs_o2_speedup": 1.026299,
+    "compiler_tier_progress": 1.0,
+    "splits": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "pass_rate": 1.0,
+      "raw_console_speedup": 1.301931
+     },
+     "heldout_scripted": {
+      "passed": 14,
+      "total": 14,
+      "pass_rate": 1.0,
+      "raw_console_speedup": 1.325901
+     },
+     "heldout_mash": {
+      "passed": 6,
+      "total": 6,
+      "pass_rate": 1.0,
+      "raw_console_speedup": 1.309083
+     }
+    },
+    "generalization_ratio": 1.015166
+   },
+   "diagnostics": {
+    "workloads_total": 26,
+    "workloads_completed": 26,
+    "workloads_passed": 26,
+    "sections": {
+     "public": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     },
+     "heldout_scripted": {
+      "passed": 14,
+      "total": 14,
+      "valid": true
+     },
+     "heldout_mash": {
+      "passed": 6,
+      "total": 6,
+      "valid": true
+     }
+    },
+    "public_valid": true,
+    "heldout_valid": true,
+    "generalization_ratio": 1.015166,
+    "unverified_public_speedups": {
+     "console": 1.301931,
+     "stutter": 1.290196,
+     "speed": 1.319157,
+     "rdp": 1.14618,
+     "rsp": 1.0,
+     "traffic": 1.166232,
+     "memory": 1.021875
+    },
+    "unverified_passed_speedups": {
+     "console": 1.316447,
+     "stutter": 1.32832,
+     "speed": 1.326137,
+     "rdp": 1.162072,
+     "rsp": 1.0,
+     "traffic": 1.178878,
+     "memory": 1.021866
     }
    }
   }

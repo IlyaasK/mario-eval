@@ -1,0 +1,12 @@
+{
+  "title": "DeepSeek-V4.1-Flash (max)",
+  "model": "DeepSeek-V4.1-Flash",
+  "kind": "live",
+  "provider": "DeepSeek \u00b7 River (max reasoning)",
+  "harness": "dsh 0.2.3-alpha.2",
+  "graded": "2026-11-27 (live)",
+  "commit": "d9b78c7",
+  "hours": 24,
+  "repo_url": "",
+  "notes": "Live 24-hour autonomous v4.1 run on DeepSeek Harness 0.2.3-alpha.2 (reasoningEffort=max) via River. Verified at 1.272x across all 26 routes at its first 2.0h checkpoint (21.4% console frame time saved, 1.000 fidelity) via IDO -O2 compilation, F3DEX2 microcode migration, RA_ZB_OPA_SURF reduced-aliasing opaque render modes, and .text I-cache padding sweeps."
+}

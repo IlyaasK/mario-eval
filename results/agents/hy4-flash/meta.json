@@ -5,8 +5,8 @@
   "provider": "OpenCode \u00b7 HY4 Flash",
   "harness": "opencode 2.4.2",
   "graded": "2026-11-27 (live)",
-  "commit": "ede79ad",
+  "commit": "21d48c8",
   "hours": 24,
   "repo_url": "",
-  "notes": "Live 24-hour autonomous v4.1 run on opencode 2.4.2 (--thinking high). 5/5 valid host checkpoints through 10.0h, climbing from 1.358x (2h) -> 1.385x (4h) -> 1.387x (8h) -> 1.417x at 10.0h (29.4% console frame time saved, 1.100x vs GCC -O2, 1.000 SSIM across all 26 routes) via GCC -O2, F3DEX2 microcode, once-per-frame LookAt emission, shadow graph hoisting, and synthesis object I-cache padding."
+  "notes": "Live 24-hour autonomous v4.1 run on opencode 2.4.2 (--thinking high). 6/6 valid host checkpoints through 12.0h, climbing from 1.358x (2h) -> 1.385x (4h) -> 1.387x (8h) -> 1.417x (10h) -> 1.425x at 12.0h (29.8% console frame time saved, 1.106x vs GCC -O2, 1.000 SSIM across all 26 routes) via GCC -O2, F3DEX2 microcode, once-per-frame LookAt emission, shadow graph hoisting, and synthesis object I-cache padding."
 }

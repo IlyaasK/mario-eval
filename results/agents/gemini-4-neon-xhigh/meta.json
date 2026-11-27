@@ -8,5 +8,5 @@
   "commit": "d2b5187",
   "hours": 24,
   "repo_url": "",
-  "notes": "Live 24-hour autonomous v4.1 run on agy 1.5.18 (--effort xhigh). At 2.0h (checkpoint-1), already verified at 1.715x across all 26 routes (41.7% console frame time saved, 1.332x vs GCC -O2 \u2014 surpassing both Kaze Master 1.607x and Beyond Kaze 1.641x on the 26-route split) via GCC -O3/-Os I-cache layout, F3DEX2 microcode, lazy Mtx allocation, table-free trig, and planar shadows. Subsequent in-progress milestones have pushed public 6-course speedup past 1.93x while iterating on held-out visual parity."
+  "notes": "Live 24-hour autonomous v4.1 run on agy 1.5.18 (--effort xhigh). Verified at 1.715x across all 26 routes at 2.0h (41.7% console frame time saved, 1.332x vs GCC -O2 \u2014 surpassing both Kaze Master 1.607x and Beyond Kaze 1.641x on the 26-route split) via GCC -O3/-Os I-cache layout, F3DEX2 microcode, lazy Mtx allocation, table-free trig, and planar shadows. Subsequent checkpoints pushed public 6-course speedup past 1.93x while hitting held-out visual regressions caught by the v4.1 video gate."
 }
