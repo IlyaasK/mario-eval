@@ -2144,6 +2144,66 @@ def effective_variant(atoms, workload, route_levels=None):
     return "+".join(v["id"] for v in essential_atoms([v for v in atoms if affects(v)])) or None
 
 
+def _save_variant_rom(vrom, cache, variant_id):
+    vrom_dir = cache / "variant-roms"
+    vrom_dir.mkdir(parents=True, exist_ok=True)
+    (vrom_dir / f"{variant_id}.z64.z").write_bytes(zlib.compress(vrom.read_bytes(), 6))
+    idle_p = vrom.parent / "built.idle.json"
+    if idle_p.is_file():
+        shutil.copy2(idle_p, vrom_dir / f"{variant_id}.idle.json")
+
+
+def build_variant_roms(args):
+    """Compile all accepted visual variant ROMs incrementally into <cache>/variant-roms/."""
+    corpus = pathlib.Path(args.corpus)
+    cfg = json.loads((corpus / "grader.json").read_text())
+    cache = pathlib.Path(args.cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    base_tree = pathlib.Path(tempfile.mkdtemp(prefix="mev-vrom-base-"))
+    f3dex2_tree = None
+    built_count = 0
+    try:
+        _copy_source(args.source, base_tree / "src")
+        rom, err = _build_incremental_tree(base_tree / "src", cfg, cache / "build-vrom-base.log")
+        if rom is None:
+            raise GraderError(f"baseline failed to build ({err})")
+        shutil.rmtree(rom.parent, ignore_errors=True)
+
+        for variant_id, atoms in variant_combinations(cfg):
+            atom_ids = [v["id"] for v in atoms]
+            if atom_ids == ["f3dex2"]:
+                f3dex2_tree = patched_copy(args.source, [(corpus / atoms[0]["patch"]).resolve()])
+                vrom, verr = _build_incremental_tree(f3dex2_tree / "src", cfg, cache / f"build-{variant_id}.log")
+                vwork = None
+            elif "f3dex2" in atom_ids and f3dex2_tree is not None:
+                rest_patches = [(corpus / v["patch"]).resolve() for v in atoms if v["id"] != "f3dex2"]
+                vwork = _clone_compiled_tree_with_patches(f3dex2_tree / "src", rest_patches)
+                vrom, verr = _build_incremental_tree(vwork / "src", cfg, cache / f"build-{variant_id}.log")
+            elif all(v["id"] != "f3dex2" for v in atoms):
+                patches = [(corpus / v["patch"]).resolve() for v in atoms]
+                vwork = _clone_compiled_tree_with_patches(base_tree / "src", patches)
+                vrom, verr = _build_incremental_tree(vwork / "src", cfg, cache / f"build-{variant_id}.log")
+            else:
+                vwork = patched_copy(args.source, [(corpus / v["patch"]).resolve() for v in atoms])
+                vrom, verr = build(vwork / "src", cfg, cache / f"build-{variant_id}.log", include_play=False)
+            if vrom is None:
+                if vwork is not None:
+                    shutil.rmtree(vwork, ignore_errors=True)
+                raise GraderError(f"variant {variant_id} failed to build: {verr}")
+            try:
+                _save_variant_rom(vrom, cache, variant_id)
+                built_count += 1
+            finally:
+                shutil.rmtree(vrom.parent, ignore_errors=True)
+                if vwork is not None:
+                    shutil.rmtree(vwork, ignore_errors=True)
+    finally:
+        shutil.rmtree(base_tree, ignore_errors=True)
+        if f3dex2_tree is not None:
+            shutil.rmtree(f3dex2_tree, ignore_errors=True)
+    print(f"built {built_count} accepted variant ROMs in {cache / 'variant-roms'}")
+
+
 def precompute(args):
     corpus = pathlib.Path(args.corpus)
     cfg = json.loads((corpus / "grader.json").read_text())
@@ -2243,6 +2303,7 @@ def precompute(args):
                     shutil.rmtree(vwork, ignore_errors=True)
                 raise GraderError(f"variant {variant_id} failed to build: {verr}")
             try:
+                _save_variant_rom(vrom, cache, variant_id)
                 vdir = cache / "variant-runs" / variant_id
                 vres = run_all(vrom, own, cfg["frames"], vdir, generous, cfg["run_timeout_s"])
                 for w in own:
@@ -2397,6 +2458,29 @@ def export_public(args):
     for bname in ("baseline.z64", "baseline.idle.json"):
         if (src_cache / bname).is_file():
             shutil.copy2(src_cache / bname, dst_cache / bname)
+
+    vrom_src = src_cache / "variant-roms"
+    if vrom_src.is_dir():
+        vrom_dst = dst_cache / "variants"
+        vrom_dst.mkdir(parents=True, exist_ok=True)
+        available = []
+        non_rr_base = {}
+        for orig_k, anon_id in sorted(combo_anon.items()):
+            src_z = vrom_src / f"{orig_k}.z64.z"
+            if src_z.is_file():
+                shutil.copy2(src_z, vrom_dst / f"{anon_id}.z64.z")
+                available.append(anon_id)
+            src_idle = vrom_src / f"{orig_k}.idle.json"
+            if src_idle.is_file():
+                shutil.copy2(src_idle, vrom_dst / f"{anon_id}.idle.json")
+            base_atoms = [p for p in orig_k.split("+") if p != "rr-statics"]
+            base_k = "+".join(base_atoms)
+            non_rr_base[anon_id] = combo_anon.get(base_k, "") if base_k else ""
+        out_index["variant_roms"] = {
+            "available": sorted(available),
+            "non_rr_base": non_rr_base,
+        }
+
     (dst_cache / "index.json").write_text(json.dumps(out_index, indent=1))
 
 
@@ -3449,6 +3533,11 @@ def main():
     p_exp.add_argument("--cache", required=True)
     p_exp.add_argument("--out", required=True)
 
+    p_vrm = sub.add_parser("build-variant-roms")
+    p_vrm.add_argument("source")
+    p_vrm.add_argument("--corpus", required=True)
+    p_vrm.add_argument("--cache", required=True)
+
     args = ap.parse_args()
     try:
         if args.cmd == "precompute":
@@ -3457,6 +3546,8 @@ def main():
             build_submission(args)
         elif args.cmd == "export-public":
             export_public(args)
+        elif args.cmd == "build-variant-roms":
+            build_variant_roms(args)
         else:
             s = grade(args)
             print(json.dumps({

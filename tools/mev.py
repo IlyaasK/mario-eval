@@ -898,18 +898,139 @@ def check(args):
     sys.exit(r.returncode if r.returncode != 0 else (0 if check_ok else 1))
 
 
-def _baseline_idle_args():
-    b_idle = CACHE / "baseline.idle.json"
-    if not b_idle.is_file():
+def _idle_args_from_file(p):
+    if not p.is_file():
         return []
     out = []
-    for r in json.loads(b_idle.read_text()):
+    for r in json.loads(p.read_text()):
         out += ["--idle-range", r]
     return out
 
 
-def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None):
-    """Compare candidate run in cand_dir against baseline.z64 run in base_dir."""
+def _baseline_idle_args():
+    return _idle_args_from_file(CACHE / "baseline.idle.json")
+
+
+def _variant_rom_bank():
+    idx_p = CACHE / "index.json"
+    vdir = CACHE / "variants"
+    if not idx_p.is_file() or not vdir.is_dir():
+        return [], {}, {}, {}
+    idx = json.loads(idx_p.read_text())
+    vr = idx.get("variant_roms") or {}
+    avail = [v for v in vr.get("available", []) if (vdir / f"{v}.z64.z").is_file()]
+    non_rr = vr.get("non_rr_base") or {}
+    wls = idx.get("workloads") or {}
+    bob_map = (wls.get("bob") or {}).get("variants") or {}
+    rr_map = (wls.get("rr") or {}).get("variants") or {}
+    return avail, non_rr, bob_map, rr_map
+
+
+def _materialize_variant_rom(vid, scratch_dir):
+    import zlib
+    vrom_dir = scratch_dir / "_vroms"
+    vrom_dir.mkdir(parents=True, exist_ok=True)
+    dst = vrom_dir / f"{vid}.z64"
+    if not dst.is_file():
+        raw = zlib.decompress((CACHE / "variants" / f"{vid}.z64.z").read_bytes())
+        tmp = vrom_dir / f".{vid}.{os.getpid()}.z64"
+        tmp.write_bytes(raw)
+        os.replace(tmp, dst)
+    idle_p = CACHE / "variants" / f"{vid}.idle.json"
+    iargs = _idle_args_from_file(idle_p) if idle_p.is_file() else _baseline_idle_args()
+    return dst, iargs
+
+
+def _detect_preferred_variants(rom, cfg, c_iargs, scratch_dir):
+    """Identify which accepted visual variant combinations match `rom` on public bob + rr."""
+    avail, _non_rr, bob_map, rr_map = _variant_rom_bank()
+    if not avail:
+        return []
+    r_sha = hashlib.sha256(rom.read_bytes()).hexdigest()[:16]
+    cache_p = pathlib.Path("/tmp/mev-vprobe.json")
+    cached = {}
+    if cache_p.is_file():
+        try:
+            cached = json.loads(cache_p.read_text())
+            if isinstance(cached, dict) and r_sha in cached and isinstance(cached[r_sha], list):
+                return list(cached[r_sha])
+        except Exception:
+            cached = {}
+
+    sys.path.insert(0, "/opt/mario-eval")
+    from grader.grade import compare_video, load_run
+
+    n_f = int(cfg.get("frames", 240))
+    pdir = scratch_dir / "_vprobe"
+    bob_rep = CORPUS / "replays/public/bob.txt"
+    rr_rep = CORPUS / "replays/public/rr.txt"
+    if not (bob_rep.is_file() and rr_rep.is_file() and (CACHE / "runs/bob/frames.jsonl").is_file() and (CACHE / "runs/rr/frames.jsonl").is_file()):
+        return []
+    (pdir / "bob").mkdir(parents=True, exist_ok=True)
+    (pdir / "rr").mkdir(parents=True, exist_ok=True)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        fb = pool.submit(_run_one_n64, rom, "probe-bob", bob_rep, pdir / "bob", n_f, c_iargs)
+        fr = pool.submit(_run_one_n64, rom, "probe-rr", rr_rep, pdir / "rr", n_f, c_iargs)
+        fb.result()
+        fr.result()
+
+    def _passing_stored(wid, vmap):
+        c_dir = pdir / wid
+        c_res = json.loads((c_dir / "result.json").read_text()) if (c_dir / "result.json").is_file() else {}
+        if c_res.get("status") != "completed" or int(c_res.get("frames", 0)) != n_f:
+            return {}
+        cand = load_run(c_dir)
+        ref_dir = CACHE / "runs" / wid
+        ref_rows = [json.loads(l) for l in (ref_dir / "frames.jsonl").read_text().splitlines() if l.strip()]
+        ok_scores = {}
+        vd0 = compare_video(ref_dir, {}, cand["video_path"], ref_rows, cand["rows"], cfg, max_threads=2)
+        if vd0.get("pass"):
+            ok_scores[""] = float(vd0.get("worst_bad_fraction", 0.0))
+        tdir = pdir / f"sref-{wid}"
+        tdir.mkdir(parents=True, exist_ok=True)
+        for sv in sorted(set(vmap.values()) - {""}):
+            sv_file = ref_dir / f"video.{sv}.bin.z"
+            if not sv_file.is_file():
+                continue
+            link_p = tdir / "video.bin.z"
+            link_p.unlink(missing_ok=True)
+            link_p.symlink_to(sv_file)
+            vds = compare_video(tdir, {}, cand["video_path"], ref_rows, cand["rows"], cfg, max_threads=2)
+            if vds.get("pass"):
+                ok_scores[sv] = float(vds.get("worst_bad_fraction", 0.0))
+        return ok_scores
+
+    try:
+        bob_ok = _passing_stored("bob", bob_map)
+        rr_ok = _passing_stored("rr", rr_map)
+    finally:
+        shutil.rmtree(pdir, ignore_errors=True)
+
+    scored = []
+    for k in [""] + avail:
+        bs = "" if k == "" else bob_map.get(k, "")
+        rs = "" if k == "" else rr_map.get(k, "")
+        if bs in bob_ok and rs in rr_ok:
+            scored.append((bob_ok[bs] + rr_ok[rs], k))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    preferred = [k for _, k in scored]
+    try:
+        if not isinstance(cached, dict):
+            cached = {}
+        while len(cached) >= 8:
+            cached.pop(next(iter(cached)))
+        cached[r_sha] = preferred
+        tmp_c = pathlib.Path(f"/tmp/.mev-vprobe.{os.getpid()}.json")
+        tmp_c.write_text(json.dumps(cached))
+        os.replace(tmp_c, cache_p)
+    except OSError:
+        pass
+    return preferred
+
+
+def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None, rpath=None, scratch_dir=None, preferred_variants=None):
+    """Compare candidate run in cand_dir against baseline.z64 and accepted visual variant ROMs."""
     import zlib
     sys.path.insert(0, "/opt/mario-eval")
     from grader.grade import compare_audio, compare_obs, compare_video, load_run, metrics
@@ -960,6 +1081,8 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
     )
 
     gp_cfg = cfg
+    lvl_hi = 0
+    used_rr_statics = False
     # On Rainbow Ride (LEVEL_RR = 15), accepted `rr-statics` bakes 14 yaw-0 decoration objects into static DLs.
     if len(ref["obs"]) >= 8:
         lvl_hi = (int.from_bytes(ref["obs"][4:8], "big") >> 16) & 0xFFFF
@@ -967,6 +1090,7 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
             r_ac = int.from_bytes(ref["obs"][31 * 4:32 * 4], "big")
             c_ac = int.from_bytes(cand["obs"][31 * 4:32 * 4], "big") if len(cand["obs"]) >= 128 else -1
             if r_ac - c_ac == 14:
+                used_rr_statics = True
                 exact_no_ac = [f for f in cfg.get("gameplay", {}).get("exact_fields", []) if f != "actor_count"]
                 gp_cfg = {**cfg, "gameplay": {**cfg.get("gameplay", {}), "exact_fields": exact_no_ac, "actor_tolerance": None}}
     gp = compare_obs(ref["obs"], cand["obs"], frames, cfg.get("contract", "sm64"), gp_cfg)
@@ -975,11 +1099,87 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
     if not ref_vid_z.is_file():
         ref_vid_z.write_bytes(zlib.compress((base_dir / "video.bin").read_bytes(), 1))
     vd = compare_video(base_dir, {}, cand["video_path"], ref["rows"], cand["rows"], cfg)
-    # Custom/stress replays do not have precomputed variant videos (f3dex2, no-lod, rr-statics),
-    # so accept high structural block-SSIM (>= 0.90, worst >= 0.78) when only variant pixels differ.
-    ssim = float(vd.get("ssim_score", 0.0))
-    wssim = float(vd.get("worst_ssim_frame_score", 0.0))
-    vd_ok = bool(vd.get("pass")) or (ssim >= 0.90 and wssim >= 0.78)
+    strict_orig_vid = bool(vd.get("pass"))
+    avail, non_rr, _bob_map, _rr_map = _variant_rom_bank()
+
+    if avail and rpath is not None and scratch_dir is not None:
+        if not strict_orig_vid:
+            is_rr = (lvl_hi == 15)
+
+            def _eff_vid(k):
+                if not k:
+                    return ""
+                if not is_rr:
+                    return non_rr.get(k, k)
+                has_rr = (non_rr.get(k, k) != k)
+                return k if (has_rr == used_rr_statics) else None
+
+            tier1 = []
+            for k in (preferred_variants or []):
+                ev = _eff_vid(k)
+                if ev and ev in avail and ev not in tier1:
+                    tier1.append(ev)
+
+            tier2 = []
+            for k in avail:
+                ev = _eff_vid(k)
+                if ev and ev in avail and ev not in tier1 and ev not in tier2:
+                    tier2.append(ev)
+
+            def _eval_one_vrom(vid):
+                vrom_p, v_iargs = _materialize_variant_rom(vid, scratch_dir)
+                vdir = scratch_dir / f"vrun-{label}-{vid}"
+                _run_one_n64(vrom_p, f"{label}-{vid}", rpath, vdir, frames, v_iargs)
+                try:
+                    vres = json.loads((vdir / "result.json").read_text()) if (vdir / "result.json").is_file() else {}
+                    if vres.get("status") != "completed" or int(vres.get("frames", 0)) != frames:
+                        return None
+                    vrun = load_run(vdir)
+                    (vdir / "video.bin.z").write_bytes(zlib.compress((vdir / "video.bin").read_bytes(), 1))
+                    return compare_video(vdir, {}, cand["video_path"], vrun["rows"], cand["rows"], cfg, max_threads=2)
+                finally:
+                    shutil.rmtree(vdir, ignore_errors=True)
+
+            best_vd = vd
+            matched_v = None
+            for vid in tier1:
+                v_vd = _eval_one_vrom(vid)
+                if v_vd is None:
+                    continue
+                if float(v_vd.get("worst_bad_fraction", 1.0)) < float(best_vd.get("worst_bad_fraction", 1.0)):
+                    best_vd = v_vd
+                if v_vd.get("pass"):
+                    best_vd = v_vd
+                    matched_v = vid
+                    break
+
+            if matched_v is None and not tier1 and tier2:
+                jobs = min(len(tier2), max(1, int(os.environ.get("MEV_JOBS") or 8)))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as vpool:
+                    vfuts = {vid: vpool.submit(_eval_one_vrom, vid) for vid in tier2}
+                    for vid, vf in vfuts.items():
+                        v_vd = vf.result()
+                        if v_vd is None:
+                            continue
+                        if float(v_vd.get("worst_bad_fraction", 1.0)) < float(best_vd.get("worst_bad_fraction", 1.0)):
+                            best_vd = v_vd
+                        if v_vd.get("pass") and matched_v is None:
+                            best_vd = v_vd
+                            matched_v = vid
+
+            if matched_v is not None and isinstance(preferred_variants, list):
+                front = [k for k in preferred_variants if _eff_vid(k) == matched_v]
+                if not front:
+                    front = [k for k in avail if _eff_vid(k) == matched_v]
+                rest = [k for k in preferred_variants if k not in front]
+                preferred_variants[:] = front + rest
+            vd = best_vd
+        ssim = float(vd.get("ssim_score", 0.0))
+        vd_ok = bool(vd.get("pass"))
+    else:
+        ssim = float(vd.get("ssim_score", 0.0))
+        wssim = float(vd.get("worst_ssim_frame_score", 0.0))
+        vd_ok = strict_orig_vid or (ssim >= 0.90 and wssim >= 0.78)
 
     au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
     au_ok = bool(au.get("pass"))
@@ -995,7 +1195,10 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
     if not gp.get("pass"):
         reasons.append(f"gameplay(f={gp.get('frame')},{gp.get('field')})")
     if not vd_ok:
-        reasons.append(f"video(ssim={ssim:.4f},bad={100*vd.get('worst_bad_fraction',0):.2f}%)")
+        lim_pct = 100.0 * float(cfg.get("video", {}).get("max_bad_fraction", 0.0035))
+        wf = vd.get("worst_frame", -1)
+        f_str = f"@f{wf}" if isinstance(wf, int) and wf >= 0 else ""
+        reasons.append(f"video(bad={100*vd.get('worst_bad_fraction',0):.2f}%{f_str},limit={lim_pct:.2f}%,ssim={ssim:.4f})")
     if not au_ok:
         au_desc = au.get("reason") or f"snr={au.get('snr_db')}"
         reasons.append(f"audio({au_desc})")
@@ -1011,7 +1214,8 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
         "sp_coh": int(m.get("sp_dmem_coherence_errors", 0)),
         "vid_pct": 100.0 * float(vd.get("worst_bad_fraction", 0.0)),
         "ssim": ssim,
-        "strict_orig_vid": bool(vd.get("pass")),
+        "strict_orig_vid": strict_orig_vid,
+        "exact_variant_vid": bool(avail and rpath is not None),
         "gp": gp,
         "vd": vd,
         "au": au,
@@ -1021,7 +1225,7 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
 
 
 def diff_replay(args):
-    """Run any custom controller replay file against /task/game and baseline.z64."""
+    """Run any custom controller replay file against /task/game and reference variant ROMs."""
     _prune_old_temps()
     rpath = pathlib.Path(args.replay)
     if not rpath.is_file():
@@ -1039,12 +1243,16 @@ def diff_replay(args):
     b_iargs = _baseline_idle_args()
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-diff-"))
     try:
+        preferred = _detect_preferred_variants(rom, cfg, c_iargs, out)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             fc = pool.submit(_run_one_n64, rom, "cand", rpath, out / "cand", frames, c_iargs)
             fb = pool.submit(_run_one_n64, base_rom, "baseline", rpath, out / "base", frames, b_iargs)
             fc.result()
             fb.result()
-        ev = _eval_differential_pair(rpath.name, out / "cand", out / "base", frames, cfg, elf_sym=elf_sym)
+        ev = _eval_differential_pair(
+            rpath.name, out / "cand", out / "base", frames, cfg,
+            elf_sym=elf_sym, rpath=rpath, scratch_dir=out, preferred_variants=preferred,
+        )
     finally:
         shutil.rmtree(out, ignore_errors=True)
 
@@ -1053,7 +1261,12 @@ def diff_replay(args):
         print(f"[{tag}] {rpath}: {ev.get('reason', 'execution failed')}")
         print_time_remaining()
         sys.exit(1)
-    vnote = "" if ev["strict_orig_vid"] else " (variant-tolerant SSIM check; un-precomputed replay)"
+    if ev["strict_orig_vid"]:
+        vnote = ""
+    elif ev.get("exact_variant_vid"):
+        vnote = " (matched accepted visual variant)"
+    else:
+        vnote = " (variant-tolerant SSIM check)"
     print(f"[{tag}] {rpath} ({frames} frames): console {ev['base_ms']:.2f}ms -> {ev['cand_ms']:.2f}ms ({ev['speedup']:.3f}x)")
     print(f"  gates: hw={'PASS' if ev['hw_ok'] else 'FAIL'} (ram={ev['max_ram_kib']:.0f}KiB, oob={ev['oob']}, rdram_coh={ev['rdram_coh']})"
           f"  gameplay={'PASS' if ev['gp'].get('pass') else 'FAIL'}"
@@ -1086,7 +1299,7 @@ _ALL_SM64_COURSES = (
 
 
 def stress(args):
-    """Run seeded random-input differential stress replays across SM64 courses against baseline.z64."""
+    """Run seeded random-input differential stress replays across SM64 courses against reference variant ROMs."""
     _prune_old_temps()
     cfg = config()
     frames = args.frames or cfg["frames"]
@@ -1100,21 +1313,23 @@ def stress(args):
     has_base = base_rom.is_file()
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-stress-"))
     pub_wls = [w for w in cfg["workloads"] if w.get("split", "public") == "public"]
-    rng = random.Random(args.seed)
     # Never press START ('S') after frame 0 so the pause menu cannot soft-stall courses.
     buttons_pool = [".", "A", "B", "Z", "AZ", "BZ", "8", "2", "4", "6", "A4", "A6", "R"]
 
+    pub_f0 = {}
+    for w in pub_wls:
+        orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
+        pub_f0[w["id"]] = orig_lines[0] if orig_lines else ". 0 0"
+
     if getattr(args, "all_courses", False):
-        course_targets = [(cname, f"{_encode_sm64_boot_pad(lid, 1)} 0 0", lid in (14, 15, 17, 19, 21, 22, 36))
+        course_targets = [(cname, pub_f0.get(cname, f"{_encode_sm64_boot_pad(lid, 1)} 0 0"), lid in (14, 15, 17, 19, 21, 22, 36))
                           for cname, lid in _ALL_SM64_COURSES]
     else:
-        course_targets = []
-        for w in pub_wls:
-            orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
-            course_targets.append((w["id"], orig_lines[0] if orig_lines else ". 0 0", w["id"] in ("bitfs", "rr")))
+        course_targets = [(w["id"], pub_f0[w["id"]], w["id"] in ("bitfs", "rr")) for w in pub_wls]
 
     items = []
     for wid, f0_line, narrow in course_targets:
+        rng = random.Random(f"{args.seed}:{wid}")
         lines = [f0_line]
         cur_btn, cur_x, cur_y, hold = ".", 0, 0, 0
         ang = rng.uniform(0.0, 2.0 * math.pi)
@@ -1138,6 +1353,7 @@ def stress(args):
         items.append((wid, rpath))
 
     try:
+        preferred = _detect_preferred_variants(rom, cfg, c_iargs, out) if has_base else []
         jobs = min(len(items) * (2 if has_base else 1), max(1, int(os.environ.get("MEV_JOBS") or os.cpu_count() or 8)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
             futs = {}
@@ -1150,9 +1366,12 @@ def stress(args):
 
         ok = True
         print(f"Differential button-mash stress test (seed={args.seed}, {frames} frames across {len(items)} courses):")
-        for wid, _rpath in items:
+        for wid, rpath in items:
             if has_base:
-                ev = _eval_differential_pair(wid, out / wid / "cand", out / wid / "base", frames, cfg, elf_sym=elf_sym)
+                ev = _eval_differential_pair(
+                    wid, out / wid / "cand", out / wid / "base", frames, cfg,
+                    elf_sym=elf_sym, rpath=rpath, scratch_dir=out, preferred_variants=preferred,
+                )
                 if not ev["pass"]:
                     ok = False
                 tag = "PASS" if ev["pass"] else "FAIL"
@@ -1162,7 +1381,7 @@ def stress(args):
                     fail_s = ("  FAIL: " + ", ".join(ev["reasons"])) if ev["reasons"] else ""
                     print(f"  [{tag}] {wid:8s} {ev['base_ms']:6.2f}->{ev['cand_ms']:6.2f}ms ({ev['speedup']:5.2f}x)"
                           f"  ram={ev['max_ram_kib']:4.0f}KiB  oob={ev['oob']}  rdram_coh={ev['rdram_coh']}"
-                          f"  ssim={ev['ssim']:.4f}{fail_s}")
+                          f"  vid={ev['vid_pct']:5.3f}%  ssim={ev['ssim']:.4f}{fail_s}")
             else:
                 res = json.loads((out / wid / "cand" / "result.json").read_text())
                 good = (res.get("status") == "completed" and int(res.get("oob_rdram_accesses", 0)) == 0)

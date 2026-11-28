@@ -73,7 +73,9 @@ if [ "$NO_TASK" -eq 0 ]; then
     echo "$GAME_DIR missing: run ./sm64/setup.sh first" >&2; exit 1; }
 
   # Heavy base image (rebuilt ONLY if sm64/harness, sm64/patches, Dockerfile.base, or reference cache changed!)
-  BASE_HASH="$(dir_hash quickstart/task/Dockerfile.base sm64/harness sm64/patches "$REF_DIR/index.json")"
+  VROMS_ARG=()
+  [ -d "$REF_DIR/variant-roms" ] && VROMS_ARG=("$REF_DIR/variant-roms")
+  BASE_HASH="$(dir_hash quickstart/task/Dockerfile.base sm64/harness sm64/patches "$REF_DIR/index.json" "${VROMS_ARG[@]}")"
   if [ "$FORCE" -eq 1 ] || [ "$(img_label mario-eval-task-base mev.src_hash)" != "$BASE_HASH" ]; then
     STAGE="$REPO/cache/public-stage"
     chmod -R u+w "$STAGE" 2>/dev/null || true

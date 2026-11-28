@@ -1,5 +1,5 @@
 {
-  "version": "4.1",
+  "version": "4.2",
   "target": "sm64",
   "contract": "sm64",
   "rom": "build/us/sm64.us.z64",

@@ -677,7 +677,7 @@ run_analytics = {
 }
 
 out_obj = {
-    "version": "4.1",
+    "version": "4.2",
     "run": run_dir.name,
     "game": game,
     "primary_profile": profile,
