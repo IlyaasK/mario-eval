@@ -33,7 +33,7 @@ cd "$(dirname "$0")/.."
 REPO="$PWD"
 QS="$REPO/quickstart"
 
-HOURS=24; GAME="sm64"; RUN=""; PROFILE=console; COMMIT_MIN=30; GRADE_HOURS=2; STALL_MIN=30; HELDOUT=""
+HOURS=24; GAME="sm64"; RUN=""; PROFILE=console; COMMIT_MIN=30; GRADE_HOURS=2; STALL_MIN=30; HELDOUT=""; RESUME=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --hours) HOURS="$2"; shift 2 ;;
@@ -47,6 +47,7 @@ while [ $# -gt 0 ]; do
     --grade-every) GRADE_HOURS="$2"; shift 2 ;;
     --stall-minutes) STALL_MIN="$2"; shift 2 ;;
     --heldout) HELDOUT="$(realpath "$2")"; shift 2 ;;
+    --resume) RESUME=1; shift ;;
     -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -67,7 +68,10 @@ QUOTA_DEFAULT_WAIT_S="${MEV_QUOTA_DEFAULT_WAIT_S:-300}"
 
 RUN="${RUN:-run-${GAME}-${PROFILE}-$(date -u +%Y%m%dT%H%M%SZ)}"
 RUN_DIR="$REPO/results/$RUN"
-[ -e "$RUN_DIR" ] && { echo "error: $RUN_DIR exists" >&2; exit 1; }
+if [ "$RESUME" -eq 0 ] && [ -e "$RUN_DIR" ]; then
+  echo "error: $RUN_DIR exists (pass --resume to continue an existing run)" >&2
+  exit 1
+fi
 mkdir -p "$RUN_DIR"
 LOG="$RUN_DIR/run.log"
 
@@ -1123,8 +1127,38 @@ stop_agent() {
 }
 trap 'stop_agent; commit; save_artifacts_fast; write_manifest 0 0; log "interrupted (saved mev-history.jsonl and game.bundle)"; exit 130' INT TERM
 
-START=$(now); DEADLINE=$((START + TOTAL_S)); NEXT_COMMIT=$((START + COMMIT_S)); NEXT_GRADE=$((START + GRADE_S)); G=0
-log "run $RUN: game=$GAME, ${HOURS}h, profile=$PROFILE, AGENT_CMD: $AGENT_CMD"
+if [ "$RESUME" -eq 1 ] && [ -f "$RUN_DIR/run_manifest.json" ]; then
+  read -r START PAUSED_S QUOTA_PAUSES G N < <(python3 - "$RUN_DIR" "$(now)" <<'PY'
+import json, pathlib, re, sys
+rdir = pathlib.Path(sys.argv[1])
+now_ts = int(sys.argv[2])
+m = json.loads((rdir / "run_manifest.json").read_text())
+start = int(m.get("start_epoch") or now_ts)
+paused = int(m.get("paused_seconds") or 0)
+qpauses = int(m.get("quota_pauses") or 0)
+mtimes = [int(p.stat().st_mtime) for p in list(rdir.glob("agent-*.log")) + [rdir / "mev-history.jsonl", rdir / "run_manifest.json"] if p.exists()]
+last_ts = max(mtimes) if mtimes else now_ts
+gap = max(0, now_ts - last_ts)
+if gap > 5:
+    with (rdir / "quota-pauses.jsonl").open("a") as fh:
+        fh.write(json.dumps({"start": last_ts, "end": now_ts, "seconds": gap, "kind": "maintenance_pause"}) + "\n")
+    paused += gap
+cps = [int(m_cp.group(1)) for p in rdir.glob("checkpoint-*") if (m_cp := re.match(r"^checkpoint-(\d+)$", p.name))]
+g_max = max(cps) if cps else 0
+alogs = [int(m_al.group(1)) for p in rdir.glob("agent-*.log") if (m_al := re.match(r"^agent-(\d+)\.log$", p.name))]
+n_max = max(alogs) if alogs else 0
+print(f"{start} {paused} {qpauses} {g_max} {n_max}")
+PY
+)
+  DEADLINE=$((START + TOTAL_S + PAUSED_S))
+  NEXT_COMMIT=$(( $(now) + COMMIT_S ))
+  NEXT_GRADE=$((START + (G + 1) * GRADE_S + PAUSED_S))
+  [ "$NEXT_GRADE" -le "$(now)" ] && NEXT_GRADE=$(( $(now) + 60 ))
+  log "resuming run $RUN: game=$GAME, ${HOURS}h, profile=$PROFILE, AGENT_CMD: $AGENT_CMD (checkpoint-$((G + 1)) next, remaining $(format_remaining))"
+else
+  START=$(now); DEADLINE=$((START + TOTAL_S)); NEXT_COMMIT=$((START + COMMIT_S)); NEXT_GRADE=$((START + GRADE_S)); G=0
+  log "run $RUN: game=$GAME, ${HOURS}h, profile=$PROFILE, AGENT_CMD: $AGENT_CMD"
+fi
 write_manifest 0 0
 start_agent
 while [ "$(now)" -lt "$DEADLINE" ]; do
