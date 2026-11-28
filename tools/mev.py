@@ -966,8 +966,7 @@ def _detect_preferred_variants(rom, cfg, c_iargs, scratch_dir):
     rr_rep = CORPUS / "replays/public/rr.txt"
     if not (bob_rep.is_file() and rr_rep.is_file() and (CACHE / "runs/bob/frames.jsonl").is_file() and (CACHE / "runs/rr/frames.jsonl").is_file()):
         return []
-    (pdir / "bob").mkdir(parents=True, exist_ok=True)
-    (pdir / "rr").mkdir(parents=True, exist_ok=True)
+    pdir.mkdir(parents=True, exist_ok=True)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         fb = pool.submit(_run_one_n64, rom, "probe-bob", bob_rep, pdir / "bob", n_f, c_iargs)
@@ -1153,7 +1152,7 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
                     matched_v = vid
                     break
 
-            if matched_v is None and not tier1 and tier2:
+            if matched_v is None and tier2:
                 jobs = min(len(tier2), max(1, int(os.environ.get("MEV_JOBS") or 8)))
                 with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as vpool:
                     vfuts = {vid: vpool.submit(_eval_one_vrom, vid) for vid in tier2}
@@ -1169,10 +1168,9 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
 
             if matched_v is not None and isinstance(preferred_variants, list):
                 front = [k for k in preferred_variants if _eff_vid(k) == matched_v]
-                if not front:
-                    front = [k for k in avail if _eff_vid(k) == matched_v]
-                rest = [k for k in preferred_variants if k not in front]
-                preferred_variants[:] = front + rest
+                if front:
+                    rest = [k for k in preferred_variants if k not in front]
+                    preferred_variants[:] = front + rest
             vd = best_vd
         ssim = float(vd.get("ssim_score", 0.0))
         vd_ok = bool(vd.get("pass"))
@@ -1365,7 +1363,7 @@ def stress(args):
                 f.result()
 
         ok = True
-        print(f"Differential button-mash stress test (seed={args.seed}, {frames} frames across {len(items)} courses):")
+        print(f"Differential button-mash stress test (seed={args.seed}, {frames} frames across {len(items)} courses, variant-matched <=0.35% video gate):")
         for wid, rpath in items:
             if has_base:
                 ev = _eval_differential_pair(
