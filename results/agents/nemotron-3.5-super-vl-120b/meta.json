@@ -5,8 +5,8 @@
   "provider": "NVIDIA \u00b7 NIM API",
   "harness": "omp 19.2.1",
   "graded": "2026-11-27 (live)",
-  "commit": "6685d3a",
+  "commit": "41f94ca",
   "hours": 24,
   "repo_url": "",
-  "notes": "Live 24-hour autonomous v4.1 run on oh-my-pi 19.2.1 (--thinking max) via NVIDIA NIM. 2/2 valid checkpoints through 4.0h at 1.363x across all 26 routes (26.6% console frame time saved, 1.059x vs GCC -O2, 1.000 fidelity) with in-place mtxf_mul, bounding-box floor collision pre-filtering, table trig in shadow math, and 128-byte unrolled D-cache writeback loops."
+  "notes": "Live 24-hour autonomous v4.1 run on oh-my-pi 19.2.1 (--thinking max) via NVIDIA NIM. 3/3 valid checkpoints through 6.0h at 1.366x across all 26 routes (26.8% console frame time saved, 1.061x vs GCC -O2, 1.000 fidelity) with in-place mtxf_mul, bounding-box floor collision pre-filtering, table trig in shadow math, and 128-byte unrolled D-cache writeback loops."
 }

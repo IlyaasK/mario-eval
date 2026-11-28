@@ -15,14 +15,14 @@
   "reward": 0.1276415
  },
  "run_analytics": {
-  "commits_count": 21,
+  "commits_count": 22,
   "trailing_unverified_commits": 0,
   "agent_trace_summary": {
-   "invocations": 6,
+   "invocations": 9,
    "quota_pauses": 6,
    "mev_profile_mentions": 65,
-   "mev_stress_mentions": 54,
-   "optimization_log_mentions": 36
+   "mev_stress_mentions": 60,
+   "optimization_log_mentions": 46
   },
   "public_mev_checks_total": 191,
   "public_mev_checks_full": 18,

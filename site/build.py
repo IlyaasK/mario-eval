@@ -776,6 +776,61 @@ def build_board(trial_rows, agent_runs):
             "routes": len(wids), "public": len(public), "private": len(wids) - len(public)}
 
 
+def monotone_cubic_svg_path(raw_xy):
+    """Fritsch-Carlson monotone cubic Hermite spline -> SVG cubic Bezier path (`M ... C ...`).
+    Passes smoothly through every milestone with zero overshoot/undershoot on monotonic series."""
+    if not raw_xy:
+        return ""
+    # Coalesce near-simultaneous X coordinates (within 1.5 px) keeping the latest Y
+    pts = [raw_xy[0]]
+    for px, py in raw_xy[1:]:
+        if px - pts[-1][0] < 1.5:
+            pts[-1] = (max(pts[-1][0], px), min(pts[-1][1], py))
+        else:
+            pts.append((px, py))
+    n = len(pts)
+    if n == 1:
+        return f"M{pts[0][0]:.1f},{pts[0][1]:.1f}"
+    if n == 2:
+        return f"M{pts[0][0]:.1f},{pts[0][1]:.1f} L{pts[1][0]:.1f},{pts[1][1]:.1f}"
+
+    dxs = [pts[i + 1][0] - pts[i][0] for i in range(n - 1)]
+    sec = [(pts[i + 1][1] - pts[i][1]) / dxs[i] for i in range(n - 1)]
+    tangents = [0.0] * n
+    tangents[0] = sec[0]
+    tangents[-1] = sec[-1]
+    for i in range(1, n - 1):
+        if sec[i - 1] * sec[i] <= 0.0:
+            tangents[i] = 0.0
+        else:
+            w1 = 2.0 * dxs[i] + dxs[i - 1]
+            w2 = dxs[i] + 2.0 * dxs[i - 1]
+            tangents[i] = (w1 + w2) / (w1 / sec[i - 1] + w2 / sec[i])
+
+    for i in range(n - 1):
+        if abs(sec[i]) < 1e-9:
+            tangents[i] = 0.0
+            tangents[i + 1] = 0.0
+        else:
+            a = tangents[i] / sec[i]
+            b = tangents[i + 1] / sec[i]
+            h = math.hypot(a, b)
+            if h > 3.0:
+                tau = 3.0 / h
+                tangents[i] = tau * a * sec[i]
+                tangents[i + 1] = tau * b * sec[i]
+
+    segs = [f"M{pts[0][0]:.1f},{pts[0][1]:.1f}"]
+    for i in range(n - 1):
+        x0, y0 = pts[i]
+        x1, y1 = pts[i + 1]
+        dx = dxs[i]
+        c1x, c1y = x0 + dx / 3.0, y0 + tangents[i] * dx / 3.0
+        c2x, c2y = x1 - dx / 3.0, y1 - tangents[i + 1] * dx / 3.0
+        segs.append(f" C{c1x:.1f},{c1y:.1f} {c2x:.1f},{c2y:.1f} {x1:.1f},{y1:.1f}")
+    return "".join(segs)
+
+
 def speedup_svg(agents, refs, div):
     """Best valid console speedup over wall-clock hours, divided by `div`, with reference lines."""
     W, H, L, R, T, B = 760, 340, 50, 176, 14, 46
@@ -811,23 +866,27 @@ def speedup_svg(agents, refs, div):
     base_v = 1.0 / div
     for e in agents:
         col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
-        best, steps = base_v, []
+        best, steps = base_v, [(0.0, base_v)]
         for pt in samples:
             hr, sp = pt[0], pt[1]
             best = max(best, sp / div)
             steps.append((hr, best))
+        end_hr = max(e["end_h"], steps[-1][0])
+        if end_hr > steps[-1][0] + 0.05:
+            steps.append((end_hr, steps[-1][1]))
+        d = monotone_cubic_svg_path([(x(hr), y(v)) for hr, v in steps])
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        d = f"M{x(0.0):.1f},{y(base_v):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
-        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
         for pt in samples:
             hr, sp, name = pt[0], pt[1], pt[2]
             is_cp = pt[3] if len(pt) > 3 else True
-            rad = "3.7" if is_cp else "2.2"
-            sw = "1.5" if is_cp else "1.0"
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
-                       f'data-hr="{hr:.2f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.2f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
+            if is_cp:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.6" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                           f'data-hr="{hr:.2f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                           f'<title>{esc(e["name"])} at {hr:.2f}h: {sp / div:.3f}&times; ({esc(name)})</title></circle>')
+            else:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sp / div):.1f}" r="3.0" fill="{col}" fill-opacity="0" stroke="none" '
+                           f'data-hr="{hr:.2f}" data-val="{sp / div:.3f}" data-name="{esc(e["short"])}" data-cp="{esc(name)}"/>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.2f}×', e["slug"]))
     labels.sort()
@@ -888,25 +947,29 @@ def cost_saved_svg(agents, refs):
         labels.append((y(v), col, f'{e["short"]} {v:.1f}%', e["slug"]))
     for e in agents:
         col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
-        best, steps = 0.0, []
+        best, steps = 0.0, [(0.0, 0.0)]
         for pt in samples:
             hr, sp = pt[0], pt[1]
             sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
             best = max(best, sv)
             steps.append((hr, best))
+        end_hr = max(e["end_h"], steps[-1][0])
+        if end_hr > steps[-1][0] + 0.05:
+            steps.append((end_hr, steps[-1][1]))
+        d = monotone_cubic_svg_path([(x(hr), y(v)) for hr, v in steps])
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        d = f"M{x(0.0):.1f},{y(0.0):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
-        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
         for pt in samples:
             hr, sp, name = pt[0], pt[1], pt[2]
             is_cp = pt[3] if len(pt) > 3 else True
-            rad = "3.7" if is_cp else "2.2"
-            sw = "1.5" if is_cp else "1.0"
             sv = 100.0 * (1.0 - 1.0 / sp) if sp > 0 else 0.0
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
-                       f'data-hr="{hr:.2f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.2f}h: {sv:.1f}% saved ({esc(name)})</title></circle>')
+            if is_cp:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="3.6" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                           f'data-hr="{hr:.2f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                           f'<title>{esc(e["name"])} at {hr:.2f}h: {sv:.1f}% saved ({esc(name)})</title></circle>')
+            else:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(sv):.1f}" r="3.0" fill="{col}" fill-opacity="0" stroke="none" '
+                           f'data-hr="{hr:.2f}" data-val="{sv:.1f}" data-unit="%" data-name="{esc(e["short"])}" data-cp="{esc(name)}"/>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.1f}%', e["slug"]))
     labels.sort()
@@ -968,25 +1031,29 @@ def fps_svg(agents, refs, base_fps):
     for e in agents:
         col, samples = e["color"], sorted(e["points"], key=lambda pt: pt[0])
         scale = (float(e["fps"]) / e["speedup"]) if (e.get("fps") and e.get("speedup")) else b_fps
-        best, steps = b_fps, []
+        best, steps = b_fps, [(0.0, b_fps)]
         for pt in samples:
             hr, sp = pt[0], pt[1]
             fv = scale * sp
             best = max(best, fv)
             steps.append((hr, best))
+        end_hr = max(e["end_h"], steps[-1][0])
+        if end_hr > steps[-1][0] + 0.05:
+            steps.append((end_hr, steps[-1][1]))
+        d = monotone_cubic_svg_path([(x(hr), y(v)) for hr, v in steps])
         out.append(f'<g class="series" data-series="{esc(e["slug"])}">')
-        d = f"M{x(0.0):.1f},{y(b_fps):.1f}" + "".join(f" H{x(hr):.1f} V{y(v):.1f}" for hr, v in steps)
-        d += f" H{x(max(e['end_h'], steps[-1][0])):.1f}"
-        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.4" stroke-linejoin="miter"/>')
+        out.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
         for pt in samples:
             hr, sp, name = pt[0], pt[1], pt[2]
             is_cp = pt[3] if len(pt) > 3 else True
-            rad = "3.7" if is_cp else "2.2"
-            sw = "1.5" if is_cp else "1.0"
             fv = scale * sp
-            out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="{rad}" fill="{col}" stroke="#0a0a0d" stroke-width="{sw}" '
-                       f'data-hr="{hr:.2f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
-                       f'<title>{esc(e["name"])} at {hr:.2f}h: {fv:.1f} FPS ({sp:.2f}&times;, {esc(name)})</title></circle>')
+            if is_cp:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="3.6" fill="{col}" stroke="#0a0a0d" stroke-width="1.5" '
+                           f'data-hr="{hr:.2f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}">'
+                           f'<title>{esc(e["name"])} at {hr:.2f}h: {fv:.1f} FPS ({sp:.2f}&times;, {esc(name)})</title></circle>')
+            else:
+                out.append(f'<circle cx="{x(hr):.1f}" cy="{y(fv):.1f}" r="3.0" fill="{col}" fill-opacity="0" stroke="none" '
+                           f'data-hr="{hr:.2f}" data-val="{fv:.1f}" data-unit=" FPS" data-name="{esc(e["short"])}" data-cp="{esc(name)}"/>')
         out.append("</g>")
         labels.append((y(steps[-1][1]), col, f'{e["short"]} {steps[-1][1]:.0f} fps', e["slug"]))
     labels.sort()

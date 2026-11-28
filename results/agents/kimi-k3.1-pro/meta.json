@@ -5,8 +5,8 @@
   "provider": "Moonshot AI \u00b7 NVIDIA NIM",
   "harness": "kimi-code 2.8.1",
   "graded": "2026-11-27 (live)",
-  "commit": "6626741",
+  "commit": "5e947fc",
   "hours": 24,
   "repo_url": "",
-  "notes": "Live 24-hour autonomous v4.1 run on kimi-code 2.8.1 (thinking=true) via NVIDIA NIM. 6/6 valid host checkpoints through 12.0h with zero invalid submissions, climbing monotonically every two hours: 1.272x (2h) -> 1.282x (4h) -> 1.303x (6h) -> 1.325x (8h) -> 1.329x (10h) -> 1.333x at 12.0h (25.0% console frame time saved, 1.035x vs GCC -O2) via I-cache set separation on floor queries and audio note reclamation, unit-scale skips, and inlined hitbox overlap scans."
+  "notes": "Live 24-hour autonomous v4.1 run on kimi-code 2.8.1 (thinking=true) via NVIDIA NIM. 6/6 valid host checkpoints through 12.0h with zero invalid submissions, climbing monotonically every two hours to 1.333x at 12.0h (25.0% console frame time saved, 1.035x vs GCC -O2)."
 }
