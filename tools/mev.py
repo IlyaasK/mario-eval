@@ -1144,21 +1144,23 @@ def stress(args):
     has_base = base_rom.is_file()
     out = pathlib.Path(tempfile.mkdtemp(prefix="mev-stress-"))
     pub_wls = [w for w in cfg["workloads"] if w.get("split", "public") == "public"]
-    rng = random.Random(args.seed)
     # Never press START ('S') after frame 0 so the pause menu cannot soft-stall courses.
     buttons_pool = [".", "A", "B", "Z", "AZ", "BZ", "8", "2", "4", "6", "A4", "A6", "R"]
 
+    pub_f0 = {}
+    for w in pub_wls:
+        orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
+        pub_f0[w["id"]] = orig_lines[0] if orig_lines else ". 0 0"
+
     if getattr(args, "all_courses", False):
-        course_targets = [(cname, f"{_encode_sm64_boot_pad(lid, 1)} 0 0", lid in (14, 15, 17, 19, 21, 22, 36))
+        course_targets = [(cname, pub_f0.get(cname, f"{_encode_sm64_boot_pad(lid, 1)} 0 0"), lid in (14, 15, 17, 19, 21, 22, 36))
                           for cname, lid in _ALL_SM64_COURSES]
     else:
-        course_targets = []
-        for w in pub_wls:
-            orig_lines = [l for l in (CORPUS / w["replay"]).read_text().splitlines() if l.strip() and not l.startswith("#")]
-            course_targets.append((w["id"], orig_lines[0] if orig_lines else ". 0 0", w["id"] in ("bitfs", "rr")))
+        course_targets = [(w["id"], pub_f0[w["id"]], w["id"] in ("bitfs", "rr")) for w in pub_wls]
 
     items = []
     for wid, f0_line, narrow in course_targets:
+        rng = random.Random(f"{args.seed}:{wid}")
         lines = [f0_line]
         cur_btn, cur_x, cur_y, hold = ".", 0, 0, 0
         ang = rng.uniform(0.0, 2.0 * math.pi)
