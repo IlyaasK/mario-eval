@@ -908,6 +908,43 @@ def _baseline_idle_args():
     return out
 
 
+def _max_interior_video_diff(cand_video_path, ref_video_path, frames, cfg, tol=5):
+    """Max fraction of 3x3-interior pixels differing by > `tol`/31 against baseline.z64.
+    Accepted microcode/AA/LOD variants (F3DEX2, RA_ZB_OPA, full-detail, no-lod, rr-statics)
+    only shift 1-2px silhouette edges or <=3/31 Gouraud shading (<= 0.08% across 6,240 frames),
+    whereas culled/missing translucent or opaque geometry produces contiguous >0.25% interior blocks."""
+    import numpy as np
+    from grader.grade import decode_frame
+    vcfg = cfg.get("video", {})
+    w = int(vcfg.get("width", 320))
+    h = int(vcfg.get("height", 240))
+    bpp = int(vcfg.get("bpp", 16))
+    c_raw = cand_video_path.read_bytes()
+    r_raw = ref_video_path.read_bytes()
+    if not c_raw or not r_raw or frames <= 0:
+        return 0.0, -1
+    fb = w * h * max(1, bpp // 8)
+    nf = min(frames, len(c_raw) // fb, len(r_raw) // fb)
+    worst = 0.0
+    worst_f = -1
+    for i in range(nf):
+        cf = decode_frame(c_raw[i * fb:(i + 1) * fb], w, h, bpp)
+        rf = decode_frame(r_raw[i * fb:(i + 1) * fb], w, h, bpp)
+        m = np.abs(cf.astype(np.int16) - rf.astype(np.int16)).max(axis=-1) > tol
+        if float(m.mean()) <= worst:
+            continue
+        er = m[1:-1, 1:-1].copy()
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dx or dy:
+                    er &= m[1 + dy:h - 1 + dy, 1 + dx:w - 1 + dx]
+        ef = float(er.mean())
+        if ef > worst:
+            worst = ef
+            worst_f = i
+    return worst, worst_f
+
+
 def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None):
     """Compare candidate run in cand_dir against baseline.z64 run in base_dir."""
     import zlib
@@ -976,10 +1013,14 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
         ref_vid_z.write_bytes(zlib.compress((base_dir / "video.bin").read_bytes(), 1))
     vd = compare_video(base_dir, {}, cand["video_path"], ref["rows"], cand["rows"], cfg)
     # Custom/stress replays do not have precomputed variant videos (f3dex2, no-lod, rr-statics),
-    # so accept high structural block-SSIM (>= 0.90, worst >= 0.78) when only variant pixels differ.
+    # so accept high structural block-SSIM (>= 0.90, worst >= 0.78) ONLY when contiguous 3x3-interior
+    # >5/31 pixel error stays within the variant envelope (<= 0.25%; catches culled/missing geometry).
     ssim = float(vd.get("ssim_score", 0.0))
     wssim = float(vd.get("worst_ssim_frame_score", 0.0))
-    vd_ok = bool(vd.get("pass")) or (ssim >= 0.90 and wssim >= 0.78)
+    int_bad, int_frame = (0.0, -1)
+    if not bool(vd.get("pass")):
+        int_bad, int_frame = _max_interior_video_diff(cand["video_path"], base_dir / "video.bin", frames, cfg, tol=5)
+    vd_ok = bool(vd.get("pass")) or (ssim >= 0.90 and wssim >= 0.78 and int_bad <= 0.0025)
 
     au = compare_audio(ref["audio"], cand["audio"], ref["rows"], cand["rows"], cfg)
     au_ok = bool(au.get("pass"))
@@ -995,7 +1036,10 @@ def _eval_differential_pair(label, cand_dir, base_dir, frames, cfg, elf_sym=None
     if not gp.get("pass"):
         reasons.append(f"gameplay(f={gp.get('frame')},{gp.get('field')})")
     if not vd_ok:
-        reasons.append(f"video(ssim={ssim:.4f},bad={100*vd.get('worst_bad_fraction',0):.2f}%)")
+        if int_bad > 0.0025:
+            reasons.append(f"video(missing/corrupt interior geometry: {100*int_bad:.2f}% 3x3 px >5/31 at frame {int_frame}, limit 0.25%; ssim={ssim:.4f})")
+        else:
+            reasons.append(f"video(ssim={ssim:.4f},bad={100*vd.get('worst_bad_fraction',0):.2f}%)")
     if not au_ok:
         au_desc = au.get("reason") or f"snr={au.get('snr_db')}"
         reasons.append(f"audio({au_desc})")
